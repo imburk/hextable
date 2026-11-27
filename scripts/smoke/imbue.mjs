@@ -1,7 +1,7 @@
-import { sleep, scenario, wait, state, open, playSolo, closePanels, panelTab, tapGuarded, placeBeside, chip } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, closePanels, panelTab, tapGuarded, placeBeside, chip, tapDie, waitShown, choiceView } from './lib.mjs';
 
 // ---------- a weapon a spell changes (docs/specs/on-hit.md, stage O4; #666) ----------
-// A level 1 druid with Shillelagh, a Quarterstaff and a Club (two weapons fit). Armed, the hint bar asks which weapon (a thumb-sized control on touch); cast on the
+// A level 1 druid with Shillelagh, a Quarterstaff and a Club (two weapons fit). Armed, the sheet asks which weapon (#750 part 2: thumb-sized choices at the top of the open section); cast on the
 // Quarterstaff, the Attacks tab shows its changed numbers (Wisdom and a d8, Force or Bludgeoning) and the Club's are as they were.
 async function imbue(browser, url, label, opts) {
   await scenario(label, async (run) => {
@@ -43,19 +43,20 @@ async function imbue(browser, url, label, opts) {
         await shot('1-before');
       });
 
-      await run.do('armed: the hint bar asks which weapon, and the control is thumb-sized on touch', async () => {
+      await run.do('armed: the sheet asks which weapon (the aim bar has no menu), and the choices are thumb-sized on touch', async () => {
         await panelTab(page, 'spells');
         await page.click('#ap-spells [data-row="spell:shillelagh"]');
         await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'shillelagh');
-        const v = await page.evaluate(() => { const sel = document.getElementById('hint-pick'), r = sel.getBoundingClientRect(); return { shown: !sel.hidden && sel.getClientRects().length > 0, options: [...sel.options].map((o) => o.value), h: r.height, text: sel.selectedOptions[0]?.textContent }; });
-        if (!v.shown || v.options.join() !== 'quarterstaff,club') throw new Error(`weapon menu: ${JSON.stringify(v)}`);
-        if (touch && v.h < 44) throw new Error(`the menu is ${v.h}px high on touch`);
+        await waitShown(page, '#ap-choices');
+        const v = await choiceView(page, 'pick');
+        if (v.old || v.usable.join() !== 'quarterstaff,club' || v.on !== 'quarterstaff' || v.first !== 'ap-choices' || !v.inDrawer) throw new Error(`weapon choices on the sheet: ${JSON.stringify(v)}`);
+        if (touch && v.minH < 44) throw new Error(`the choices are ${v.minH}px high on touch`);
         await shot('2-weapon-menu');
       });
 
       await run.do('cast on the Quarterstaff: Wisdom, a d8, Force or Bludgeoning in the Attacks tab; the Club is unchanged', async () => {
-        await page.selectOption('#hint-pick', 'quarterstaff');
-        await page.click('#hint-go');
+        await page.click('#ap-choices [data-ch="pick"][data-v="quarterstaff"]');
+        await tapDie(page, false);
         await wait(page, () => (window.hextable.state.effects ?? []).some((fx) => fx.name === 'Shillelagh'), null, 10000);
         await sleep(300);
         await panelTab(page, 'attacks');
@@ -112,15 +113,17 @@ async function ally(browser, url, label, opts) {
         await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'magic-weapon');
         await tapGuarded(page, touch, pip);
         await wait(page, () => window.hextable.mode.holder, null, 5000).catch(async (err) => { throw new Error(`${err.message.split('\\n')[0]}: mode ${await page.evaluate(() => JSON.stringify(window.hextable.mode))}, toast ${await page.evaluate(() => document.getElementById('toast')?.textContent)}, hint ${await page.evaluate(() => document.getElementById('hint').textContent)}, at ${await page.evaluate(([x, y]) => JSON.stringify([window.hextable.state.entities[x].pos, window.hextable.state.entities[y].pos, window.hextable.state.entities[y].name]), [wyn, pip])}`); });
-        const v = await page.evaluate(() => { const sel = document.getElementById('hint-pick'); return { shown: !sel.hidden && sel.getClientRects().length > 0, options: [...sel.options].map((o) => o.value), hint: document.getElementById('hint').textContent }; });
-        if (!v.shown || !v.options.some((o) => o.startsWith('longsword')) || !v.options.includes('mace')) throw new Error(`the ally's weapon menu: ${JSON.stringify(v)}`);
-        await page.selectOption('#hint-pick', pick);
-        // Cast and Cancel, wrapped or not, stay on screen and nothing (the chat bubble) sits over them.
-        const hit = await page.evaluate(() => ['hint-pick', 'hint-go', 'hint-cancel'].map((id) => { const el = document.getElementById(id), r = el.getBoundingClientRect(), top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        await waitShown(page, '#ap-choices');
+        const v = await choiceView(page, 'pick');
+        if (v.old || !v.usable.some((o) => o.startsWith('longsword')) || !v.usable.includes('mace')) throw new Error(`the ally's weapon choices: ${JSON.stringify(v)}`);
+        await page.click(`#ap-choices [data-ch="pick"][data-v="${pick}"]`);
+        await wait(page, (p0) => document.querySelector(`#ap-choices [data-v="${p0}"]`)?.getAttribute('aria-checked') === 'true', pick);
+        // The die stays on screen and nothing (the chat bubble) sits over it, the sheet open or not.
+        const hit = await page.evaluate(() => ['btn-menu'].map((id) => { const el = document.getElementById(id), r = el.getBoundingClientRect(), top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
           return { id, ok: r.width > 0 && r.x >= 0 && r.right <= window.innerWidth && (top === el || el.contains(top)), r: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)], top: top?.id || top?.tagName }; }));
         if (hit.some((x) => !x.ok)) throw new Error(`the hint controls are clipped or covered: ${JSON.stringify(hit)}`);
         await shot(`menu-${pick}`);
-        await page.click('#hint-go');
+        await tapDie(page, false);
         await wait(page, (w) => (window.hextable.state.effects ?? []).some((fx) => fx.name === 'Magic Weapon' && fx.parts.some((p) => p.imbue && !p.ended && p.imbue.weapon === w)), pick, 10000);
       };
       await run.do('tapping the ally lists the ally\'s two weapons; choosing the Mace and Cast puts Magic Weapon on the Mace only', async () => {

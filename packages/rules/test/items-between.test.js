@@ -36,7 +36,7 @@ function field(heroItems, mageItems) {
   const s = newGame(7);
   for (const id of Object.keys(s.entities)) if (!["m1", "rogue"].includes(id)) delete s.entities[id];
   typed(s, "rogue");                                         // the rogue stays a hand-typed character (no sheet), for the tests of what that cannot do
-  for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
+  for (const t of Object.values(s.map.levels[0].tiles)) { t.t = "grass"; delete t.depth; }   // (#836: water has a depth, grass has none)
   s.settings.autoEngage = false;
   built(s, "hero", fighter(heroItems), { q: 0, r: 0 }, "pat");
   built(s, "mage", wizard(mageItems), { q: 1, r: 0 }, "sam");

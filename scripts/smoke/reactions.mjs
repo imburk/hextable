@@ -81,6 +81,49 @@ async function reactions(browser, url, label, opts) {
         await openSheet();
         await wait(page, () => document.querySelector('[data-rx-status]')?.dataset.rxStatus === 'spent');
       });
+      // M2 (Decision 2, one overlay at a time): a question that comes while the menu is open folds it; after the answer the screen is clean; one tap on the die returns to the same screen.
+      await run.do('a reaction question with the menu open folds the menu, and after the answer the screen is clean until the die is tapped', async () => {
+        await openSheet();
+        await page.selectOption('#rx-shield', 'ask');
+        await wait(page, (W) => window.hextable.state.entities[W].reactions?.shield === 'ask', wren);
+        await page.evaluate((W) => window.hextable.act({ type: 'claim', entity: W, user: 'smoke-player', userName: 'Smoke player' }), wren);      // a creature nobody plays is the DM's: the engine does not ask for it
+        await wait(page, (W) => !!window.hextable.state.entities[W].owner, wren);
+        const before = await page.evaluate(() => ({ path: document.getElementById('drawer').dataset.path, open: window.hextable.drawer.isOpen }));
+        if (!before.open || before.path.split('/')[0] !== 'sheet') throw new Error(`the menu is not open on the sheet before the question: ${JSON.stringify(before)}`);
+        let asked = false;
+        for (let i = 0; i < 16 && !asked; i++) {
+          for (let k = 0; k < 40; k++) {                                          // walk the order round to the goblin's turn (Wren's turn gives her Reaction back)
+            const cur = await state(page, (S) => S.encounter?.order[S.encounter.turn]?.id);
+            if (cur === foe) break;
+            await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); await idle();
+          }
+          await page.evaluate(([f, w]) => {
+            const S = window.hextable.state, def = S.entities[f].actions.find((a) => a.effects?.[0]?.attack === 'melee');
+            window.hextable.act({ type: 'act', actor: f, action: def.id, target: w });
+          }, [foe, wren]);
+          await idle();
+          asked = await state(page, (S) => !!S.pending);
+          if (!asked) { await page.evaluate((f) => window.hextable.act({ type: 'endTurn', actor: f }), foe); await idle(); }
+        }
+        if (!asked) throw new Error('the goblin never hit her, so no question was asked');
+        await waitShown(page, '#rp .rp-card');
+        const seen = () => page.evaluate(() => { const d = document.getElementById('drawer'); return { open: window.hextable.drawer.isOpen, cls: document.body.classList.contains('drawer-open'), drawer: !d.hidden && d.getClientRects().length > 0, scrim: !document.getElementById('drawer-scrim').hidden, rp: !document.getElementById('rp').hidden }; });
+        const up = await seen();
+        if (!up.rp || up.open || up.cls || up.drawer || up.scrim) throw new Error(`the menu did not fold under the question: ${JSON.stringify(up)}`);
+        await page.waitForTimeout(800);                                           // a tap in the first 600 ms is taken for one meant for the map and answers nothing (reactionprompt.js ARM_MS)
+        if (touch) await page.locator('#rp .rp-no').tap(); else await page.locator('#rp .rp-no').click();
+        await waitShown(page, '#rp', false);
+        await idle();
+        await page.waitForTimeout(700);                                           // the menu must not come back by itself
+        const clean = await seen();
+        if (clean.rp || clean.open || clean.cls || clean.drawer || clean.scrim) throw new Error(`the screen is not clean after the answer: ${JSON.stringify(clean)}`);
+        if (touch) await page.locator('#btn-menu').tap(); else await page.locator('#btn-menu').click();
+        await waitShown(page, '#drawer');
+        await menuStill(page);
+        const back = await page.evaluate(() => ({ path: document.getElementById('drawer').dataset.path, arc: window.hextable.drawer.arc }));
+        if (back.arc || back.path.split('/')[0] !== 'sheet') throw new Error(`one tap on the die did not return to the same screen: ${JSON.stringify(back)} (was ${before.path})`);
+        await waitShown(page, '#sheet');
+      });
     } finally { await ctx.close(); }
   });
 }

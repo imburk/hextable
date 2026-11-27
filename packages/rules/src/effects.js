@@ -13,24 +13,31 @@ import { BRANCHES, SIZES, SPELL_KINDS, SPELL_ROLLS, STEPS } from './content/sche
 import { roll } from './rng.js';
 import { srcOf } from './homebrew.js';
 import { effectsOf, useUp } from './durations.js';
+import { controlWater } from './tides.js';
 
 // A target above a step's `largest` (#495). The note about it names the creature that acted (`actor`), so the player's view keeps it only where it
 // keeps that creature's own events (view.js drops an event whose actor the party cannot see, as it drops the attack): a hidden wolf's Bite says nothing.
 const tooBig = (t, step) => step.largest !== undefined && SIZES.indexOf(t.size ?? 'medium') > SIZES.indexOf(step.largest);
 const cap = (x) => x[0].toUpperCase() + x.slice(1);
 export const stepKind = (step) => STEPS.find((k) => k in step);
+// SRD 5.2.1 "Teleportation Outcome" (srd52-flow.txt 31451): for each familiarity the highest d100 roll that is a Mishap, a Similar Area and an Off Target one; a higher roll is On Target.
+// 100 stands for "00". A permanent circle and a linked object always arrive; a false destination never does (51-00 is Similar Area).
+export const TELEPORT_TABLE = {
+  'permanent-circle': [0, 0, 0], 'linked-object': [0, 0, 0], 'very-familiar': [5, 13, 24], 'seen-casually': [33, 43, 53], 'viewed-once-or-described': [43, 53, 73], 'false-destination': [50, 100, 100],
+};
+const COMPASS = ['east', 'southeast', 'south', 'southwest', 'west', 'northwest', 'north', 'northeast'];
 // Area shapes the engine can lay out on hexes (engine/world.js, layout()).
 // The largest cube the engine places (feet): the gate's own most. A cube is placed by trying blocks, so it cannot be cut to the map.
 export const CUBE_AIM_MAX = 1000;
 export const AREAS = ['cone', 'sphere', 'cylinder', 'emanation', 'line', 'cube'];
 // Can the engine aim this area? A sphere or cylinder needs somewhere within range to go off
 // (`range`: the spell's range in feet, or an action's `area.range`); a Line with a range is a
-// wall placed at a distance, which the DM places.
+// wall placed at a distance, which the DM places, unless it is `placed` (the wall spells: engine/world.js, layout).
 export function aimable(area, range) {
   if (area.shape === 'cube' && area.size > CUBE_AIM_MAX) return false;   // too large to place by the engine: the DM places it (a `manual` step says so)
   if (!AREAS.includes(area.shape) || area.count > 1) return false;     // several shapes arranged by the caster: the DM
   if (area.shape === 'sphere' || area.shape === 'cylinder') return range > 0;
-  if (area.shape === 'line') return !(range > 0);
+  if (area.shape === 'line') return area.placed ? range > 0 : !(range > 0);        // a placed Line is a wall put down within range (Wall of Fire)
   return true;
 }
 
@@ -68,15 +75,27 @@ export function scaleSteps(def, casterLevel = 0, slot = def.level) {
   const byLevel = def.higher?.level;
   if (byLevel) {
     const reached = Object.keys(byLevel).map(Number).filter((l) => l <= casterLevel).sort((x, y) => y - x)[0];
-    const dmg = first('damage');
+    const dmg = first('damage') ?? first('arm')?.arm;          // a cantrip that gives an attack (`arm`: Produce Flame) grows it as its damage
     if (reached !== undefined && dmg) dmg.damage = byLevel[reached];
   }
   const up = slot - def.level, bySlot = def.higher?.slot;
   if (up > 0 && bySlot) {
     for (const key of ['damage', 'heal', 'tempHp']) {
       if (!bySlot[key]) continue;
-      const st = first(key), sum = st && addDice(st[key], bySlot[key], up);
+      // An attack the spell gives its caster (`arm`: Flame Blade) grows like a damage step of its own.
+      const st = first(key) ?? (key === 'damage' ? first('arm')?.arm : null), sum = st && addDice(st[key], bySlot[key], up);
       if (sum) st[key] = sum; else unscaled = `the extra ${bySlot[key]} per slot level above ${def.level}`;
+    }
+    // A spell that does damage at the start of the creature's turns (Searing Smite: "All the damage increases by 1d6") grows that damage by the same dice.
+    if (bySlot.damage) {
+      const lead = first('damage');
+      walk(steps, (st, at) => {
+        if (!('eachTurn' in st)) return;
+        const inner = st.eachTurn.find((x) => 'damage' in x);
+        if (!inner || inner === lead) return;
+        const sum = addDice(inner.damage, bySlot.damage, up);
+        if (sum) inner.damage = sum; else unscaled = `the extra ${bySlot.damage} per slot level above ${def.level} on the damage at the start of each turn`;
+      });
     }
     if (bySlot.times) { const st = first('damage'); if (st) st.times = (st.times || 1) + bySlot.times * up; }
     if (bySlot.value) { const st = first('modifier'); if (st && typeof st.modifier.value === 'number') st.modifier.value += bySlot.value * up; }
@@ -126,11 +145,26 @@ function summarise(def) {
   if (kind === 'condition') return { short: step.condition, long: `Target is ${step.condition}` };
   if (kind === 'summon' && step.on === 'corpse') return { short: 'summon', long: `Raises ${step.count && step.count !== 1 ? 'corpses' : 'a corpse'} as undead under the caster's control for 24 hours` };
   if (kind === 'summon') return { short: 'summon', long: `Summons ${step.count && step.count !== 1 ? 'creatures' : 'a creature'} for ${def.duration === 'instant' ? 'as long as it lasts' : `up to ${def.duration}`}${def.concentration ? ', Concentration' : ''}` };
+  if (kind === 'meld') return { short: 'meld into stone', long: 'The caster steps into the wall it aimed at and is held there: unseen, out of every space, sensing nothing, until it leaves (5 feet of movement), the spell ends, or a cut of the wall expels it' };
+  if (kind === 'cut') return { short: `cut ${step.cut} ft`, long: `Takes ${step.cut} feet out of the wall it is aimed at (the DM is told, and undoes it if the wall is not stone)` };
+  if (kind === 'sense') return { short: `sense ${step.sense}`, long: `Senses ${step.sense === 'traps' ? 'traps' : 'magic'} within ${step.feet} feet (the DM is told, and tells the player)` };
+  if (kind === 'polymorph') return { short: 'becomes a Beast', long: `The target takes the form of a Beast the caster chooses, of a Challenge Rating no higher than its own, for ${def.duration}${def.concentration ? ' (Concentration)' : ''}: the Beast's stat block replaces its statistics (it keeps its Hit Points), the Beast's Hit Points are its Temporary Hit Points and the spell ends on it when they are gone; it cannot speak or cast spells` };
+  if (kind === 'resize') return { short: step.resize === 'larger' ? 'one size larger' : 'one size smaller', long: `The target is one size category ${step.resize} for ${def.duration}${def.concentration ? ' (Concentration)' : ''}, as far as there is room; its size goes back when the spell ends` };
   if (kind === 'stabilize') return { short: 'stabilise', long: 'A creature at 0 Hit Points becomes Stable' };
+  if (kind === 'revive') return { short: 'revive', long: `Brings a creature that died within the last ${step.within === 1 ? 'minute' : `${step.within} minutes`} back to life with ${step.revive} Hit Point${step.revive === 1 ? '' : 's'}` };
+  if (kind === 'dispel') return { short: 'end spells', long: `Ends spells of level ${step.dispel} or lower on it; a check against DC ${step.dc} plus the level for each higher one` };
+  if (kind === 'eachTurn') return { short: 'each turn', long: `At the start of each of its turns for ${def.duration}${def.concentration ? ' (Concentration)' : ''}: ${step.eachTurn.map((x) => ('heal' in x ? `heal ${x.heal}${x.addMod ? ' + the spellcasting modifier' : ''}` : 'tempHp' in x ? `${x.tempHp}${x.addMod ? ' + the spellcasting modifier' : ''} Temporary Hit Points` : 'damage' in x ? `${x.damage} ${x.type} damage` : 'save' in x ? `a ${x.save.toUpperCase()} save` : 'the DM applies a part')).join(', ')}` };
+  if (kind === 'ward') return { short: 'ward', long: `Attackers and damaging spells aimed at the target need a ${step.ward.toUpperCase()} save first; the ward ends when the target attacks, casts a spell or deals damage` };
+  if (kind === 'command') return { short: 'command', long: 'The target follows a one-word command on its next turn' };
+  if (kind === 'confuse') return { short: 'confused', long: `The target can take no Bonus Action or Reaction and acts at random on its turns for ${def.duration}${def.concentration ? ' (Concentration)' : ''}` };
+  if (kind === 'arm') return { short: `${step.arm.damage} ${step.arm.type}`, long: `Gives the caster a ${step.arm.range ? `ranged spell attack within ${step.arm.range} feet` : 'melee spell attack'} for ${step.arm.damage}${step.arm.addMod ? ' plus the spellcasting modifier' : ''} ${step.arm.type} damage for as long as it lasts` };
+  if (kind === 'water') return { short: step.water.mode === 'flood' ? 'flood the water' : 'part the water', long: step.water.mode === 'flood' ? `Raises the standing water in the area by up to ${step.water.by ?? 20} feet for ${def.duration}${def.concentration ? ' (Concentration)' : ''}; it comes down when the spell ends` : `Parts the water in the area to its bed for ${def.duration}${def.concentration ? ' (Concentration)' : ''}; the trench fills in when the spell ends` };
   if (kind === 'light') return { short: `${step.light.bright} ft light`, long: `Sheds Bright Light for ${step.light.bright} feet and Dim Light for ${step.light.dim} feet more` };
-  if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.join(', ')}` };
+  if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.map((c) => (c === 'exhaustionLevel' ? 'one Exhaustion level' : c === 'curse' ? 'one curse' : c === 'curses' ? 'all curses' : c)).join(', ')}` };
   if (kind === 'modifier') {
     const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
+    if (m.on === 'condition') return { short: `immune to ${m.scope.condition}`, long: `Immune to the ${cap(m.scope.condition)} condition for ${def.duration}${def.concentration ? ', Concentration' : ''}` };
+    if (m.on === 'hp.zero') return { short: '1 HP instead of 0, once', long: `The first time it would drop to 0 Hit Points it drops to 1 instead, within ${def.duration}` };
     const text = m.op === 'baseAc' ? `base AC ${m.value.base} + ${m.value.ability.toUpperCase()}`
       : m.op === 'add' && typeof m.value === 'number' ? `${m.value > 0 ? '+' : ''}${m.value} ${what}`
       : m.op === 'add' && typeof m.value === 'string' ? `${m.value.startsWith('-') ? '' : '+'}${m.value} ${what}` : `${m.op} on ${what}`;
@@ -188,10 +222,10 @@ export function derivedKinds(def) {
     const kind = stepKind(st);
     if (!['manual', 'save', 'attack'].includes(kind)) steps = true;     // a roll whose result the DM applies says nothing of what the spell is for
     if (kind === 'damage' || kind === 'fall' || kind === 'kill') k.add('damage');
-    else if (kind === 'heal' || kind === 'tempHp' || kind === 'cure') k.add('healing');
+    else if (kind === 'heal' || kind === 'tempHp' || kind === 'cure' || kind === 'revive') k.add('healing');
     else if (kind === 'condition') k.add(BENEFICIAL_CONDITIONS.includes(st.condition) ? 'utility' : 'control');
     else if (kind === 'move' || kind === 'counter') k.add('control');
-    else if (kind === 'teleport' || kind === 'reveal') k.add('utility');
+    else if (kind === 'teleport' || kind === 'reveal' || kind === 'dispel') k.add('utility');
     else if (kind === 'modifier') {
       const m = st.modifier;
       k.add(m.on.startsWith('damage.dealt') ? 'damage' : hinders(m) ? 'control' : 'utility');
@@ -207,19 +241,24 @@ export function spellProfile(def) {
   let harmful = false, heals = false, healStep = null;
   walk(def.effects, (st) => {
     const k = stepKind(st);
-    if (k === 'attack' || k === 'save' || k === 'damage' || k === 'fall' || (k === 'condition' && !BENEFICIAL_CONDITIONS.includes(st.condition))) harmful = true;
+    // A save asked only of a creature on another side than the caster's (`when: ['target.enemy']`: Enlarge/Reduce, "if the target is unwilling") is not an attack by itself: the spell is a buff first, and casting it outside a fight starts none.
+    if (k === 'attack' || (k === 'save' && !(st.when ?? []).includes('target.enemy')) || k === 'damage' || k === 'fall' || (k === 'condition' && !BENEFICIAL_CONDITIONS.includes(st.condition))) harmful = true;
     if (k === 'modifier' && st.modifier.against) harmful = true;     // a mark or curse that works only against its target (Hex, Hunter's Mark) is cast at a foe
     if (k === 'heal') { heals = true; healStep ??= st; }
   });
   const t = def.target, tp = def.effects.find((st) => 'teleport' in st), sm = def.effects.find((st) => 'summon' in st);
   // A spell's sphere or cylinder goes off within its range (a Self one, on the caster's own hex).
   const within = t.area && ['sphere', 'cylinder'].includes(t.area.shape) ? Math.max(1, feet(def.range)) : feet(def.range);
-  const aim = t.self ? 'self' : t.area ? (aimable(t.area, within) ? 'area' : 'none') : 'creature';
+  const aim = t.self ? 'self' : t.object ? 'object' : t.wall ? 'wall' : t.area ? (aimable(t.area, within) ? 'area' : 'none') : 'creature';
   return {
     id: def.id, name: def.name, level: def.level, time: def.time, range: feet(def.range),
-    aim,                                           // 'creature' | 'area' | 'self' | 'none' (nothing the engine can aim)
+    aim,                                           // 'creature' | 'area' | 'self' | 'object' (a map object the cast names) | 'wall' (a point on a wall the cast names) | 'none' (nothing the engine can aim)
     ...(aim === 'area' ? { area: { ...t.area } } : {}),
-    ...(aim === 'creature' ? { count: t.creature.count ?? 1, ...(t.creature.repeat ? { repeat: true } : {}), ...(t.creature.within ? { within: t.creature.within } : {}) } : {}),
+    ...(aim === 'creature' ? { count: t.creature.count ?? 1, ...(t.creature.repeat ? { repeat: true } : {}), ...(t.creature.within ? { within: t.creature.within } : {}),
+      // The creature types it works on (Hold Person: Humanoid); one of another type is an invalid target, and the cast does nothing to it.
+      ...(t.creature.types ? { types: [...t.creature.types] } : {}),
+      // Aimed at a dead creature, and at no other (Revivify).
+      ...(t.creature.dead ? { dead: true } : {}) } : {}),
     harmful, heals: heals && !harmful,
     heal: healStep ? { dice: healStep.heal, addMod: !!healStep.addMod } : null,
     turn: def.time === 'action' || def.time === 'bonus',   // can be cast on a turn in a fight
@@ -339,6 +378,27 @@ export function begin(s, { steps, actor, targets, src, shared = null }) {
   (s.stack ??= []).push(targets === null
     ? { kind: 'seq', steps, path: '', i: 0, actor, target: null, src, shared }       // nothing to aim at: the DM applies it
     : { kind: 'each', steps, t: 0, actor, targets, src, shared });
+  // A `water` step (Control Water) acts once for the cast, on the cells of its area, whether or not a creature stands in the area: it has a frame of its own, run first (the stack runs the last
+  // pushed), which also says the spell's `manual` steps (they are said once, the `told` marks being shared with the creatures' frames, and an area with nobody in it would say nothing).
+  if (targets !== null && steps.some((st) => 'water' in st || st.once === true)) {
+    const told = {};
+    s.stack.at(-1).told = told;
+    s.stack.push({ kind: 'seq', steps, path: '', i: 0, actor, target: null, src, shared: null, told, once: true });
+  }
+}
+
+// A creature's turn starts: the steps its lasting effects run then (an `eachTurn` step put a part on it: Heroism, Regenerate; engine/rolls.js `eachTurn`),
+// run on it by the effect's source, with the numbers the cast had. A creature that is dead has none. Run on top of whatever is on the stack, as a reaction is.
+export function turnSteps(s, ev, kit, e) {
+  if (e.dead) return;
+  for (const fx of [...effectsOf(s)]) {
+    for (const p of [...fx.parts]) {
+      if (p.ended || !p.turn || p.target !== e.id || !effectsOf(s).includes(fx) || e.dead) continue;
+      const floor = s.stack?.length ?? 0;
+      begin(s, { steps: structuredClone(p.turn.steps), actor: s.entities[fx.source] ? fx.source : e.id, targets: [e.id], src: { ...structuredClone(p.turn.src), turn: true, fxEnd: fx.id } });
+      run(s, ev, kit, floor);
+    }
+  }
 }
 
 // Run until the stack is empty. `kit` is the engine's own machinery: rollToHit, savingThrow,
@@ -368,13 +428,56 @@ export function run(s, ev, kit, floor = 0) {
   if (!floor) delete s.stack;
 }
 
+// A `water` step (tides.js `controlWater`): the cells of the cube are those the cast event names; the change is a part of the lasting effect the cast made, which puts the water back when it ends.
+function controlWaterStep(s, ev, f, step, handOver) {
+  const cast = ev.findLast((x) => x.type === 'cast' && x.actor === f.actor && x.spell === f.src.spell), fx = f.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null, origin = f.src.origin;
+  if (!cast?.hexes || !origin || !fx || !s.map || s.map.holding) return handOver(`${f.src.name} changes the water of its area, which the engine cannot find on this map (or the spell has no lasting effect to hang it on). The DM changes the water with the water action and puts it back.`);
+  const w = step.water, r = controlWater(s, { mode: w.mode, by: w.by, hexes: cast.hexes, origin, size: w.size }, ev, { fx: fx.id });
+  for (const part of r.parts) fx.parts.push({ target: f.actor, water: part });
+  const cells = r.parts.reduce((n, p) => n + Object.keys(p.cells).length, 0);
+  if (!cells) ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text: `${f.src.name} found no standing water in its area for the ${w.mode === 'flood' ? 'flood to raise' : 'water to part'}.${r.skipped ? ` ${r.skipped} cell${r.skipped === 1 ? '' : 's'} of water could not be changed (too deep, or off the 5-foot steps); the DM changes ${r.skipped === 1 ? 'it' : 'them'}.` : ''}`, partial: true });
+  else if (r.skipped) ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text: `${r.skipped} cell${r.skipped === 1 ? '' : 's'} of water in the area of ${f.src.name} could not be changed (the water would be deeper than the deepest there is, or the bed is off the 5-foot steps). The DM changes ${r.skipped === 1 ? 'it' : 'them'} if it should.`, partial: true });
+}
+
 function exec(s, ev, kit, f, step, at) {
   const t = f.target === null ? null : s.entities[f.target];
   const kind = stepKind(step);
+  if (f.once && kind !== 'water' && kind !== 'manual') return;      // the once-only frame of `begin`: the rest is for the creatures
   const handOver = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text });
   const branch = (name, extra = {}) => {
     if (step[name]) s.stack.push({ kind: 'seq', steps: step[name], path: `${at}.${name}.`, i: 0, actor: f.actor, target: f.target, src: f.src, shared: f.shared,
       crit: f.crit, mode: f.mode, half: f.half, evade: f.evade, told: f.told, hit: f.hit, weapon: f.weapon, n: f.n, ...extra });
+  };
+
+  // Control Water: once for the cast, on the cells of the area (a creature's frame leaves it to the frame of its own, `begin`).
+  if (kind === 'water') {
+    if (f.target !== null) return;
+    return controlWaterStep(s, ev, f, step, handOver);
+  }
+  // Teleport (the Teleportation Outcome table): the engine rolls 1d100 for the familiarity the caster chose. A Mishap (3d10 Force damage to the caster, then a new roll) is applied;
+  // Similar Area and Off Target are told to the DM alone (Off Target with its distance and direction rolled), who places the caster; On Target goes to the space the cast named.
+  // What the roll was reaches no player: the note is partial. The other travellers are the DM's (the spell's own manual step says so).
+  const teleportRolled = () => {
+    const row = TELEPORT_TABLE[step.familiarity], tell = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, partial: true, text });
+    if (!row) return handOver(`${f.src.name} names a familiarity the engine does not know. The DM rolls the Teleportation Outcome table.`);
+    let mishaps = 0, r = 0, outcome = 'mishap';
+    while (outcome === 'mishap' && mishaps <= 20) {
+      r = roll(s, '1d100').total || 100;
+      outcome = r <= row[0] ? 'mishap' : r <= row[1] ? 'similar' : r <= row[2] ? 'off' : 'on';
+      if (outcome === 'mishap') {
+        mishaps++;
+        s.stack.push({ kind: 'seq', steps: [{ damage: '3d10', type: 'force' }], path: `${at}.mishap${mishaps}.`, i: 0, actor: f.actor, target: f.target, src: f.src, shared: f.shared, told: f.told });
+      }
+    }
+    const row_ = step.familiarity.replace(/-/g, ' '), hurt = mishaps ? ` ${mishaps === 1 ? 'A Mishap' : `${mishaps} Mishaps`}: ${t.name} took 3d10 Force damage ${mishaps === 1 ? '' : 'each time '}(the engine rolled it), and every other traveller takes the same, rolled for each.` : '';
+    if (outcome === 'on') {
+      if (!f.src.to) return tell(`Teleport (${row_}): on target.${hurt} The cast named no space, so the engine cannot move ${t.name}. The DM moves the caster and the travellers to the destination.`);
+      if (!kit.teleport(s, t, step, f.src.to, ev, f.actor === t.id)) { tell(`Teleport (${row_}): on target.${hurt} The space named was taken, so the spell's own steps for that ran instead.`); return branch('blocked'); }      // only a step with `blocked` (a homebrew teleport) comes here: an unknown creature there is shared (resolve.js `teleport`)
+      return tell(`Teleport (${row_}): on target.${hurt} ${t.name} arrived at the space named. The DM moves the other travellers there.`);
+    }
+    if (outcome === 'similar') return tell(`Teleport (${row_}): Similar Area.${hurt} The caster and the travellers appear in the closest place that is visually or thematically similar to the destination. ${t.name} has not been moved: the DM places the whole group.`);
+    const miles = roll(s, '2d12').total, dir = COMPASS[roll(s, '1d8').total - 1];
+    return tell(`Teleport (${row_}): Off Target.${hurt} The caster and the travellers appear ${miles} miles ${dir} of the destination. ${t.name} has not been moved: the DM places the whole group.`);
   };
 
   if (kind === 'manual') {
@@ -383,7 +486,8 @@ function exec(s, ev, kit, f, step, at) {
   }
   // The source is a creature, or a thing on the map (a trap), for which the engine lends a stand-in.
   const e = f.actor === null ? kit.objectActor(s, f.src.object) : s.entities[f.actor];
-  if (!e || (f.target !== null && !t)) return;                       // someone left the table mid-effect
+  if (!e || (f.target !== null && !t)) return;
+  if (f.src.turn && t?.dead) return;  // a turn's steps (eachTurn) stop when an earlier one killed the creature
   if (t === null) return handOver(`The engine has nobody to apply this part of ${f.src.name} to. ${kit.whyNobody?.(f.src) ?? ''}The DM applies it.`);
   for (const tag of step.when ?? []) {
     const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s);
@@ -393,7 +497,7 @@ function exec(s, ev, kit, f, step, at) {
 
   if (kind === 'attack') {
     const atk = step.kind === 'spell'
-      ? { name: f.src.name, type: step.attack, spell: true, bonus: f.src.attack, ...(step.attack === 'melee' ? { reach: 5 } : { range: [f.src.range, f.src.range] }) }
+      ? { name: f.src.name, type: step.attack, spell: true, bonus: f.src.attack ?? step.bonus, ...(step.attack === 'melee' ? { reach: 5 } : { range: [f.src.range, f.src.range] }) }
       : { name: f.src.name, type: step.attack, bonus: step.bonus, ...(step.attack === 'melee' ? { reach: f.src.reach ?? 5 } : { range: f.src.rangeBand ?? [f.src.range, f.src.range] }) };
     // The damage types under the hit, for a reaction that cares (Deflect Attacks).
     atk.dtypes = (step.onHit ?? []).filter((x) => 'damage' in x).map((x) => x.type);
@@ -401,6 +505,9 @@ function exec(s, ev, kit, f, step, at) {
     if (step.advantageIf) atk.advantageIf = step.advantageIf;
     // A touch spell the caster's familiar delivers (`src.via`, engine/casting.js; stage C5c): the roll is made from its space.
     if (step.kind === 'spell' && typeof f.src.via === 'string') atk.via = f.src.via;
+    // Sanctuary: a warded target makes its attacker save first; a spell cast at it was dealt with when it was cast (`src.wardDone`, engine/casting.js), so its attack roll is not saved against again. The warded creature's own attack roll ends its ward.
+    if (!f.src.wardDone && kit.wardCheck(s, e, t, ev, 'attack')) return;
+    kit.endWards(s, ev, e.id, `${e.name} made an attack roll`);
     const r = kit.rollToHit(s, e, t, atk, ev, f.src.tag ?? {});         // `tag` marks the attack event, as an Opportunity Attack for one
     // `cut`: a reaction cut this attack's damage (Uncanny Dodge). It holds for the damage steps
     // right under the hit, not for those under a save the hit calls for.
@@ -499,8 +606,9 @@ function exec(s, ev, kit, f, step, at) {
   if (kind === 'summon') return kit.summon ? kit.summon(s, t, step, f.src, ev) : handOver(`${f.src.name} summons a creature, which the engine cannot make here. The DM adds it.`);
   // Teleport the target (the caster) to the place the cast named, checked when it was cast.
   if (kind === 'teleport') {
+    if (step.familiarity !== undefined) return teleportRolled();
     if (!f.src.to) return handOver(`${f.src.name} names no destination, so the engine cannot teleport ${t.name}. The DM moves it, up to ${step.teleport} ft${step.see ? ' to a space it can see' : ''}.`);
-    if (!kit.teleport(s, t, step, f.src.to, ev)) branch('blocked');
+    if (!kit.teleport(s, t, step, f.src.to, ev, f.actor === t.id)) branch('blocked');
     return;
   }
   if (kind === 'heal' || kind === 'tempHp') {
@@ -522,6 +630,19 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
   if (kind === 'stabilize') return kit.stabilise(s, t, ev, f);
+  if (kind === 'polymorph') return kit.polymorph(s, t, step, f, ev) || handOver(`${f.src.name} changes ${t.name} into a Beast, which the engine has no lasting effect or Beast to hang on. The DM applies it: the Beast's statistics over its own, its Hit Points as Temporary Hit Points, no speech or spells, and its gear melded in; the form ends when the temporary Hit Points do.`);
+  if (kind === 'resize') return kit.resize(s, t, step, ev, f) || handOver(`${f.src.name} changes ${t.name}'s size, which the engine has no lasting effect to hang on. The DM applies it with setSize and puts it back.`);
+  if (kind === 'cut') { const cut = kit.cutWall(s, f.src.wall, step.cut, f, ev); if (cut) kit.expelMelded(s, cut, f, ev); return; }      // a creature merged with stone near the cut is thrown out of it
+  if (kind === 'meld') return kit.meldInto(s, t, f, ev) || handOver(`${f.src.name} merges the caster with the stone, which the engine has no lasting effect or wall to hang on. The DM applies it: the caster is out of sight and out of every space until it leaves.`);
+  if (kind === 'sense') return kit.sense(s, t, step, f, ev);
+  if (kind === 'dispel') return kit.dispel(s, t, step, ev, f);
+  if (kind === 'revive') return kit.revive(s, t, step, ev, f);
+  if (kind === 'endSpell') return kit.endSpell(s, f, ev);
+  if (kind === 'arm') return kit.arm(s, t, step, f, ev) || handOver(`${f.src.name} gives ${t.name} an attack for as long as it lasts, which the engine has no lasting effect to hang on (or no spell attack bonus to give it). The DM resolves the attack: a melee spell attack for ${step.arm.damage}${step.arm.addMod ? ' plus the spellcasting modifier' : ''} ${step.arm.type} damage.`);
+  if (kind === 'confuse') return kit.confuse(s, t, step, f, ev) || handOver(`${f.src.name} confuses ${t.name}, which the engine has no lasting effect to hang on. The DM runs it: no Bonus Actions or Reactions, and a d10 for its behaviour at the start of each of its turns.`);
+  if (kind === 'command') return kit.command(s, t, step, f, ev) || handOver(`${f.src.name} gives ${t.name} a command for its next turn, which the engine has no lasting effect to hang on. The DM applies it: ${step.command}.`);
+  if (kind === 'ward') return kit.ward(s, t, step, f, ev) || handOver(`${f.src.name} wards ${t.name}, which the engine has no lasting effect or save DC to hang on. The DM runs it: a creature that targets the warded creature with an attack roll or a damaging spell makes a ${step.ward.toUpperCase()} save or loses it.`);
+  if (kind === 'eachTurn') return kit.eachTurn(s, t, step, f, ev) || handOver(`${f.src.name} does something at the start of each of the creature's turns, but it has no lasting effect for the engine to hang that on. The DM applies it on each turn.`);
   if (kind === 'light') return kit.shine(s, t, step, ev, f) || handOver(`${f.src.name} makes a light, but there is no lasting effect for the engine to hang it on. The DM hands it out with setLight and puts it out.`);
   if (kind === 'kill') return kit.kill(s, t, ev);
   if (kind === 'endConcentration') return kit.breakConcentration(s, ev, t.id, `${t.name} lost Concentration to ${f.src.name}`);
@@ -543,7 +664,12 @@ function exec(s, ev, kit, f, step, at) {
       : `${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);
   }
   if (kind === 'imbue') return kit.imbue(s, t, step, f, ev) || handOver(`${f.src.name} changes what a weapon does for a while, but no weapon of ${t.name}'s was named for it (or it has no lasting effect to hang that on). The DM applies it.`);
-  if (kind === 'fall') return kit.fall(s, t, step.fall, ev);
+  if (kind === 'fall') {
+    // A placed pit may say how deep it is (`fall` on the object); the definition's number is the default.
+    const o = f.src.object ? s.map.objects.find((x) => x.id === f.src.object) : null;
+    if (o && Number.isInteger(o.fall) && Number.isInteger(step.fall)) return kit.fall(s, t, o.fall, ev, o);
+    return kit.fall(s, t, step.fall, ev);
+  }
   // `largest`: only a creature of that size or smaller is moved (Repelling Blast: Large).
   if (kind === 'move') {
     if (tooBig(t, step)) return ev.push({ type: 'note', id: t.id, actor: f.actor, text: `${t.name} is bigger than ${cap(step.largest)}, so ${f.src.name} does not ${step.dir === 'toward' ? 'pull' : 'push'} it` });
@@ -551,7 +677,9 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'set' || kind === 'reveal') {
     if (kind === 'reveal' && step.reveal === 'target') return kit.reveal(s, t, ev);
-    if (kit.objectStep(s, f.src.object, kind === 'set' ? step.of ?? 'self' : step.reveal, kind === 'set' ? step.set : null, ev)) return;
+    const did = kit.objectStep(s, f.src.object, kind === 'set' ? step.of ?? 'self' : step.reveal, kind === 'set' ? step.set : null, ev, kind === 'set' ? step.from : undefined);
+    if (did === 'idle') return ev.push({ type: 'note', id: f.actor, text: `${f.src.name}: nothing is held shut that it can open.` });     // `from`: the object is not in that state (a door that is not locked)
+    if (did) return;
     return handOver(`Part of ${f.src.name} works something on the map, but the engine found nothing for it to work. The DM applies it.`);
   }
   handOver(`The engine cannot apply this part of ${f.src.name} yet (${kind}). The DM applies it.`);

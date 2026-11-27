@@ -243,7 +243,7 @@ test("undo of an arrival restores both places exactly; redo gives the same again
 });
 
 test("a valley table is unchanged by the migration but for the four new fields and its version (Done when 6)", () => {
-  assert.equal(VERSION, 30);
+  assert.equal(VERSION, 31);
   const old = newGame(5); old.version = 25;
   const was = structuredClone(old);
   migrate(old);
@@ -488,8 +488,8 @@ test("companions go with their master, a mount with its rider; a follower of one
 
 test("every field on a creature that names another creature is one a move between places looks after", () => {
   // Reads the engine for `x.<field> = ... y.id` (one creature's id put on another): each such field must be one listed in
-  // engine/travel.js (CREATURE_LINKS), or one known not to name a creature.
-  const NOT_CREATURES = ["tempFx", "fx", "option", "attuning", "subclass", "armour", "reform", "invest", "uninvested", "id", "imported"];
+  // engine/travel.js (CREATURE_LINKS), or one known not to name a creature (`melded` holds a lasting effect's id, Meld into Stone).
+  const NOT_CREATURES = ["tempFx", "fx", "melded", "option", "attuning", "subclass", "armour", "reform", "invest", "uninvested", "id", "imported"];
   const src = new URL("../src/", import.meta.url), files = [];
   const walk = (d) => { for (const f of readdirSync(d, { withFileTypes: true })) { if (f.isDirectory()) { if (f.name !== "content") walk(new URL(`${f.name}/`, d)); } else if (f.name.endsWith(".js")) files.push(new URL(f.name, d)); } };
   walk(src);

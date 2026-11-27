@@ -103,6 +103,19 @@ export const THEMES = {
 };
 export const hexColor = rgb;
 
+// Shading the reach by cost (docs/specs/fly-swim-control.md, C3): three tints of a theme's own move colour, for the nearest third of a
+// creature's reach, the middle third and the farthest. The same family, lighter to stronger: the nearest is paler and thinner, the
+// farthest deeper and more solid, so a walker's reach and a flyer's plane read alike. A theme may give its own three as `hl.cost`.
+export function costTints(move) {
+  const [r, g, b, a] = move, mix = (v, to, k) => v + (to - v) * k, cap = (v) => Math.round(Math.max(0, Math.min(1, v)) * 1000) / 1000;
+  return [
+    [cap(mix(r, 1, 0.35)), cap(mix(g, 1, 0.35)), cap(mix(b, 1, 0.35)), cap(a * 0.62)],
+    [cap(r), cap(g), cap(b), cap(a * 1.05)],
+    [cap(r * 0.86), cap(g * 0.7), cap(b * 0.55), cap(Math.min(0.78, a * 1.7))],
+  ];
+}
+for (const t of Object.values(THEMES)) t.hl.cost ??= costTints(t.hl.move);
+
 // Change one of the three looks on every theme (they all carry them); the caller then hands the theme to the renderer again.
 export function setLook(key, value) {
   if (!(key in LOOK) || lookLocked()[key]) return false;

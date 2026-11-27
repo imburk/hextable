@@ -35,7 +35,7 @@ export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying,
 export { BOND_KINDS, BOND_MAX } from './engine/companions.js';   // companions (docs/specs/companions.md, C1)
 export { vanish } from './engine/resolve.js';
 export { presetSlots, SHAPES, SLOT_MAX, slotsFor, validFormation, validSlot } from './engine/world.js';   // formations (#303)
-export { aimArea, aloft, areaHexes, areaTargets, CATCH_UP, contentName, creatureType, holdsOf, isPile, moveOptions, nearObject, NOTICE_FEET, objectName, objectShown, openContents, PILE_MAX, pileContents, pileOpen, SEARCH_FEET, targetsFor } from './engine/world.js';
+export { aimArea, aloft, areaHexes, areaTargets, CATCH_UP, contentName, creatureType, holdsOf, isPile, moveOptions, nearObject, NOTICE_FEET, objectName, objectShown, openContents, PILE_MAX, pileContents, pileOpen, SEARCH_FEET, shelledReach, targetsFor } from './engine/world.js';
 export { GEAR_MAX, HAND_FEET, interactionOf, passTargets, pickUpsFor } from './engine/characters.js';
 export { acBaseOf, acNow, acOf, acShown, checkBonus, passive, rollMode } from './engine/rolls.js';
 export { makeEntity } from './engine/sheets.js';
@@ -106,11 +106,11 @@ function gravity(s, ev) {
     if (ground(s.map, e.pos) || aloft(s, e)) continue;
     const sf = under(s.map, e.pos);
     if (!sf) continue;                                   // nothing below at all: the DM's to sort out
-    const feet = e.pos.z - sf.z;
+    const feet = e.pos.z - sf.z, from = { ...e.pos };
     e.pos = { q: e.pos.q, r: e.pos.r, z: sf.z };
     if (e.dead) continue;
     any = true;
-    fall(s, e, feet, ev);
+    fall(s, e, feet, ev, null, from);                    // range and sight (Feather Fall) from where the fall began (DEBT W58(5), #819)
     lookAround(s, ev, [e]);
   }
   if (any) checkEnd(s, ev);

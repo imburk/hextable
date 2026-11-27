@@ -333,9 +333,23 @@ export const bard = {
       "id": "jack-of-all-trades",
       "name": "Jack of All Trades",
       "level": 2,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Add half your Proficiency Bonus to ability checks using a skill you lack proficiency in. The DM adds it."
+      "text": "Half your Proficiency Bonus, rounded down, is added to an ability check that uses a skill you are not proficient in and that does not use your Proficiency Bonus some other way.",
+      "grants": {
+        "modifiers": [
+          {
+            "on": "check",
+            "op": "add",
+            "value": {
+              "prof": 0.5
+            },
+            "when": [
+              "check.unskilled"
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "ability-score-improvement-4",
@@ -377,9 +391,22 @@ export const bard = {
       "id": "font-of-inspiration",
       "name": "Font of Inspiration",
       "level": 5,
-      "tier": "assist",
+      "tier": "auto",
       "checked": true,
-      "text": "Bardic Inspiration comes back on a Short Rest as well (applied), and you can spend a spell slot to regain one use (the DM applies it)."
+      "text": "Bardic Inspiration comes back on a Short Rest as well, and you can expend a spell slot (no action) to regain one expended use.",
+      "grants": {
+        "swap": [
+          {
+            "id": "slot-for-inspiration",
+            "give": {
+              "slot": true
+            },
+            "get": {
+              "resource": "bardic-inspiration"
+            }
+          }
+        ]
+      }
     },
     {
       "id": "countercharm",

@@ -87,7 +87,7 @@ test("2nd and 3rd-level spells: only the vocabulary, and an honest tier", () => 
     assert.ok(s.classes.length > 0, s.id);
     assert.ok(Object.keys(s.target).length === 1, s.id);
     if (s.tier === "auto") assert.ok(!JSON.stringify(s.effects).includes("manual"), s.id);
-    if (s.tier === "assist") assert.ok(s.effects.some((x) => !("manual" in x)), `${s.id}: an assist spell needs at least one real step`);
+    if (s.tier === "assist") assert.ok(s.effects.some((x) => !("manual" in x)) || s.terrain || s.zone?.ward, `${s.id}: an assist spell needs at least one real step (or terrain the engine lays out: Silence, or a circle's barrier)`);
   }
 });
 

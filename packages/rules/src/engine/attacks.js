@@ -7,13 +7,13 @@ import { checkHitChoices } from '../hitchoices.js';
 import { canReact, checkInstructions, instruction, reactionsOf, underEffect } from '../reactions.js';
 import { able, ask, control, current, ent, fail, featOf, ft, hostile, inFight, need, steering, tellDM, unblocked, up, walled } from './shared.js';
 import { grantOf, rollMode, withGrant } from './rolls.js';
-import { aimAction, holdsOf, showPlace } from './world.js';
+import { aimAction, holdsOf, shellRefusal, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed, steadiest } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName, speedOf } from '../modifiers.js';
-import { advanceTurn, checkEnd, damage, engage, findFor, finishTurn, heavyWeak, hitNamed, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, strikesFirst, strikeStart, thenFight, unfind } from './resolve.js';
+import { advanceTurn, checkEnd, confusedFoe, confusedOnly, damage, engage, findFor, finishTurn, heavyWeak, hitNamed, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, strikesFirst, strikeStart, thenFight, unfind } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
 import { handlers as featureHandlers } from './features.js';
@@ -81,7 +81,7 @@ function partFull(s, e, def, targets) {
 function reactToAttacker(s, e, ev) {
   if (!s.encounter || e.object || !up(e) || !inFight(s, e.id)) return true;
   for (const t of Object.values(s.entities)) {
-    if (t.id === e.id || t.object || t.actions || !hostile(t, e) || !canReact(t) || !inFight(s, t.id)) continue;
+    if (t.id === e.id || t.object || t.actions || t.melded || !hostile(t, e) || !canReact(t) || !inFight(s, t.id)) continue;      // a creature merged with stone reacts to nothing
     for (const r of reactionsOf(t)) {
       if (r.kind !== 'feature' || r.on !== 'attacks' || !underEffect(s, t, r.reaction.of, e)) continue;
       const w = instruction(t, r, s);
@@ -373,6 +373,8 @@ const base = {
     if (a.familiar !== undefined) return familiarAttack(s, a, ctx, ev);
     const e = ent(s, a.actor), t = ent(s, a.target); control(s, e, ctx);
     !e.bond?.noAttack || fail(`${e.name} can't attack.`);          // a familiar (docs/specs/companions.md, Decision 1)
+    const foe = confusedFoe(s, e);                                    // Confusion (resolve.js `confusedOn`): on this turn its one attack is at the creature the dice chose
+    foe === null || foe === t.id || fail(`${e.name} is Confused: its attack this turn is at ${s.entities[foe]?.name ?? 'the creature the dice chose'}.`);
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
     if (def) {
       noStrikeFields(a);
@@ -392,6 +394,7 @@ const base = {
     e.id !== t.id || fail("A creature can't attack itself.");
     checkRange(s, e, t, atk);
     walled(s, e, t);
+    if (atk.type === 'melee') { const why = shellRefusal(s, e, t, atk.reach); if (why) fail(why); }          // Antilife Shell: no reaching through it
     const option = optionOf(s, e, t, atk, a);
     a.use === undefined || s.encounter || fail('A feature used with the Attack action is used on a turn in a fight.');
     a.onHit === undefined || (s.encounter && option === 'damage') || fail('A choice named for a hit goes with a damaging attack on a turn in a fight.');
@@ -471,6 +474,7 @@ const base = {
   act(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     const def = e.actions?.find((x) => x.id === a.action) || fail(`${e.name} has no such action.`);
+    { const foe = confusedFoe(s, e); if (s.encounter?.flags?.[`confused:${e.id}`] && current(s) === e.id && !(foe !== null && foe === a.target && isAttack(def))) confusedOnly(s, e, 'take that action'); }
     noStrikeFields(a);
     !e.bond?.noAttack || !isAttack(def) || fail(`${e.name} can't attack.`);
     up(e) || fail(`${e.name} is down.`);
@@ -502,6 +506,7 @@ const base = {
   },
   dodge(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
+    confusedOnly(s, e, 'Dodge');
     s.encounter || fail('Dodge only matters in a fight.');
     if (steering(s, e)) return mountAct(s, e, a, 'Dodge', ev);          // a controlled mount: from its own action, on its rider's turn (C6a)
     need(s, e, 'action');

@@ -121,7 +121,7 @@ async function solo(browser, url, label, opts) {
           const w = R.canvas.clientWidth, h = R.canvas.clientHeight;
           for (let y = h * 0.2; y < h * 0.9; y += 24) for (let x = w * 0.15; x < w * 0.85; x += 24) {
             if (document.elementFromPoint(x, y)?.id !== 'gl') continue;
-            const hex = R.planeHex(x, y, lv.z), tile = hex && lv.tiles[H.col(hex)];
+            const hex = R.tileHex ? R.tileHex(x, y, lv) : R.planeHex(x, y, lv.z), tile = hex && lv.tiles[H.col(hex)];   // the editor paints the tile whose drawn top is under the pointer (#738)
             if (tile) return { x, y, col: H.col(hex), level: lv.id, was: tile.t, terrain: terrains.find((t) => t !== tile.t) };
           }
           return null;

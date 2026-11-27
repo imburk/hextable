@@ -190,8 +190,8 @@ test("what players are sent: the pack's copy has the subclass with its zone and 
     const used = ok(use(s, AURA_ID));
     const fx = zoneFx(s)[0], mineView = view(s, PAT).effects.find((x) => x.id === fx.id), dmView = view(s, DM).effects.find((x) => x.id === fx.id);
     assert.ok(mineView && dmView, "the party sees its own effect");
-    assert.equal("zone" in mineView, false, "as for a spell zone, a player is not sent the zone");
-    assert.deepEqual(Object.keys(mineView).sort(), ["conc", "id", "lasts", "name", "parts", "source", "spell", "until"], "the keys of any effect (a spell's, a feature's)");
+    assert.ok(mineView.zone && !("follows" in mineView.zone) && !("steps" in mineView.zone) && !("src" in mineView.zone), "as for a spell zone, a player is sent the zone's shape (#842) and never how it works");
+    assert.deepEqual(Object.keys(mineView).sort(), ["conc", "id", "lasts", "name", "parts", "source", "spell", "until", "zone"], "the keys of any effect (a spell's, a feature's), and the zone");
     assert.equal(mineView.spell, null); assert.equal(mineView.conc, false);
     const moved = walk(s, 2, 0);
     assert.equal(zones(moved.events, ids.Gob).length, 1, "the DM's events hold the zone going off");

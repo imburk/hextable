@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, open, playSolo, tapAt, onCanvas, closePanels, panelTab, chip } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, tapAt, onCanvas, closePanels, panelTab, chip, tapDie, waitShown, choiceView } from './lib.mjs';
 
 // ---------- casting at a higher level: the slot menu (issue #604) ----------
 // A level 3 wizard (one level 1 slot, two level 2) with Magic Missile. Armed, the hint bar offers the level (the default is level 1; level 2 adds a dart);
@@ -10,20 +10,27 @@ async function upcast(browser, url, label, opts) {
     try {
       const page = await ctx.newPage();
       run.watch(page);
-      const view = () => page.evaluate(() => {
-        const sel = document.getElementById('hint-slot'), r = sel.getBoundingClientRect();
-        return { shown: !sel.hidden && sel.getClientRects().length > 0, value: sel.value, options: [...sel.options].map((o) => o.value), h: r.height, hint: document.getElementById('hint-text').textContent, picked: (window.hextable.mode.picked ?? []).length };
-      });
+      const casts = () => state(page, (S) => S.timeline.filter((e) => e.type === 'cast' && e.name === 'Magic Missile').length);
+      const view = async () => {
+        const c = await choiceView(page, 'slot');
+        return { shown: c.shown && c.all.length > 0, value: c.on, options: c.usable, all: c.all, h: c.minH, pane: c.pane, first: c.first, old: c.old,
+          ...(await page.evaluate(() => ({ hint: document.getElementById('hint-text').textContent, note: document.getElementById('aim-note').textContent, picked: (window.hextable.mode.picked ?? []).length }))) };
+      };
       const shot = async (n) => { if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${touch ? 'phone' : 'desktop'}-upcast-${n}.png` }); };
-      const tapFoe = async (id) => {
+      const tapFoe = async (id, canCover = false) => {
         await page.evaluate(async (i) => {
           const S = window.hextable.state, G = (await import('./shared/grid.js')).gridOf(S.map), R = window.hextable.R, w = G.toWorld(S.entities[i].pos);
           R.cam.x = w.x; R.cam.z = w.z; R.cam.goal = null; R.cam.dist = 22;
         }, id);
         await sleep(600);
         const pt = await page.evaluate((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), id);
-        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error(`the foe is not on screen where a tap can reach it: ${JSON.stringify(pt)}`);
+        // #793: with the sheet up over the map the dimmed map is what the tap lands on; that one tap closes the sheet and is the tap on the foe
+        const through = !!pt && (await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.id === 'drawer-scrim', [pt.x, pt.y]));
+        if (!pt) throw new Error('the foe has no place on screen');
+        if (!through && canCover && !(await onCanvas(page, pt.x, pt.y)) && await page.evaluate(() => !document.getElementById('drawer').hidden)) return null;      // the sheet itself covers the foe (a phone): the caller closes it first
+        if (!through && !(await onCanvas(page, pt.x, pt.y))) throw new Error(`the foe is not on screen where a tap can reach it: ${JSON.stringify(pt)}`);
         await tapAt(page, touch, pt.x, pt.y);
+        return through;
       };
       const arm = async () => {
         await panelTab(page, 'spells');
@@ -61,26 +68,32 @@ async function upcast(browser, url, label, opts) {
         if (!foe) throw new Error('no foe Magic Missile can reach');
       });
 
-      await run.do('armed: the slot menu offers level 1 and 2, level 1 is chosen, and it is a thumb-sized control on touch', async () => {
+      await run.do('armed: the sheet offers level 1 and 2 at the top of the Cast section, level 1 is chosen, and the choices are thumb-sized on touch (#750 part 2)', async () => {
         await arm();
         const v = await view();
-        if (!v.shown || v.value !== '1' || v.options.join() !== '1,2' || !/of 3|up to 3/.test(v.hint)) throw new Error(`menu: ${JSON.stringify(v)}`);
-        if (touch && v.h < 44) throw new Error(`the menu is ${v.h}px high on touch`);
+        if (!v.shown || v.old || v.pane !== 'ap-spells' || v.first !== 'ap-choices' || v.value !== '1' || v.options.join() !== '1,2' || !/of 3|up to 3/.test(v.hint)) throw new Error(`menu: ${JSON.stringify(v)}`);
+        if (touch && v.h < 44) throw new Error(`the choices are ${v.h}px high on touch`);
         await shot('1-menu');
       });
 
       await run.do('level 2 chosen: the hint now asks for four darts, and a tap keeps the choice', async () => {
-        await page.selectOption('#hint-slot', '2');
+        await page.click('#ap-choices [data-ch="slot"][data-v="2"]');
         await wait(page, () => /up to 4/.test(document.getElementById('hint-text').textContent));
-        await tapFoe(foe);
+        // #793: the sheet is still up at its choices; one tap on the foe through the dimmed map closes it AND picks the foe. Where the sheet covers the foe (a phone) it is closed first, as before.
+        const through = await tapFoe(foe, true);
+        if (through) await waitShown(page, '#drawer', false);
+        else { await closePanels(page); await tapFoe(foe); }
+        console.log(`    (#793: the foe was ${through ? 'tapped through the dimmed map' : 'under the sheet, so the sheet was closed first'})`);
         const v = await view();
-        if (v.value !== '2' || v.picked !== 1 || !/1 of 4/.test(v.hint)) throw new Error(`after a tap: ${JSON.stringify(v)}`);
+        if (v.value !== '2' || v.picked !== 1 || !/^1 of 4 targets$/.test(v.note)) throw new Error(`after a tap: ${JSON.stringify(v)}`);
         await shot('2-level-2');
       });
 
       await run.do('four darts at level 2 spend a level 2 slot and no level 1 slot', async () => {
         const before = await state(page, (S, i) => ({ ...S.entities[i].slots }), ria);
         for (let n = 1; n < 4; n++) { await tapFoe(foe); await sleep(150); }
+        if ((await casts()) !== 0) throw new Error('the fourth dart was sent before the die');
+        await tapDie(page, touch);
         await wait(page, () => window.hextable.state.timeline.some((e) => e.type === 'cast' && e.name === 'Magic Missile'), null, 15000);
         const ev = await state(page, (S) => S.timeline.filter((e) => e.type === 'cast' && e.name === 'Magic Missile').pop());
         const after = await state(page, (S, i) => ({ ...S.entities[i].slots }), ria);
@@ -107,7 +120,9 @@ async function upcast(browser, url, label, opts) {
       const fire = async (n) => {
         const count = () => state(page, (S) => S.timeline.filter((e) => e.type === 'cast' && e.name === 'Magic Missile').length);
         const k = await count();
+        await closePanels(page);
         for (let i = 0; i < n; i++) { await tapFoe(foe); await sleep(150); }
+        await tapDie(page, touch);
         await wait(page, (c) => window.hextable.state.timeline.filter((e) => e.type === 'cast' && e.name === 'Magic Missile').length > c, k, 15000);
       };
 

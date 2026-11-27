@@ -69,10 +69,12 @@ export async function scenario(label, fn) {
 
 // ---------- page helpers ----------
 // A timeout names the wait that failed (its condition and its limit), not only "page.waitForFunction: Timeout 10000ms exceeded" (#661).
-export const wait = (page, fn, arg, timeout = 8000) => page.waitForFunction(fn, arg, { timeout }).catch((err) => {
+export const wait = (page, fn, arg, timeout = 8000) => page.waitForFunction(fn, arg, { timeout }).catch(async (err) => {
   if (!/Timeout/.test(String(err?.message))) throw err;
   const src = String(fn).replace(/\s+/g, ' ').slice(0, 160);
-  throw new Error(`wait of ${timeout} ms timed out for ${src}${arg === undefined || arg === null ? '' : ` (arg ${JSON.stringify(arg).slice(0, 60)})`}`);
+  // Where the game stood when the wait gave up (a stuck game or a slow machine?): the timeline and the dice, whose turn it is, the last events. Never fails the wait differently.
+  const stood = await page.evaluate(() => { const h = window.hextable, S = h.state, E = S?.encounter; return JSON.stringify({ waiting: h.waiting, busy: h.timeline.busy(), dice: h.dice.busy, turn: E ? E.order[E.turn]?.id : null, prompt: !!S?.prompt, last: (S?.timeline ?? []).slice(-6).map((x) => x.type) }); }).catch(() => 'unknown');
+  throw new Error(`wait of ${timeout} ms timed out for ${src}${arg === undefined || arg === null ? '' : ` (arg ${JSON.stringify(arg).slice(0, 60)})`}; the game stood at ${stood}`);
 });
 export const state = (page, fn, arg) => page.evaluate(`(${fn})(window.hextable.state, ${JSON.stringify(arg ?? null)})`);
 export const shown = (page, sel) => page.evaluate((s) => { const e = document.querySelector(s); return !!e && !e.hidden && e.getClientRects().length > 0; }, sel);
@@ -97,7 +99,7 @@ export const groupId = (id) => GROUP_OF[id] ?? id;
 export const paneOf = (id) => `#ap-${groupId(id).startsWith('cost:') ? 'cost' : groupId(id)}`;
 export async function panelTab(page, id) {
   const g = groupId(id);
-  await openMenu(page, 'sheet');
+  await openChar(page);
   if (g === 'down') return waitShown(page, '#ap-down', true, 8000);
   const bar = g.startsWith('cost:') ? `#c-res [data-cost="${g.slice(5)}"]` : `#ap-bar-${g}`;
   await waitShown(page, bar, true, 8000);
@@ -142,43 +144,96 @@ export async function settle(page, id) {
 }
 export const tapAt = (page, touch, x, y) => (touch ? page.touchscreen.tap(x, y) : page.mouse.click(x, y));
 export const onCanvas = (page, x, y) => page.evaluate(([x0, y0]) => document.elementFromPoint(x0, y0)?.id === 'gl', [x, y]);
-// The menu (docs/specs/one-token-menu.md, stage M1): the token opens it on its first level, a row goes down a level, the breadcrumb's
-// back arrow goes up, a tap on the dimmed map closes every level. A place is a path of row names: 'turns', 'table/settings',
-// ['table', 'dm'], or [] for the first level. The old tab names work too: 'settings', 'dm' and 'about' are under Table, and 'character'
-// is 'sheet'. It leaves the menu open on that place and waits until the screen is drawn.
-const PANEL = { sheet: 'sheet', turns: 'tracker', dice: 'dicepanel', log: 'log', handouts: 'handouts', settings: 'settings', dm: 'dm', about: 'about' };
-const UNDER_TABLE = new Set(['settings', 'dm', 'about']);
+// The menu (docs/specs/one-token-menu.md, stages M1 and M8): a tap on the token fans the places out in an arc round it; a symbol opens its screen, and the
+// same symbols run across the top of every screen (the strip). A tap on the token, on the dimmed map or Escape closes everything. A place is a path:
+// 'turns', 'settings', 'dm/creatures', or [] for the arc. The old names work too: 'character' is 'sheet', and 'table' (the list that held Setup, DM
+// tools, Help and leaving) is Setup, where those are now. It leaves the menu open on that place and waits until the screen is drawn.
+const PANEL = { sheet: 'sheet', turns: 'tracker', dice: 'dicepanel', log: 'log', settings: 'settings', dm: 'dm', about: 'about' };
+// M10: Setup, Log and chat and DM tools are pages of sections, one accordion each, one section open at a time: 'settings/menu' is Setup with The menu open,
+// 'log/talk' the Say box and the private note, 'log/handouts' a player's handouts ('handouts' alone still means that). A pass that touches a control of
+// Setup names its section (display, dice, menu, chars, rules, help, leave). 'log' alone opens the log itself; 'settings' alone leaves Setup as it is.
+// 'sheet' opens the character's page with its Sheet section open (the sheet is the last section of that page); `panelTab` opens a group of it instead,
+// and `openChar` opens the page and touches no section.
+const ACC = ['settings', 'log', 'dm'];
 export const menuPath = (p = []) => {
   const segs = (Array.isArray(p) ? p : String(p).split('/')).filter(Boolean).map((k) => ({ character: 'sheet', party: 'turns', root: '' })[k] ?? k).filter(Boolean);
-  return segs.length === 1 && UNDER_TABLE.has(segs[0]) ? ['table', segs[0]] : segs;
+  if (segs[0] === 'table') return segs.length > 1 ? segs.slice(1) : ['settings'];
+  if (segs[0] === 'handouts') return ['log', 'handouts'];
+  return segs;
 };
+// M5: DM tools is a list of seven screens ('dm/creatures', 'dm/rules', ...) and a last row, "All tools on one page". A pass that asks for 'dm' alone
+// wants a DM control by its id wherever it is, so `openMenu(page, 'dm')` taps that last row; a pass about one screen names it.
 const menuAt = (page) => page.evaluate(() => document.getElementById('drawer').dataset.path || '');
-const waitMenuAt = (page, want) => page.waitForFunction((p) => document.getElementById('drawer').dataset.path === p, want.join('/'), { timeout: 5000 });
+// The menu is at this place: a page of sections may have one open (it remembers which), so a place named alone is matched by its first part.
+const waitMenuAt = (page, want) => page.waitForFunction((p) => { const at = document.getElementById('drawer').dataset.path; return p.includes('/') || p === 'more' ? at === p : at.split('/')[0] === p; }, want.join('/'), { timeout: 5000 });
+const menuIs = (page) => page.evaluate(() => { const d = window.hextable.drawer; return { open: d.isOpen, arc: d.arc }; });
 export const openMenu = async (page, path = []) => {
   const want = menuPath(path);
   try { await openMenuTo(page, want); } catch (err) {
-    const at = await page.evaluate(() => { const d = document.getElementById('drawer'), h = window.hextable.drawer; return { path: d.dataset.path, open: h.isOpen, hidden: d.hidden, cls: d.className, scrim: !document.getElementById('drawer-scrim').hidden }; }).catch(() => null);
+    const at = await page.evaluate(() => { const d = document.getElementById('drawer'), h = window.hextable.drawer; return { path: d.dataset.path, open: h.isOpen, arc: h.arc, hidden: d.hidden, cls: d.className, scrim: !document.getElementById('drawer-scrim').hidden }; }).catch(() => null);
     throw new Error(`openMenu(${want.join('/')}) stopped at ${JSON.stringify(at)}: ${String(err.message).split('\n')[0]}`);
   }
 };
-const openMenuTo = async (page, want) => {
-  if (!(await page.evaluate(() => window.hextable.drawer.isOpen))) { await page.click('#btn-menu'); await waitShown(page, '#drawer'); }
-  for (let i = 0; i < 4; i++) {           // up until what is open is on the way to the place wanted
-    const have = (await menuAt(page)).split('/').filter(Boolean);
-    if (have.every((k, j) => want[j] === k)) break;
-    await page.click('#drawer-back'); await page.waitForFunction((n) => (document.getElementById('drawer').dataset.path || '').split('/').filter(Boolean).length < n, have.length, { timeout: 5000 });
+// The arc, fanned out and still (its symbols grow out of the die for half a second).
+export const openArc = async (page) => {
+  const is = await menuIs(page);
+  if (is.arc) return;
+  if (is.open) { await page.click('#btn-menu'); await page.waitForFunction(() => !window.hextable.drawer.isOpen, null, { timeout: 5000 }); }
+  // M2: a prompt or a card folded the menu, and the next tap on the die puts it back where it was, not on the arc. A pass that wants the arc forgets that place first
+  // (the passes that look at the way back say so themselves: `reactions`, `rewards`, `defeat`).
+  if (await page.evaluate(() => !!window.hextable.drawer.folded)) await page.evaluate(() => window.hextable.drawer.open([]));
+  else await page.click('#btn-menu');
+  await waitShown(page, '#menu-arc');
+  await page.waitForFunction(() => document.getElementById('menu-arc').classList.contains('out'), null, { timeout: 5000 });
+};
+// A place's symbol: on the arc when that is what is up, otherwise on the strip. A character's is the selected one's. A place the arc has no slot for is in More.
+const tapPlace = async (page, key) => {
+  const is = await menuIs(page);
+  const sel = key === 'sheet' ? await page.evaluate(() => document.querySelector('#party .pr.sel')?.dataset.id ?? null) : null;
+  // A creature with no symbol (the DM has selected a monster on the map or in Turns) has its screen opened by the menu itself, as a tap on the map's pawn does;
+  // About is a button of Setup at a table.
+  if (key === 'sheet' && !sel) { await page.evaluate(() => window.hextable.drawer.open('sheet')); return; }
+  if (key === 'about' && !(await page.evaluate(() => { const b = document.getElementById('tab-about'); return !b.hidden; }))) { await openMenuTo(page, ['settings', 'help']); await page.click('#set-about'); return; }
+  const place = key === 'sheet' ? `c:${sel}` : key;
+  if (is.arc) {
+    // by selector, not by handle: the arc is drawn again when a place's line changes (a turn passes), and a handle would be of a button that is gone
+    if (await page.$(`#arc [data-place="${place}"]`)) { await page.click(`#arc [data-place="${place}"]`); return; }
+    await page.click('#arc [data-place="more"]'); await waitMenuAt(page, ['more']);
+    await page.click(`#more-list [data-place="${place}"]`); return;
   }
-  const have = (await menuAt(page)).split('/').filter(Boolean);
-  for (let j = have.length; j < want.length; j++) {
-    // M4: the characters are rows of the first level (Decision 4b); the Character screen is opened by the selected one's row (it is first, and marked `sel`).
-    // A creature with no row (the DM has selected a monster on the map or in Turns) has its screen opened by the menu itself, as a tap on the map's pawn does.
-    if (want[j] === 'sheet' && !(await page.$('#menu-root #party button.sel'))) await page.evaluate(() => window.hextable.drawer.open('sheet'));
-    else await page.click(want[j] === 'sheet' ? '#menu-root #party button.sel' : `#drawer [data-go="${want[j]}"]`);
-    await waitMenuAt(page, want.slice(0, j + 1));
+  const b = page.locator(key === 'sheet' ? '#menu-root #party .pr.sel' : `#menu-root [data-go="${key}"]`);
+  await b.evaluate((x) => { const r = x.getBoundingClientRect(), s = document.getElementById('menu-root'), q = s.getBoundingClientRect(); s.scrollLeft += (r.left + r.width / 2) - (q.left + q.width / 2); });      // the strip scrolls sideways; its end arrows cover its edges
+  await b.click();
+};
+const openMenuTo = async (page, want, { sheet = true } = {}) => {
+  if (!want.length) { await openArc(page); return; }
+  if (!(await menuIs(page)).open) await openArc(page);
+  let have = (await menuAt(page)).split('/').filter(Boolean);
+  if (have[0] !== want[0]) { await tapPlace(page, want[0]); await waitMenuAt(page, [want[0]]); have = (await menuAt(page)).split('/').filter(Boolean); }
+  await waitShown(page, '#drawer');
+  if (ACC.includes(want[0])) {
+    const sub = want[1] ?? (want[0] === 'dm' ? 'all' : want[0] === 'log' ? 'log' : null), panel = PANEL[want[0]];
+    if (sub && have[1] !== sub) {
+      if (have[1] === 'all') { await page.click('#drawer-back'); await waitMenuAt(page, [want[0]]); }
+      if (sub === 'all') {
+        if (have[1] && have[1] !== 'all') { await page.click(`#acc-bar-${want[0]}-${have[1]}`); await page.waitForFunction((p) => document.getElementById('drawer').dataset.path === p, want[0], { timeout: 5000 }); }
+        await page.click(`#${panel} > .acc-all [data-sec="all"]`);
+      } else await page.click(`#acc-bar-${want[0]}-${sub}`);
+      await waitMenuAt(page, [want[0], sub]);
+    }
   }
-  const leaf = want.at(-1);
-  if (leaf in PANEL) await waitShown(page, `#${PANEL[leaf]}`);
+  if (want[0] in PANEL) await waitShown(page, `#${PANEL[want[0]]}`);
+  // the sheet is the last section of a character's page: 'sheet' means the page with it open
+  if (want[0] === 'sheet' && sheet && (await page.$('#ap-bar-sheet'))) {
+    await waitShown(page, '#ap-bar-sheet', true, 8000);
+    if ((await page.getAttribute('#ap-bar-sheet', 'aria-expanded')) !== 'true') await page.click('#ap-bar-sheet');
+    await page.waitForFunction(() => document.getElementById('ap-bar-sheet')?.getAttribute('aria-expanded') === 'true', null, { timeout: 8000 });
+  }
   await menuStill(page);
+};
+// The character's page as it opens by itself: no section is touched (which group a page opens on is what some passes check).
+export const openChar = async (page) => {
+  try { await openMenuTo(page, ['sheet'], { sheet: false }); } catch (err) { throw new Error(`openChar stopped: ${String(err.message).split('\n')[0]}`); }
 };
 // The levels slide in (about .7 s): a check that measures the screen mid-slide sees a control hang out of the menu. Wait until the menu's own boxes stop moving.
 export const menuStill = (page) => page.evaluate(() => new Promise((ok) => {
@@ -189,6 +244,7 @@ export const menuStill = (page) => page.evaluate(() => new Promise((ok) => {
 // The drawer can be closing by itself (a fight starting closes it) when we look: then its close control is already gone, and what we want is that it ends hidden.
 // A sheet closes by its handle, a wide menu by its x.
 export const closeMenu = async (page) => {
+  if ((await menuIs(page).catch(() => ({}))).arc) { await page.click('#btn-menu'); await waitShown(page, '#menu-arc', false); return; }      // the arc folds on a tap on the die
   if (!(await shown(page, '#drawer'))) return;
   await page.waitForFunction(() => document.getElementById('dice')?.hidden !== false, null, { timeout: 8000 }).catch(() => {});      // dice in flight sit over everything and take the tap
   const clicked = await page.click('#drawer-close:visible, #drawer-handle:visible', { timeout: 8000 }).then(() => 'clicked', (e) => `not clicked: ${String(e.message).split('\n')[0]}`);
@@ -199,19 +255,21 @@ export const closeMenu = async (page) => {
 };
 export const closePanels = closeMenu;
 export const openTab = (page, tab) => openMenu(page, tab);
-// The party chips are the top of the menu's first level (M3: they left the dock). `chip` opens the menu, taps the character's chip, and closes the menu,
-// so the map is free again and the character is the selected one.
+// The characters are the first symbols of the arc (M8; they were the party chips of the dock, then rows of the first level). `chip` fans the arc out, taps the
+// character's symbol, and closes the screen that opens, so the map is free again and the character is the selected one.
 export const chip = async (page, name) => {
-  await openMenu(page, []);
-  await page.click(`#menu-root #party .pr:has-text("${name}")`);
+  await openArc(page);
+  await page.click(`#arc .arc-b.char:has-text("${name}")`);
+  await waitShown(page, '#drawer');
   await closeMenu(page);
 };
 
-// The same for a chip found by its words (a player claiming a character: "Play as ..."), tapped or clicked.
+// The same for a symbol found by its words (a player claiming a character: "Play as ..."), tapped or clicked.
 export const chipPick = async (page, text, how = 'click') => {
-  await openMenu(page, []);
-  const b = page.locator(`#menu-root #party .pr:has-text("${text}")`).first();
+  await openArc(page);
+  const b = page.locator(`#arc .arc-b.char:has-text("${text}")`).first();
   await (how === 'tap' ? b.tap() : b.click());
+  await waitShown(page, '#drawer');
   await closeMenu(page);
 };
 
@@ -276,7 +334,10 @@ export const calm = (p, ms = 15000) => wait(p, () => window.hextable.waiting ===
 // `window.hextable.act` does nothing while this page's timeline is playing at the pace `wait`: it skips the beats instead (app.js, `skipping()`; a tap that skips an animation must not also send).
 // A script that sends an action right after another's events were queued therefore loses it without a word (#688: endEncounter lost, then 20 s for a fight that never ended). `window.__still(action)`
 // (installed by `stillInit`, add it to a context before its pages open) waits in the page until nothing is playing and sends in the same turn, so nothing can start in between; it says in words when the timeline never stilled.
-export const stillInit = `window.__still = async (a, ms = 20000) => {
+export const stillInit = `{ const W = window.WebSocket, log = (window.__wire = []);
+  const note = (dir, d) => { if (typeof d !== 'string' || /"t":"(ping|pong)"/.test(d)) return; log.push(Math.round(performance.now()) + ' ' + dir + ' ' + d.replace(/"(entities|map|settings)":.*$/, '...').slice(0, 220)); if (log.length > 40) log.shift(); };
+  window.WebSocket = class extends W { constructor(...a) { super(...a); this.addEventListener('message', (m) => note('<', m.data)); } send(d) { note('>', d); return super.send(d); } }; }
+window.__still = async (a, ms = 20000) => {
   const t0 = Date.now();
   for (;;) {
     const h = window.hextable;
@@ -395,3 +456,17 @@ export async function fighterBasics(page) {
   for (const k of ['athletics', 'perception']) await page.check(`#qb-skill-${k}`);
   if (await page.$('#qb-acc-bar-choices')) { await openSec(page, 'choices'); await page.check('#qb-choice-fighting-style--defense'); }
 }
+
+// #750: the d20 confirms what waits (its ring is dashed and pulses while `#btn-menu.waiting`; its spoken name is "Confirm <what>"). Tap or click it.
+export const waitDie = (page, on = true, timeout = 8000) => page.waitForFunction((v) => document.getElementById('btn-menu').classList.contains('waiting') === v, on, { timeout });
+export const tapDie = async (page, touch) => { await waitDie(page); await (touch ? page.locator('#btn-menu').tap() : page.locator('#btn-menu').click()); };
+
+// #750 part 2: the choices an armed spell waits for are on the character's sheet (`#ap-choices`, at the top of the open section), not in the aim bar. What one group of them shows:
+// each option { v, label, on (the one the die uses), off (greyed), why (its reason in words) }, the usable values, the chosen one, the smallest option's height, and where the block sits.
+export const choiceView = (page, group) => page.evaluate((g) => {
+  const box = document.getElementById('ap-choices'), btns = box ? [...box.querySelectorAll(`[data-ch="${g}"]`)] : [];
+  const all = btns.map((b) => ({ v: b.dataset.v, label: b.textContent.trim(), on: b.getAttribute('aria-checked') === 'true', off: b.getAttribute('aria-disabled') === 'true', why: b.dataset.why }));
+  return { old: !!document.getElementById('hint-pick') || !!document.getElementById('hint-slot'), shown: !!box && !box.hidden && box.getClientRects().length > 0,
+    inDrawer: !!box && document.getElementById('drawer').contains(box), first: box?.parentElement?.firstElementChild?.id ?? '', pane: box?.parentElement?.id ?? '',
+    all, usable: all.filter((o) => !o.off).map((o) => o.v), on: all.find((o) => o.on)?.v ?? '', minH: btns.length ? Math.min(...btns.map((b) => b.getBoundingClientRect().height)) : 0 };
+}, group);

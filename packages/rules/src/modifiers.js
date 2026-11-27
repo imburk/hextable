@@ -6,7 +6,8 @@
 // gets back the total and the reasons, which is what the log shows.
 // Design: docs/specs/rules-expansion.md, decision 3.
 import { CONTENT } from './content/index.js';
-import { apart, FT } from './space.js';
+import { col, gridOf } from './grid.js';
+import { apart, footprint, FT, gap } from './space.js';
 import { canSee, coverOf } from './sight.js';
 
 // Things a creature can be that are not SRD conditions but work the same way.
@@ -73,6 +74,8 @@ export function judge(tag, sit, s) {
     case 'target.fiendOrUndead': return t ? ['fiend', 'undead'].includes(t.type ?? CONTENT.monsters[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null)) : null;   // Divine Smite's extra die
     case 'attack.opportunity': return sit.opportunity === undefined ? null : sit.opportunity;   // an Opportunity Attack (Escape the Horde)
     case 'check.proficient': return sit.proficient === undefined ? null : sit.proficient;   // a check with one of its skill or tool proficiencies (Reliable Talent)
+    // A check with a skill that uses none of its proficiencies (Jack of All Trades). A tool it is proficient with, or a proficiency lent for a time, uses the bonus already.
+    case 'check.unskilled': return sit.proficient === undefined ? null : sit.skill !== undefined && sit.proficient === false;
     case 'self.notIncapacitated': return sit.self ? !incapacitated(sit.self) : null; // whose modifier it is (Danger Sense)
     case 'target.unconscious': return t ? has(t, 'unconscious') : null;
     // Grapples (docs/specs/grapple-shove.md): who holds whom is on the held creature's `cond.grappled.holds`. A Grappled condition
@@ -85,6 +88,9 @@ export function judge(tag, sit, s) {
     // Who can see whom (sight.js). A thing on the map that attacks (a trap) has no eyes: it never
     // sees its target, and whether its target sees it changes nothing.
     case 'target.unseen': return a && t ? (a.object ? true : canSee(s, a, t) === 'no') : null;
+    case 'target.seen': return a && t ? (a.object ? false : canSee(s, a, t) !== 'no') : null;       // the attacker can see the target (Faerie Fire: "if the attacker can see it")
+    case 'target.ally': return a && t ? a.side === t.side : null;                                      // on the source's own side (Enlarge/Reduce: a willing creature takes no save)
+    case 'target.enemy': return a && t ? a.side !== t.side : null;                                    // hostile to the source: another side (Guardian of Faith)
     case 'attacker.unseen': return a && t ? (a.object ? false : canSee(s, t, a) === 'no') : null;
     // Engine-only tags, for the statuses above: not in the content vocabulary.
     case 'attacker.seen': return a && t ? (a.object ? true : canSee(s, t, a) !== 'no') : null;
@@ -98,6 +104,30 @@ export function judge(tag, sit, s) {
     default: return null;
   }
 }
+
+// Magic Circle (docs/specs/rules-expansion.md, "Build notes: wave 5 part 3"): a lasting zone with `ward: { types, reverse }`, a Cylinder of the cast's own cells and height. What a circle does to a
+// creature of one of its types: it cannot willingly move into it (`warded`; engine/world.js, movement), it has Disadvantage on attack rolls against targets within, and cannot give them the Charmed or Frightened
+// condition (`wardGuards`, `immuneTo` below). Reversed, all of that holds the other way round: it cannot willingly leave, and protects targets outside. A creature whose type the engine cannot tell is bound by none.
+export const wardsOf = (s) => (s?.effects ?? []).filter((fx) => fx.zone?.ward);
+export function inWard(s, fx, c, pos = c.pos) {
+  const z = fx.zone, keys = new Set(z.hexes), tall = z.area.height ?? z.area.size, o = z.origin;
+  return footprint(c, pos, gridOf(s.map)).some((f) => keys.has(col(f))) && pos.z > o.z - FT / 2 && pos.z <= o.z + tall;
+}
+const wardOfType = (fx, c) => { const ty = typeOf(c); return ty !== null && fx.zone.ward.types.includes(ty); };
+// The circles whose type list includes this creature's.
+export const wardsFor = (s, c) => wardsOf(s).filter((fx) => wardOfType(fx, c));
+// What the party can know of (a leak guard): a circle binds a creature of the party only if its caster is known to the party or gone; otherwise it would show the players that something is there, and the DM is told
+// at the cast and judges it. `shellSeen` (engine/world.js) is lent here when that module loads, as vision.js already imports this file.
+let casterSeen = () => true;
+export const lendCasterSight = (fn) => { casterSeen = fn; };
+export const wardsBinding = (s, c) => wardsFor(s, c).filter((fx) => { if (c.side !== 'party') return true; const k = s.entities[fx.source]; return !k || casterSeen(s, k); });
+// Would a step (or a teleport) of `c` from `from` to `to` cross the barrier of circle `fx` the way it bars: into it, or out of it if reversed?
+export const warded = (s, fx, c, from, to) => (fx.zone.ward.reverse ? inWard(s, fx, c, from) && !inWard(s, fx, c, to) : !inWard(s, fx, c, from) && inWard(s, fx, c, to));
+// Does circle `fx` protect target `t`: within it, or outside it if reversed?
+export const wardCovers = (s, fx, t) => (fx.zone.ward.reverse ? !inWard(s, fx, t) : inWard(s, fx, t));
+// Is `t` kept from the Charmed or Frightened condition by a circle, when the creature `giver` would give it? Only when the giver is known and is of a chosen type.
+const wardGuards = (s, t, id, giver) => (id === 'charmed' || id === 'frightened') && !!giver && wardsBinding(s, giver).some((fx) => wardCovers(s, fx, t));
+export const wardName = (s, t, id, giver) => wardsBinding(s, giver).find((fx) => wardCovers(s, fx, t) && wardGuards(s, t, id, giver))?.name;
 
 // Auras (a built character's feature with `aura`: Aura of Protection, Aura of Courage): what
 // reaches creature `e` from its own auras and those of its allies. An aura is an Emanation of
@@ -120,8 +150,27 @@ export function aurasOn(s, e) {
   }
   return [...best.values()];
 }
-// Is a creature immune to a condition: its own immunity (a monster's), or an ally's aura (Aura of Courage)?
-export const immuneTo = (s, e, id) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id));
+// The conditions a lasting effect makes a creature immune to for a while (a modifier step `{ on: 'condition', op: 'immune', scope: { condition } }`: Heroism).
+// With `from` (Protection from Evil and Good: no Charmed or Frightened "from them") the immunity holds only against a condition a creature of one of those types gives: `giver` is that creature, and with none named (the DM puts it on, a
+// condition the engine cannot say the source of) the immunity does not apply, and does not hide a condition the creature already has (`sources`, which asks with no giver and `unrestricted`).
+const spellImmune = (s, e, giver = undefined, unrestricted = true, magic = false) => {
+  const out = [];
+  for (const fx of s?.effects ?? []) for (const p of fx.parts) {
+    if (p.ended || p.target !== e?.id || p.modifier?.on !== 'condition' || p.modifier.op !== 'immune' || typeof p.modifier.scope?.condition !== 'string') continue;
+    const m = p.modifier;
+    if (m.from === undefined && m.magic === undefined) out.push(m.scope.condition);
+    // `magic` (Freedom of Movement): only a condition a spell gave; `from`: only one a creature of those types gave. Both say what gives it, so neither hides a condition the creature has already.
+    else if (!unrestricted && (m.from === undefined || ofTypes(giver, m.from)) && (m.magic !== true || magic)) out.push(m.scope.condition);
+  }
+  return out;
+};
+// A creature's type, as far as the engine can tell (a pack monster's, its own, or Humanoid for a player character); null when it cannot say.
+// A form never changes it: SRD 5.2.1 Wild Shape and Polymorph both say the creature retains its creature type.
+export const typeOf = (t) => (t ? t.type ?? CONTENT.monsters[t.tpl]?.type ?? CONTENT.summons?.[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null) : null);
+const ofTypes = (t, types) => { const ty = typeOf(t); return ty !== null && types.includes(ty); };
+// Is a creature immune to a condition: its own immunity (a monster's), an ally's aura (Aura of Courage), or a spell on it (Heroism)? `giver`: the creature that would give it, for an immunity that is only against some creatures.
+// `magic`: a spell gives the condition (a modifier with `magic: true` holds only then).
+export const immuneTo = (s, e, id, giver = undefined, magic = false) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id)) || spellImmune(s, e, giver, false, magic).includes(id) || wardGuards(s, e, id, giver);
 
 // What a built character wears without training (SRD "Armor Training": armour it lacks training with; a Shield without training only loses its Armor Class bonus), by name, as derive()
 // worked it out (`untrained` on the record). A creature in a form wears none (it melds into the form), as armourWorn says.
@@ -133,18 +182,33 @@ const UNTRAINED = ['str', 'dex'].flatMap((ability) => [
   { on: `save.${ability}`, op: 'disadvantage' }, { on: 'check', op: 'disadvantage', scope: { ability } }, { on: 'attack.roll', op: 'disadvantage', scope: { ability } },
 ]).concat([{ on: 'initiative', op: 'disadvantage' }]);
 
+// `from` on a modifier: does the other creature in the roll have one of those types? The attacker, for an attack roll made against `e`; for a save about a condition, the creature that gave `e` the condition it already has
+// (its `cond[id].source`: a condition the engine cannot say the source of is not matched).
+function fromHolds(s, e, m, hook, sit) {
+  if (hook === 'attack.received') return ofTypes(sit.attacker, m.from);
+  if (hook === 'save' || hook.startsWith('save.')) return (sit.conditions ?? []).some((c) => e.cond?.[c] && ofTypes(s?.entities?.[e.cond[c].source], m.from));
+  return false;
+}
+const value_ = (m, src) => (typeof m.value === 'object' && m.value !== null ? m.value.perLevel * src.level : m.value);
 // Where a creature's modifiers come from, each with the name to show as the reason.
 function* sources(s, e) {
   for (const fx of s?.effects ?? []) {
     // `against`: the modifier holds only against that creature (Hex, Hunter's Mark: the marked target).
     // `except`: it does not hold for rolls that creature makes (Sundering Blow: "another creature").
-    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against, except: p.except, part: p };
+    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against, except: p.except, part: p, magic: !!fx.spell };
   }
-  const auras = aurasOn(s, e);
+  // A zone laid out from a space gives its caster a modifier while the caster is within `beside.feet` of that space (Conjure Animals: Advantage on Strength saves within 5 feet of the pack).
+  for (const fx of s?.effects ?? []) {
+    const b = fx.zone?.beside;
+    if (!b || fx.source !== e.id || !e.pos || !fx.zone.body?.length) continue;
+    const G = gridOf(s.map), n = b.feet / FT, z0 = fx.zone.origin.z ?? 0, mine = footprint(e, e.pos, G);
+    if (mine.some((f) => fx.zone.body.some((k) => { const [q, r] = k.split(',').map(Number); return gap(s, f, { q, r, z: z0 }) <= n; }))) yield { name: fx.name, modifiers: [b.modifier], level: 1, key: fx.id };
+  }
+  const auras = aurasOn(s, e), spelled = spellImmune(s, e);
   for (const [id, inst] of conditionsOf(e)) {
     const def = conditionDef(id);
-    // A condition an aura makes it immune to has no effect while it is in the aura (Aura of Courage).
-    if (def && !auras.some((a) => a.immune.includes(id))) yield { name: def.name, modifiers: def.modifiers, level: inst.level ?? 1, condition: id };
+    // A condition an aura makes it immune to has no effect while it is in the aura (Aura of Courage); nor one a spell makes it immune to while the spell lasts (Heroism).
+    if (def && !auras.some((a) => a.immune.includes(id)) && !spelled.includes(id)) yield { name: def.name, modifiers: def.modifiers, level: inst.level ?? 1, condition: id };
   }
   for (const a of auras) if (a.modifiers.length) yield { name: a.name, modifiers: a.modifiers, level: 1 };
   for (const trait of CONTENT.monsters[e.tpl]?.traits ?? []) yield { name: trait.name, modifiers: trait.modifiers, level: 1 };
@@ -154,6 +218,11 @@ function* sources(s, e) {
   // A built character's features that are always on (Danger Sense, Feral Instinct), as derive() made them.
   for (const f of e.feats ?? []) if (f.modifiers) yield { name: f.name, modifiers: f.modifiers, level: 1 };
 }
+
+// Whether `e` has Flyby (a trait with `flyby: true`; SRD: "doesn't provoke an Opportunity Attack when it flies out of an enemy's reach"):
+// and only while it has a Speed to fly in its present shape (a flyer with no Fly Speed provokes); a flyer walking on the ground still counts, the engine keeping no movement mode (DEBT W42);
+// from its pack monster or summon block, or from the stat block of the form it has taken (Wild Shape lays a beast's traits over the druid).
+export const flyby = (s, e) => !!e && speedOf(s, e, 'fly') > 0 && [e.tpl, e.form?.block].some((id) => id !== undefined && [CONTENT.monsters[id], CONTENT.summons?.[id]].some((d) => d?.traits?.some((t) => t.flyby === true)));
 
 // Dice in a modifier's value: "1d4" (Bless) or "-1d4" (Bane). Rolled each time it applies, by the
 // caller that makes the roll; never here, so that asking what applies changes nothing.
@@ -232,7 +301,10 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       if (m.on !== hook) continue;
       if (!(m.when ?? []).every((tag) => judge(tag, { ...sit, self: e }, s) === true)) continue;      // not known to hold: not applied
       if (m.spell !== undefined && sit.spellId !== m.spell) continue;                                 // only that spell's damage (Agonizing Blast)
+      if (m.from !== undefined && !fromHolds(s, e, m, hook, sit)) continue;                          // only against creatures of those types (Protection from Evil and Good)
       if (!inScope(m, sit)) continue;
+      // Freedom of Movement: a Speed the creature keeps against spells (`speedOf`) leaves out what a spell's lasting effect takes off it.
+      if (sit.keepSpeed && hook === 'speed' && src.magic && (m.op === 'set' || (m.op === 'add' && typeof value_(m, src) === 'number' && value_(m, src) < 0))) continue;
       // `stack: false`: of several of one name, the first applies and the rest wait (Sundering Blow).
       if (m.stack === false) { if (once.has(src.name)) continue; once.add(src.name); }
       // `baseAc` (Mage Armor): the best base Armor Class any of them gives, from the creature's own score (acOf, engine/rolls.js, says whether it is better than its own).
@@ -244,7 +316,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       // roll's maker decides (engine/rolls.js, rescue), so nothing is added or used up here.
       if (m.onFail) { out.rescue.push({ value, name: src.name, ...(src.part ? { part: src.part } : {}), ...(m.cost ? { cost: m.cost } : {}) }); continue; }
       if (m.uses && src.part) out.used.push(src.part);         // one use: the roll that takes it ends it (durations.useUp)
-      if (m.op === 'add' && hook === 'damage.dealt') out.dealt.push({ value, types: m.types ?? null, name: src.name, ...(m.once === 'turn' ? { once: true, key: `${src.name}:${e.id}` } : {}) });
+      if (m.op === 'add' && hook === 'damage.dealt') out.dealt.push({ value, types: m.types ?? null, name: src.name, ...(m.atLeast ? { atLeast: m.atLeast } : {}), ...(m.once === 'turn' ? { once: true, key: `${src.name}:${e.id}` } : {}) });
       else if (m.op === 'add' && hook === 'damage.taken') out.taken.push({ value, types: m.types ?? null, name: src.name, once: m.once === 'turn', key: `${src.key ?? src.name}:${e.id}` });
       else if (m.op === 'add' && typeof value === 'string') out.dice.push({ dice: value, name: src.name });
       else if (m.op === 'add') out.add += value;
@@ -262,7 +334,55 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       }
     }
   }
+  // Magic Circle: a creature of a chosen type has Disadvantage on attack rolls against targets the circle protects.
+  if (hook === 'attack.roll' && sit.target) for (const fx of wardsBinding(s, e)) if (wardCovers(s, fx, sit.target)) out.disadvantage.push(fx.name);
   return out;
+}
+
+// A creature's senses and what lasting effects lend it for a while (True Seeing: `{ on: 'senses', op: 'set', value: 120, scope: { sense: 'truesight' } }`): the longer range of each wins.
+export function sensesOf(s, e) {
+  const out = { ...(e.senses ?? {}) };
+  for (const src of sources(s, e)) for (const m of src.modifiers) {
+    if (m.on !== 'senses' || m.op !== 'set' || typeof m.scope?.sense !== 'string' || typeof m.value !== 'number') continue;
+    if (m.value > (out[m.scope.sense] ?? 0)) out[m.scope.sense] = m.value;
+  }
+  return out;
+}
+
+// The longest leap a lasting effect lends for 10 feet of movement once a turn (Jump: `{ on: 'leap', op: 'set', value: 30 }`), in feet, or 0.
+export function leapOf(s, e) {
+  let best = 0;
+  for (const src of sources(s, e)) for (const m of src.modifiers) if (m.on === 'leap' && m.op === 'set' && Number.isInteger(m.value) && m.value > best) best = m.value;
+  return best;
+}
+
+// Does a lasting effect let the creature walk on this surface (Water Walk: `{ on: 'surface', op: 'immune', scope: { surface: 'water' } }`)? Only water is known so far.
+export function walksOn(s, e, surface = 'water') {
+  for (const src of sources(s, e)) for (const m of src.modifiers) if (m.on === 'surface' && m.op === 'immune' && m.scope?.surface === surface) return true;
+  return false;
+}
+
+// How a creature breathes, for the breath rule under water (SRD "Suffocation"; docs/specs/fly-swim-control.md, "Build notes (E2)"):
+//   `water`: it breathes water as well as whatever it breathes otherwise, so under water it does not run out of breath. A lasting effect of a `breath`
+//            modifier (Water Breathing), or a trait of its stat block (or of the form it has taken) with the id `amphibious` or `water-breathing`.
+//   `judged`: whether the engine can say that it needs air. A character, and a creature of a living kind (beast, humanoid, dragon, monstrosity, giant,
+//            fey) breathes air. For any other kind (an Undead, a Construct, an Elemental, an Ooze, a Plant, an Aberration, a Celestial, a Fiend)
+//            the SRD says nothing either way, and a creature with no stat block of its own says nothing at all: the engine does not guess, and the DM is told.
+//   `hold`:  the seconds it holds its breath: 1 minute plus its Constitution modifier in minutes, 30 seconds at least; 1 hour for a `hold-breath` trait.
+const LIVING = ['beast', 'humanoid', 'dragon', 'monstrosity', 'giant', 'fey'];
+export function breathOf(s, e) {
+  let water = false;
+  for (const src of sources(s, e)) for (const m of src.modifiers) if (m.on === 'breath' && m.op === 'immune') water = true;
+  const blocks = [e.tpl, e.form?.block].filter((id) => typeof id === 'string').map((id) => (Object.hasOwn(CONTENT.monsters, id) ? CONTENT.monsters[id] : Object.hasOwn(CONTENT.summons ?? {}, id) ? CONTENT.summons[id] : null)).filter(Boolean);
+  const traits = blocks.flatMap((b) => b.traits ?? []);
+  if (traits.some((t) => t.id === 'amphibious' || t.id === 'water-breathing')) water = true;
+  const kind = typeOf(e);                          // a form never changes the creature's type (SRD Wild Shape)
+  const judged = e.kind === 'pc' || (typeof kind === 'string' && LIVING.includes(kind));
+  const con = Math.floor(((e.abil?.con ?? 10) - 10) / 2);
+  // A Hold Breath trait states its time in its text ("for 10 minutes", "for 1 hour": the SRD's hippopotamus, whale and the rest); the longest, in seconds.
+  let held = 0;
+  for (const t of traits) if (t.id === 'hold-breath') { const m = /(\d+) (hour|minute)/.exec(t.text ?? ''); held = Math.max(held, m ? +m[1] * (m[2] === 'hour' ? 3600 : 60) : 3600); }
+  return { water, judged, hold: held ? Math.max(30, held) : Math.max(30, (1 + con) * 60) };
 }
 
 // A number kept within what `min` and `max` modifiers allow.
@@ -274,6 +394,8 @@ export function speedOf(s, e, mode = 'walk') {
   let base = mode === 'walk' ? e.speed ?? 0 : e.speeds?.[mode] ?? 0;
   // A Fly Speed something gives for a while (Dragon Wings: `speed.fly` set 60), if it is more than its own.
   if (mode === 'fly') { const f = modifiers(s, e, 'speed.fly'); if (f.set !== null) base = Math.max(base, f.set); }
-  const m = modifiers(s, e, 'speed');
+  let m = modifiers(s, e, 'speed');
+  // Freedom of Movement (`{ on: 'speed', op: 'immune', magic: true }`): what the lasting effect of a spell takes off the Speed is left out.
+  if (m.immune === true) m = modifiers(s, e, 'speed', { keepSpeed: true });
   return base > 0 ? Math.max(0, bounded(m, m.set !== null ? m.set : base + m.add)) : 0;
 }

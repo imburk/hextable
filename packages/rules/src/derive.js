@@ -268,7 +268,7 @@ function itemFeature(y, level) {
 // A number that grows with the class (schema.js, lintAmount).
 export function amount(x, c, level, abil, pb = proficiencyFor(level)) {
   if (typeof x === 'number') return x;
-  if (x?.prof !== undefined) return x.prof * pb;                                   // so many times the Proficiency Bonus (Alert)
+  if (x?.prof !== undefined) return Math.floor(x.prof * pb);                       // so many times the Proficiency Bonus (Alert); 0.5 is half, rounded down (Jack of All Trades)
   if (x?.column !== undefined) return c.table[x.column][level - 1];
   // { mod, min, die }: so many of that die as the modifier (Sear Undead: Wisdom modifier d8s, at least one).
   if (x?.mod !== undefined && x.die !== undefined) return `${Math.max(x.min ?? 0, mod(abil[x.mod]))}d${x.die}`;
@@ -582,7 +582,7 @@ export function derive(sheet, opts = {}) {
     }
     if (g.recover) out.recover = { ...g.recover };
     if (g.freeCast) out.freeCast = structuredClone(g.freeCast);
-    for (const k of ['metamagic', 'metamagicMax', 'exchange']) if (g[k]) out[k] = structuredClone(g[k]);
+    for (const k of ['metamagic', 'metamagicMax', 'exchange', 'swap']) if (g[k]) out[k] = structuredClone(g[k]);
     if (g.restore) out.restore = { of: g.restore.of, max: amount(g.restore.max, c, level, abil) };
     // An aura (Aura of Protection): what it gives its holder and allies within range (modifiers.js, aurasOn).
     if (g.aura) out.aura = { range: amount(g.aura.range, c, level, abil), ...(g.aura.modifiers ? { modifiers: bake(g.aura.modifiers) } : {}), ...(g.aura.immune ? { immune: [...g.aura.immune] } : {}) };

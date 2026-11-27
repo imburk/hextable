@@ -4,19 +4,21 @@ import { gridOf, col, key } from '../grid.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, rangeAt, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
-import { breakConcentration, durationMinutes, effectsOf, endEffect, startEffect, turnKey } from '../durations.js';
-import { apart, footprint, FT, gap, landing, overlapAt, unseenAt } from '../space.js';
+import { breakConcentration, durationMinutes, effectsOf, endEffect, endWards, ON, startEffect, thisTurn, turnKey } from '../durations.js';
+import { entered, shiftZone, snapshot, spaceOf, zonesOf } from '../zones.js';
+import { globesOf, inGlobe, silentAt } from '../terrain.js';
+import { apart, footprint, FT, gap, landing, overlapAt, sizeOf, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { seenName, unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, unblocked, up } from './shared.js';
-import { aimArea, creatureType, creatures, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
+import { able, ask, BOND_MAX, castAbilOf, control, current, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, turnBudget, unblocked, up } from './shared.js';
+import { aimArea, aimObject, aimWall, areaHexes, below, feetLeft, creatureType, creatures, shellSeen, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, CORPSE, checkEnd, counterWindow, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
+import { beastWhy, castReaction, CORPSE, checkEnd, confusedOnly, KIT, counterWindow, seesFor, damage, wardCheck, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
 import { roll } from '../rng.js';
 import { weaponsFor } from '../imbue.js';
-import { incapacitatedBy, untrainedGear } from '../modifiers.js';
+import { incapacitatedBy, speedOf, untrainedGear } from '../modifiers.js';
 
 // ---------- teleportation ----------
 // SRD Rules Glossary, Teleportation: the creature disappears and reappears elsewhere without
@@ -25,6 +27,8 @@ import { incapacitatedBy, untrainedGear } from '../modifiers.js';
 // may say otherwise (`blocked`, Dimension Door). The spell says whether the destination must be seen.
 // Does `e` know `o` is there? A creature it cannot know of does not stop it choosing a space.
 const knownTo = (s, e, o) => !hiddenFrom(o, e) && !(e.side === 'party' && (o.hidden || unknown(s, o)));
+// Does `t` occupy this hex column at this height? Its footprint is in the column and its height range holds `z` (a bat 30 feet overhead is not in the space of a sphere on the ground).
+const standsIn = (t, k, z, G) => footprint(t, t.pos, G).some((f) => col(f) === k) && t.pos.z <= z + 1e-9 && z < t.pos.z + Math.max(sizeOf(t).height, FT / 2);
 // A creature-shaped stand-in at a position, for asking whether that space can be seen.
 const spotOf = (e, pos) => ({ pos, size: e.size, cond: {}, side: e.side });
 // Where a teleport step takes `e` when its caster names `hex`: checked before anything is spent.
@@ -46,9 +50,14 @@ export function teleportSpot(s, e0, step, hex, name, player = false) {
   return to;
 }
 
+// "a Humanoid", "a Beast or an Undead": the creature types a spell is limited to, in a sentence.
+const typeWords = (types) => types.map((t) => `${/^[aeiou]/.test(t) ? 'an' : 'a'} ${t[0].toUpperCase()}${t.slice(1)}`).join(' or ');
+
 // Targets of a spell that a reaction keeps from taking its damage (Shield against Magic Missile):
 // one that has the blocking spell going already, or casts it now by its instruction (or its
 // player's answer). Returns their ids.
+// A spell that makes an attack roll or deals damage: what Sanctuary guards against (a spell that only gives a condition is not "a damaging spell").
+const damaging = (def) => { let yes = false; walkSteps(def.effects, (st) => { if ('attack' in st || 'damage' in st) yes = true; }); return yes; };
 function blockSpell(s, caster, spellId, targets, ev) {
   const out = [];
   for (const t of new Set(targets)) {
@@ -75,12 +84,18 @@ function blockSpell(s, caster, spellId, targets, ev) {
 
 // Put the caster's choice where a spell's steps say "chosen".
 function chooseIn(steps, of, value) {
-  const visit = (list) => { for (const st of list) {
+  const visit = (list) => {
+    // Bestow Curse, Greater Restoration: a step for another value is no part of this cast (`ifChoice`), and one that is keeps nothing of the key.
+    if (of === 'curse' || of === 'affliction' || of === 'shape' || of === 'resize' || of === 'water') for (let i = list.length - 1; i >= 0; i--) { if (list[i].ifChoice !== undefined && !list[i].ifChoice.includes(value)) list.splice(i, 1); else { delete list[i].ifChoice; if (of === 'water') list[i].once = true; } }      // Control Water: what the choice kept is said once for the cast (effects.js `begin`)
+    for (const st of list) {
     const m = st.modifier;
-    if (m?.scope && of !== 'damageType') for (const k of ['skill', 'ability']) if (m.scope[k] === 'chosen' && k === of) m.scope[k] = value;
+    if (m?.scope && of !== 'damageType') for (const k of ['skill', 'ability']) if (m.scope[k] === 'chosen' && (k === of || (of === 'curse' && k === 'ability'))) m.scope[k] = value;
     if (m?.types && of === 'damageType') m.types = m.types.map((t) => (t === 'chosen' ? value : t));
     if ('damage' in st && st.type === 'chosen' && of === 'damageType') st.type = value;
     if (Array.isArray(st.cure) && of === 'condition') st.cure = st.cure.map((c) => (c === 'chosen' ? value : c));
+    if (st.command === 'chosen' && of === 'command') st.command = value;
+    if (st.polymorph === 'chosen' && of === 'beast') st.polymorph = value;
+    if (st.familiarity === 'chosen' && of === 'familiarity') st.familiarity = value;
     for (const b of BRANCHES) if (st[b]) visit(st[b]);
   } };
   visit(steps);
@@ -426,6 +441,57 @@ export const handlers = {
 
   // { type: 'cast', actor, spell, target? | hex?, slot? }
   cast(s, a, ctx, ev) { castSpell(s, a, ctx, ev, null); },
+  // { type: 'moveZone', actor, to: hex, effect? }: a Bonus Action to roll a zone of the actor's that can move (`zone.move`, Flaming Sphere) up to that many feet, one 5-foot step at a time toward `to`.
+  // It stops in the first space a creature stands in, and that creature takes what the zone does to a creature it rolls into (the save); the engine does not look at the barriers or pits in the way
+  // ("over barriers up to 5 feet tall and pits up to 10 feet wide": the DM judges). Nothing is spent if it is refused.
+  moveZone(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(s, e, ctx);
+    up(e) || fail(`${e.name} is down.`);
+    const fx = zonesOf(s).find((x) => x.source === e.id && x.zone.move && (a.effect === undefined || x.id === a.effect)) || fail(`${e.name} has nothing to roll.`);
+    if (fx.zone.with === 'move') return movePack(s, a, ev, e, fx);
+    const z = fx.zone, G = gridOf(s.map), to = a.to;
+    (to && Number.isInteger(to.q) && Number.isInteger(to.r)) || fail(`Pick where ${fx.name} rolls to.`);
+    const feet = G.dist(z.origin, to) * FT;
+    feet > 0 || fail(`${fx.name} is there already.`);
+    feet <= z.move || fail(`That is ${feet} ft. ${fx.name} rolls ${z.move} ft.`);
+    const ground = landing(s.map, to, z.origin.z) || fail("There's nothing there to roll on.");
+    need(s, e, 'bonus');
+    if (s.encounter) s.encounter.budget.bonus--;
+    // One step at a time, toward the space named (the neighbour nearest it, the first found on a tie): it stops at a creature.
+    const at = { q: z.origin.q, r: z.origin.r }, from = { ...z.origin };
+    let met = null;
+    while (G.dist(at, to) > 0 && !met) {
+      const step = G.range(at, 1).filter((h) => G.dist(h, at) === 1).sort((p, q) => G.dist(p, to) - G.dist(q, to))[0];
+      at.q = step.q; at.r = step.r;
+      met = living(s).find((t) => standsIn(t, col(at), z.origin.z, G)) ?? null;
+    }
+    const origin = { q: at.q, r: at.r, z: landing(s.map, at, z.origin.z)?.z ?? ground.z };
+    const hexes = areaHexes(s, e, { area: z.area, range: 1 }, origin);
+    ev.push({ type: 'zoneMoved', fx: fx.id, name: fx.name, by: e.id, from: { q: from.q, r: from.r }, to: { q: at.q, r: at.r }, ...(met ? { met: met.id } : {}) });
+    if (met) reveal(s, met, ev);
+    shiftZone(s, ev, KIT, fx, { hexes, origin }, met);
+    checkEnd(s, ev);
+  },
+  // Leave the stone (Meld into Stone): "You can use 5 feet of movement to leave the stone where you entered it, which ends the spell." In a fight that is
+  // 5 feet off the creature's movement on its turn; outside one it costs nothing. The spell ends and the creature is back where it went in (or the nearest
+  // unoccupied space, ON.meldEnd in durations.js). I made it an action of its own and not `endEffect`, which the DM and Concentration use and which has no
+  // movement to pay. { type: 'unmeld', actor }
+  unmeld(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(s, e, ctx);
+    e.melded || fail(`${e.name} is not merged with stone.`);
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    if (s.encounter && inFight(s, e.id)) {
+      current(s) === e.id || fail(`It isn't ${e.name}'s turn.`);
+      speedOf(s, e) >= FT || fail(`${e.name} has too little Speed to leave the stone.`);
+      !below(s.encounter.budget.move, FT) || fail(`Leaving the stone takes ${FT} ft of movement; ${e.name} has ${feetLeft(s, s.encounter.budget.move)} ft left.`);
+      s.encounter.budget.move -= FT;
+    }
+    const fx = effectsOf(s).find((x) => x.id === e.melded.fx);
+    if (fx) endEffect(s, ev, fx, `${e.name} left the stone`);
+    else { const m = e.melded; delete e.melded; ON.meldEnd(s, ev, e, m); }
+    checkEnd(s, ev);
+  },
   // End a lasting effect early: its caster dropping Concentration, or the DM. { type: 'endEffect', effect }
   endEffect(s, a, ctx, ev) {
     const fx = effectsOf(s).find((x) => x.id === a.effect) || fail('No such effect.');
@@ -433,9 +499,44 @@ export const handlers = {
     // To a player, an effect of a creature they do not know of, on nobody they know of, is nothing.
     if (ctx.role !== 'dm' && !own && (!src || unknown(s, src)) && !fx.parts.some((p) => s.entities[p.target] && !unknown(s, s.entities[p.target]))) fail('No such effect.');
     ctx.role === 'dm' || own || fail(`${fx.name} isn't yours to end.`);
+    // Leaving the stone costs 5 feet of movement (`unmeld`); a player may not end the spell any cheaper.
+    if (ctx.role !== 'dm' && fx.parts.some((p) => p.meld && !p.ended)) fail(`${fx.name} ends when its caster leaves the stone: use unmeld.`);
     endEffect(s, ev, fx, own || !src ? `${src?.name ?? 'its caster'} ended it` : 'the DM ended it');
   },
 };
+
+// Conjure Animals' pack ("when you move on your turn, you can also move the pack up to 30 feet to an unoccupied space you can see"; `zone.with: 'move'`). The ruling, in docs/specs/rules-expansion.md:
+// it costs no action; in a fight only on its caster's own turn, once a turn, and only after the caster has moved at least 5 feet that turn (outside a fight there are no turns: no limit but the distance);
+// the pack goes to the space named at once (it is intangible: it does not roll over what is between), which must be within the zone's distance of where it is, on the ground, with room for the whole
+// space, unoccupied by a creature the caster's side knows of, and seen by the caster. A creature the caster's side does not know of in that space is neither a refusal (which would tell the players it
+// is there) nor a silent overlap: the pack goes there, nothing goes off on that creature (it is not a creature the caster can see), and the DM alone is told. A creature newly within the area as it moves
+// is made to save as one that entered (once a turn, `seen` and `foes` as the zone says); one already within it is not made to save again by the move.
+function movePack(s, a, ev, e, fx) {
+  const z = fx.zone, G = gridOf(s.map), to = a.to;
+  (to && Number.isInteger(to.q) && Number.isInteger(to.r)) || fail(`Pick where ${fx.name} moves to.`);
+  if (s.encounter && inFight(s, e.id)) {
+    current(s) === e.id || fail(`${fx.name} moves when ${e.name} moves on its own turn.`);
+    const bud = turnBudget(s, e);
+    (bud && speedOf(s, e) * (1 + (bud.dashes | 0)) - bud.move >= FT) || fail(`${e.name} has not moved this turn: ${fx.name} moves when ${e.name} does.`);
+    !thisTurn(s, z.movedOn) || fail(`${fx.name} has moved this turn.`);
+  }
+  const feet = G.dist(z.origin, to) * FT;
+  feet > 0 || fail(`${fx.name} is there already.`);
+  feet <= z.move || fail(`That is ${feet} ft. ${fx.name} moves ${z.move} ft.`);
+  const ground = landing(s.map, to, z.origin.z) || fail("There's nothing there for the pack to stand on.");
+  const origin = { q: to.q, r: to.r, z: ground.z }, lay = spaceOf(s, z.area, origin);
+  lay.body.length === footprint({ size: z.area.space }, origin, G).length || fail(`${fx.name} needs room for its whole space there.`);
+  const me = { size: z.area.space }, there = living(s).filter((t) => overlapAt(t, t.pos, me, origin, G));
+  !there.some((t) => knownTo(s, e, t)) || fail(`${fx.name} goes to an unoccupied space: a creature stands there.`);
+  canSee(s, e, spotOf(e, origin)) !== 'no' || fail(`${e.name} can't see that space.`);
+  const before = snapshot(s), from = { q: z.origin.q, r: z.origin.r };
+  z.movedOn = turnKey(s);
+  ev.push({ type: 'zoneMoved', fx: fx.id, name: fx.name, by: e.id, from, to: { q: origin.q, r: origin.r } });
+  if (there.length) ev.push({ type: 'manual', actor: e.id, name: fx.name, partial: true, text: `${fx.name} moved into the space where ${there.map((t) => t.name).join(' and ')} stands, which the caster's side does not know of. The pack is intangible and went there so that the players learn nothing; nothing goes off on ${there.length > 1 ? 'them' : 'it'} (the caster cannot see ${there.length > 1 ? 'them' : 'it'}). The DM decides what the spirits do.` });
+  shiftZone(s, ev, KIT, fx, { hexes: lay.hexes, origin, body: lay.body });
+  entered(s, ev, KIT, before);
+  checkEnd(s, ev);
+}
 
 // The weapon a spell with an `imbue` step changes (imbue.js; docs/specs/on-hit.md, Decision 8): `a.weapon` names one of the weapons of the creature it works on
 // (the key of its attack record, such as "quarterstaff"); with none named and only one that fits, that one. Refused, before anything is spent, when none fits
@@ -463,6 +564,7 @@ function imbueFor(s, e, sp, a, targets, ctx) {
 
 function castSpell(s, a, ctx, ev, item) {
     const e = ent(s, a.actor); control(s, e, ctx);
+    confusedOnly(s, e, 'cast a spell');
     const sp = SPELLS[a.spell];
     if (item) for (const k of ['via', 'slot', 'metamagic', 'empower', 'overchannel', 'repel', 'ritual']) a[k] === undefined || fail(`"${k}" is not for a spell cast from ${item.name}.`);
     // Cast through a feature (`a.via`, a feature with `freeCast`: Divine Intervention): any spell
@@ -505,7 +607,15 @@ function castSpell(s, a, ctx, ev, item) {
     if (sp.time === 'reaction') fail(sp.def.reaction
       ? `${sp.name} is cast as a Reaction, by ${e.name}'s standing instruction for it (set it with the reactions on the sheet).`
       : `${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
-    !e.form || fail(`${e.name} can't cast spells in the form of a ${e.form.name}.`);
+    // A whole form (Polymorph): "it can't speak or cast spells"; a spell with a Verbal component is speaking, and the form's gear does not work either (so a cast from an item is no different).
+    !e.form || fail(e.form.whole ? `${e.name} can't speak or cast spells in the form of a ${e.form.name}${(item ? item.comps : sp.def.components ?? []).includes('v') ? `, and ${sp.name} has a Verbal component` : ''}.` : `${e.name} can't cast spells in the form of a ${e.form.name}.`);
+    // Merged with stone (Meld into Stone): "you can cast spells on yourself", and nothing else. One message for every other spell, whatever it is aimed at.
+    if (e.melded) {
+      const ids = a.targets !== undefined ? a.targets : a.target !== undefined ? [a.target] : [];
+      (sp && (sp.aim === 'self' || (sp.aim === 'creature' && Array.isArray(ids) && ids.length > 0 && ids.every((id) => id === e.id)))) || fail(`${e.name} is merged with the stone and can cast only spells aimed at itself.`);
+    }
+    // Stepping into stone takes a creature on its own two feet: not one that is carried, nor one that carries another.
+    if (sp?.aim === 'wall' && sp.def.effects.some((st) => 'meld' in st)) !(e.riding || e.rider) || fail(`${e.name} can't merge with stone while mounted or carrying a rider.`);
     const unfit = untrainedGear(e);
     unfit.length === 0 || fail(`${e.name} can't cast spells: ${unfit.join(' and ')} worn without training (SRD Armor Training).`);
     const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
@@ -517,7 +627,12 @@ function castSpell(s, a, ctx, ev, item) {
 
     // A choice made in casting (Guidance's skill, Resistance's damage type): `a.choice`.
     const pick = sp.def.choice;
-    if (pick) (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
+    if (pick?.of === 'ward') {
+      const list = pick.from ?? CHOICES.ward;
+      (Array.isArray(a.choice) && a.choice.length >= 1 && new Set(a.choice).size === a.choice.length && a.choice.every((x) => list.includes(x))) || fail(`Choose one or more kinds of creature for ${sp.name} (${list.join(', ')}), as a list.`);
+      (a.reverse === undefined || typeof a.reverse === 'boolean') || fail('`reverse` is true or false.');
+    } else a.reverse === undefined || fail(`${sp.name} has nothing to reverse.`);
+    if (pick && pick.of !== 'ward') (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : pick.of === 'command' ? `a command (${CHOICES.command.join(', ')})` : pick.of === 'shape' ? `a shape (${(pick.from ?? CHOICES.shape).join(', ')})` : pick.of === 'resize' ? `enlarge or reduce` : pick.of === 'beast' ? `a Beast of the SRD pack (its id, such as "wolf")` : pick.of === 'affliction' ? `an affliction to end (${(pick.from ?? CHOICES.affliction).join(', ')})` : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
     // A zone may spare creatures the caster names (Spirit Guardians): `a.spare`.
     const zoneDef = sp.def.zone;
     if (a.spare !== undefined) {
@@ -529,6 +644,8 @@ function castSpell(s, a, ctx, ev, item) {
     const casterLevel = item ? 1 : e.level;           // an item casts at the lowest caster level
     if (item?.self) [a.target, ...(a.targets ?? [])].every((id) => id === undefined || id === e.id) || fail(`${sp.name} from ${item.name} targets ${e.name} only.`);
     const mm = metamagicFor(s, e, sp, a, slot);
+    // Silence: no sound can be made inside its sphere, so a spell with a Verbal component cannot be cast from there (Subtle Spell leaves the component out).
+    if (!mm.has.subtle && (item ? item.comps : sp.def.components ?? []).includes('v') && silentAt(s, e.pos)) fail(`${e.name} cannot cast ${sp.name} here: it has a Verbal component and ${e.name} stands in a Sphere of Silence.`);
     // A touch its familiar delivers (`a.deliver`): reached from the familiar, for its Reaction (checked now, spent below).
     const toucher = deliverFor(s, e, sp, a);
     // Eldritch Spear (`spellRange: { spell, add }`): that spell's range is longer by so many feet.
@@ -537,13 +654,43 @@ function castSpell(s, a, ctx, ev, item) {
     const grown = typeof sp.range === 'number' ? rangeAt(sp.def, casterLevel) : sp.range;
     const range = typeof (mm.range ?? grown) === 'number' && spear ? (mm.range ?? grown) + spear : mm.range ?? grown;
     const most = targetCount(sp.def, casterLevel, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
-    let targets = [], hexes = null, areaOrigin = null;
+    let targets = [], hexes = null, areaOrigin = null, object = null, wall = null, spaceBody = null;
+    // Globe of Invulnerability: a spell of a level below the Globe's (its slot level less one; a spell cast with a higher slot "takes on the higher level for that casting", SRD, so the slot counts) cast from outside it cannot affect anything within it. A spell
+    // aimed at creatures may target one inside, and has no effect on it (as an invalid target: `warded`, below); the inside is left out of the area of one aimed at an area. What the caster stands in is judged by where it stands, never by who is hidden in it.
+    const globes = globesOf(s).filter((fx) => Math.max(slot, sp.level) <= fx.level - 1 && !inGlobe(s, fx, e)), globed = (x) => globes.some((fx) => inGlobe(s, fx, x));
     if (sp.aim === 'area') {
-      ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex));
+      // A wall (a placed Line) may say which way it runs: `toward`, a space on its line (absent, it runs across the line from the caster to `hex`).
+      a.toward === undefined || (sp.area.placed && a.toward && Number.isInteger(a.toward.q) && Number.isInteger(a.toward.r)) || fail(sp.area.placed ? `Name a space ${sp.name} runs toward.` : `${sp.name} is not a wall: it has no direction to choose.`);
+      ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex, a.toward));
+      if (globes.length) { targets = targets.filter((x) => !globed(x)); hexes = hexes.filter((h) => !globes.some((fx) => fx.terrain.hexes.includes(col(h)))); }
+      // A zone that rolls (Flaming Sphere) is a thing on the ground: "an unoccupied space", so not one a creature stands in.
+      // A creature the caster does not know of does not count (as in a teleport's landing): the error must not tell a player it is there.
+      if (sp.area.space) {
+        // Conjure Animals: the pack is a space of that size at the point named (its anchor), and the area is laid out from it (zones.js `spaceOf`): the whole space must be on the map, unoccupied by a creature the caster's side knows of
+        // (a hidden one in it is allowed, with no tell: the pack is intangible; the DM alone is told below), and seen by the caster ("an unoccupied space you can see").
+        const G = gridOf(s.map), lay = spaceOf(s, sp.area, areaOrigin);
+        lay.body.length === footprint({ size: sp.area.space }, areaOrigin, G).length || fail(`${sp.name} needs room for its whole space there.`);
+        if (living(s).some((t) => knownTo(s, e, t) && overlapAt(t, t.pos, { size: sp.area.space }, areaOrigin, G))) fail(`${sp.name} appears in an unoccupied space: a creature stands there.`);
+        canSee(s, e, spotOf(e, areaOrigin)) !== 'no' || fail(`${e.name} can't see that space.`);
+        hexes = lay.hexes; spaceBody = lay.body;
+      } else if (zoneDef?.move && living(s).some((t) => knownTo(s, e, t) && standsIn(t, col(a.hex), areaOrigin?.z ?? e.pos.z, gridOf(s.map)))) fail(`${sp.name} appears in an unoccupied space: a creature stands there.`);
+      // A pack or a circle goes off on nobody as it appears (it has no `atCast`): nobody is named as caught, which would only list the creatures near it.
+      if (sp.area.space || zoneDef?.ward) targets = [];
       if (sp.area.choose) targets = chosen(e, sp.name, targets, a.targets, most);
     } else if (sp.aim === 'creature') {
-      targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true }, a);
+      targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true, dead: sp.dead === true }, a);
     } else if (sp.aim === 'self') targets = [e];
+    else if (sp.aim === 'object') object = aimObject(s, e, sp.name, range, a.object, ctx);      // checked now, before anything is spent: one answer for an object that is not there and one the party does not know of
+    else if (sp.aim === 'wall' && sp.def.effects.some((st) => ('cut' in st || 'meld' in st) && (st.ifChoice === undefined || st.ifChoice.includes(a.choice)))) wall = aimWall(s, e, sp.name, range, a.wall, ctx);      // checked now, before anything is spent: one answer for a wall that is not there and one the party does not know of (a shape that cuts nothing, Stone Shape's `other`, names no wall)
+    // `target.creature.types` (Hold Person's Humanoid): a creature of another type is an invalid target. SRD 5.2.1, "Invalid Targets": "nothing
+    // happens to that target, but if you used a spell slot to cast the spell, the slot is still expended." So the cast is made and paid for as
+    // aimed, and those creatures are left out of what it does (`invalid`, below). One whose type the engine cannot tell is the DM's to judge.
+    const warded = sp.aim === 'creature' && globes.length ? new Set(targets.filter(globed)) : new Set();      // Globe of Invulnerability
+    const invalid = sp.aim === 'creature' ? [...new Set([...(sp.types ? targets.filter((t) => { const ty = creatureType(t); return ty !== null && !sp.types.includes(ty); }) : []), ...warded])] : [];
+    const untyped = sp.aim === 'creature' && sp.types ? targets.filter((t) => creatureType(t) === null && !warded.has(t)) : [];
+    // Polymorph: the Beast's Challenge Rating must not be above the target's (its level, with none). Refused before anything is spent where the caster's side may know the number: the DM casting, or a target of the party. The rating of a creature
+    // that is not of the party is not told to its players: the cast goes ahead, and the step does nothing and tells the DM alone (resolve.js `polymorph`).
+    if (sp.aim === 'creature' && sp.def.effects.some((st) => 'polymorph' in st)) for (const t of targets) { const why = ctx.role === 'dm' || t.side === 'party' ? beastWhy(t, a.choice) : null; if (why) fail(why); }
     if (mm.has.careful) for (const id of a.careful) targets.some((t) => t.id === id) || fail('Careful Spell protects creatures the spell affects.');
     if (mm.has.heightened) targets.some((t) => t.id === a.heightened) || fail('Heightened Spell picks one target of the spell.');
     // A teleport goes where `a.hex` names (Misty Step), checked now, before anything is spent.
@@ -604,6 +751,7 @@ function castSpell(s, a, ctx, ev, item) {
     // effect: the action or Bonus Action is wasted, but a spell slot is not expended (SRD), and so
     // does not count as the one slot this turn.
     // Subtle Spell: nothing to see being cast, unless a Material component with a cost or one the spell consumes is left.
+    endWards(s, ev, e.id, `${e.name} cast a spell`);                    // Sanctuary: the warded creature casts a spell
     const counteredBy = mm.has.subtle && !(sp.def.costly && !noMaterial) ? null : counterWindow(s, e, sp, ev, comps);
     if (counteredBy) {
       if (slotted) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
@@ -613,7 +761,11 @@ function castSpell(s, a, ctx, ev, item) {
     item?.done?.(e);                                    // a scroll crumbles once its spell is cast
     // Caught in the area: no longer unseen. A summon is aimed at its caster only in form (its targets are the spaces
     // it names), so it does not show a caster the DM hid: the creature appears, its caster stays unknown.
-    for (const t of targets) if (!(summoning && t === e)) reveal(s, t, ev);
+    // A zone that affects nobody as it appears (no `atCast`: Guardian of Faith) catches nobody, so it gives away nobody standing in its area.
+    const zoneDef0 = sp.def.zone;
+    // A lit sphere with no step that works on a creature (Daylight) catches nobody either: the light shows what stands in it, it does not find it (a hidden creature stays hidden).
+    const lightOnly = !!sp.def.terrain?.light && sp.def.effects.every((x) => x.manual !== undefined);
+    if (!lightOnly && (!zoneDef0 || zoneDef0.atCast)) for (const t of targets) if (!(summoning && t === e)) reveal(s, t, ev);
 
     // What it does: run its effect steps.
     const st = item ? { dc: item.dc, attack: item.attack } : spellStats(e, s, sp.id), { steps, unscaled } = scaleSteps(sp.def, casterLevel, slot);
@@ -625,28 +777,56 @@ function castSpell(s, a, ctx, ev, item) {
     // Repelling Blast: a hit with the spell's attack pushes a Large or smaller target so many feet away.
     if (repel) walkSteps(steps, (x) => { if ('attack' in x) (x.onHit ??= []).push({ move: repel, dir: 'away', largest: 'large' }); });
     if (mm.has.transmuted) walkSteps(steps, (st) => { if ('damage' in st && TRANSMUTE.includes(st.type)) st.type = a.transmute; });
-    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}), ...(via ? { via: via.name } : {}), ...(item ? { item: item.name } : {}) });
+    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(object ? { object: object.id } : {}), ...(wall ? { wall: { level: wall.level, x: wall.x, y: wall.y } } : {}), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}), ...(via ? { via: via.name } : {}), ...(item ? { item: item.name } : {}) });
     if (toucher) ev.push({ type: 'delivered', id: toucher.id, by: e.id, spell: a.spell });
     // A target may answer the spell with a reaction that keeps its damage off (Shield against Magic Missile).
     const blocked = sp.harmful && sp.aim === 'creature' ? blockSpell(s, e, a.spell, targets, ev) : [];
+    // Sanctuary: a creature that targets a warded one with an attack roll or a damaging spell saves first; on a failure the spell is lost against it. Area effects are not stopped.
+    const wardDone = sp.aim === 'creature' && damaging(sp.def);
+    const wardLost = new Set();      // a failed Sanctuary save takes the target out of the spell whole (not only its damage: `blocked` is Shield's)
+    if (wardDone) for (const t of new Set(targets)) if (wardCheck(s, e, t, ev, 'spell')) wardLost.add(t.id);
+    // Every target lost to a ward: the spell is lost whole (slot and action spent). It starts no lasting effect, so it does not end the caster's Concentration on another spell, and the DM is not told how to apply it.
+    const allLost = wardLost.size > 0 && targets.every((t) => wardLost.has(t.id));
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
     // creatures, and ending it takes them off. Concentrating on a new spell ends the old one.
     let fx = null;
-    if (sp.def.duration !== 'instant') {
+    if (sp.def.duration !== 'instant' && !allLost) {
       if (sp.def.concentration) breakConcentration(s, ev, e.id, `${e.name} began concentrating on ${sp.name}`);
-      fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: mm.duration ?? sp.def.duration });
+      // `higher.slot.hours` (Magic Circle): so many more hours for each slot level above the spell's own.
+      const lasts = sp.def.higher?.slot?.hours && slot > sp.level ? `${parseInt(sp.def.duration, 10) + sp.def.higher.slot.hours * (slot - sp.level)} hours` : sp.def.duration;
+      fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: mm.duration ?? lasts, level: Math.max(slot, sp.level) });
+      // Whom a spell aimed at creatures (or at its caster) was aimed at, less those it can do nothing to: where the engine puts no part on any of them
+      // (a spell the DM applies), this is how Dispel Magic knows the spell is on them (engine/rolls.js, dispel).
+      if (sp.aim === 'creature' || sp.aim === 'self') fx.aimed = [...new Set(targets.filter((t) => !invalid.includes(t) && !wardLost.has(t.id)).map((t) => t.id))];
       // Extended Spell: Advantage on saves to keep Concentration on it, for as long as it lasts.
       if (mm.has.extended && sp.def.concentration) fx.parts.push({ target: e.id, modifier: { on: 'concentration', op: 'advantage' } });
-      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });
-    } else fx = boundEffect(s, sp.name, e.id, steps, a.spell);
+      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: lightOnly ? [] : [...new Set(targets.map((t) => t.id))] });   // as aimed: an invalid target is named like one that made its save
+    } else if (!allLost) fx = boundEffect(s, sp.name, e.id, steps, a.spell);
     // A zone stays where it was laid out (or moves with its caster) and works on whoever comes
     // into it later (zones.js). Unless it says `atCast`, nobody is affected as it appears.
-    let hit = targets;
+    let hit = invalid.length ? targets.filter((t) => !invalid.includes(t)) : targets;
+    if (wardLost.size) hit = hit.filter((t) => !wardLost.has(t.id));
+    // What the table is shown of an invalid target (SRD, "Invalid Targets"): "If the spell normally has no effect on a target that succeeds on
+    // a saving throw, the invalid target appears to have succeeded on its saving throw, even though it didn't attempt one ... Otherwise, you
+    // perceive that the spell did nothing to the target." No die is rolled. The `invalid` mark is for the DM and the creature's own player
+    // (view.js sends a save of any other creature as its outcome alone).
+    if (invalid.length) {
+      const first = steps[0], asSave = first && 'save' in first && !first.half && !(first.onSuccess ?? []).length;
+      for (const t of new Set(invalid)) {
+        if (asSave && !warded.has(t)) ev.push({ type: 'save', id: t.id, abil: first.save, dc: first.dc ?? st.dc, success: true, invalid: true });
+        else ev.push({ type: 'note', id: t.id, text: `${sp.name} does nothing to ${t.name}.` });
+      }
+    }
+    for (const t of new Set(untyped)) ev.push({ type: 'manual', actor: e.id, name: sp.name, partial: true, text: `${sp.name} works only on ${typeWords(sp.types)}, and the engine cannot tell what kind of creature ${t.name} is. It was treated as one; if it is not, the DM undoes what the spell did to it.` });
     if (zoneDef && fx && hexes) {
       const spare = a.spare ?? [];
-      fx.zone = { area: { ...sp.area }, on: [...zoneDef.on], ...(zoneDef.once ? { once: zoneDef.once } : {}),
+      fx.zone = { area: { ...sp.area }, on: [...(zoneDef.on ?? [])], ...(zoneDef.once ? { once: zoneDef.once } : {}),
+        ...(zoneDef.seen ? { seen: true } : {}), ...(zoneDef.foes ? { foes: true } : {}), ...(zoneDef.with ? { with: zoneDef.with } : {}), ...(zoneDef.beside ? { beside: structuredClone(zoneDef.beside) } : {}), ...(spaceBody ? { body: spaceBody.map(col) } : {}),
+        ...(zoneDef.ward ? { ward: { types: [...a.choice], reverse: a.reverse === true } } : {}),
         ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) } }),
-        spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.area.types ? { types: [...sp.area.types] } : {}), ...(sp.level === 0 ? { cantrip: true } : {}), healMod }, last: {} };
+        spare, ...(zoneDef.budget ? { budget: zoneDef.budget, spent: 0 } : {}), ...(zoneDef.move ? { move: zoneDef.move } : {}),
+        // The steps it runs later: the zone's own `effects` if it has them (grown by the slot as the spell's are), else the cast's.
+        steps: structuredClone(zoneDef.effects ? scaleSteps({ ...sp.def, effects: zoneDef.effects }, casterLevel, slot).steps : steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.area.types ? { types: [...sp.area.types] } : {}), ...(sp.level === 0 ? { cantrip: true } : {}), healMod }, last: {} };
       hit = zoneDef.atCast ? targets.filter((t) => !spare.includes(t.id)) : [];
       const now = turnKey(s);
       if (now !== null) for (const t of hit) fx.zone.last[t.id] = now;     // "only once per turn": appearing counts
@@ -656,11 +836,14 @@ function castSpell(s, a, ctx, ev, item) {
     const ter = sp.def.terrain;
     if (ter && hexes) {
       if (!fx) {
-        fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: false, duration: '1 round' });
+        fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: false, duration: '1 round', level: Math.max(slot, sp.level) });
         fx.parts.push({ target: e.id, ends: { on: 'turnEnd', of: 'source' }, born: turnKey(s) });
         ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: 'until the end of its next turn', targets: [] });
       }
-      fx.terrain = { area: { ...sp.area }, hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}) };
+      // A Globe's columns include the caster's own space (the Emanation's list leaves it out); a Shell keeps none and moves with its caster.
+      const own = ter.globe ? footprint(e, e.pos, gridOf(s.map)).map(col) : [];
+      fx.terrain = { area: { ...sp.area }, hexes: ter.shell ? [] : [...new Set([...hexes.map(col), ...own])], origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}), ...(ter.silence ? { silence: true } : {}), ...(ter.light ? { light: ter.light } : {}), ...(ter.globe ? { globe: true } : {}), ...(ter.shell ? { shell: true, follows: e.id } : {}) };
+      if (ter.shell && !shellSeen(s, e)) ev.push({ type: 'manual', actor: e.id, name: sp.name, partial: true, text: `${sp.name}: the caster is hiding, so the engine does not enforce the aura (a refusal would tell the players something is there). The DM keeps creatures other than Constructs and Undead from passing into it or reaching through it.` });
     }
     const before = ev.length;
     const shared = sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps, !!evo.overchannel) : null;
@@ -673,11 +856,11 @@ function castSpell(s, a, ctx, ev, item) {
       evo.empower.done = true;
     }
     begin(s, {
-      steps, actor: e.id, targets: sp.aim === 'none' ? null : hit.map((t) => t.id),
-      src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod, ...(fx ? { fx: fx.id } : {}),
+      steps, actor: e.id, targets: sp.aim === 'none' ? null : sp.aim === 'object' || sp.aim === 'wall' ? [e.id] : hit.map((t) => t.id),
+      src: { name: sp.name, ...(object ? { object: object.id } : {}), ...(wall ? { wall } : {}), dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod, ...(fx ? { fx: fx.id } : {}),
         ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
         ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}),
-        spell: sp.id, slot: Math.max(slot, sp.level), ...(weapon ? { weapon } : {}), ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),
+        spell: sp.id, slot: Math.max(slot, sp.level), ...(wardDone ? { wardDone: true } : {}), ...(weapon ? { weapon } : {}), ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),
         ...(summoning ? { summon: { ...summoning, slot: Math.max(slot, sp.level), caster: summonCaster(s, e, sp.id) } } : {}), ...(toucher ? { via: toucher.id } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
@@ -698,8 +881,12 @@ function castSpell(s, a, ctx, ev, item) {
 
     // Whatever the engine did not do, it says, so nothing is quietly skipped.
     const note = (text) => ev.push({ type: 'manual', actor: e.id, name: sp.name, text, partial: true });
+    // A creature the caster's side does not know of in the pack's space: not refused, not found; the DM alone is told (`partial`).
+    if (spaceBody) { const G = gridOf(s.map), there = living(s).filter((t) => !knownTo(s, e, t) && overlapAt(t, t.pos, { size: sp.area.space }, areaOrigin, G)); if (there.length) note(`${sp.name} appeared in the space where ${there.map((t) => t.name).join(' and ')} stands, which the caster's side does not know of. The pack is intangible and was put there so that the players learn nothing; nothing goes off on ${there.length > 1 ? 'them' : 'it'} (the caster cannot see ${there.length > 1 ? 'them' : 'it'}).`); }
+    // Magic Circle by a caster the party does not know of: a refusal or a stop at its edge would tell the players something is there, so it holds no creature of the party (a shell's rule, `shellSeen`); the DM judges it.
+    if (zoneDef?.ward && fx?.zone && !shellSeen(s, e)) note(`${sp.name}: the caster is hiding, so the engine does not bar the party's creatures from it (a refusal would tell the players something is there). It holds creatures the DM plays; the DM keeps the party's creatures of the chosen types out (or in, if reversed).`);
     const toldAlready = ev.slice(before).some((x) => x.type === 'manual' && !x.partial);
-    if (sp.def.tier !== 'auto' && !toldAlready) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true, standing: sp.def.tier, spell: sp.id });
+    if (sp.def.tier !== 'auto' && !toldAlready && !allLost) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true, standing: sp.def.tier, spell: sp.id });
     if (unscaled) note(`Cast ${item ? `at level ${slot}` : `with a level ${slot} slot`}. The engine could not add ${unscaled}; the DM does.`);
     if (fx?.bound) settle(s, ev, fx, targets);
     else if (fx && fx.until === null) note(`${sp.name} lasts ${sp.def.duration}. The engine cannot time that; the DM ends it.`);

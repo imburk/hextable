@@ -213,8 +213,9 @@ function wyrmField(bondIt) {
   if (bondIt) ok(apply(s, { type: "bond", actor: w, to: "wizard" }, DM));
   return { s, w };
 }
-const breathe = (s, w) => {
-  ok(apply(s, { type: "startEncounter", center: s.entities[w].pos }, DM));
+// `radius`: wide enough to hold a hero when the wyrmling is still a foe (a fight with no party creature in it is refused, #771).
+const breathe = (s, w, radius) => {
+  ok(apply(s, { type: "startEncounter", center: s.entities[w].pos, ...(radius ? { radius } : {}) }, DM));
   s.encounter.turn = s.encounter.order.findIndex((o) => o.id === w);      // its turn, as the earlier tests set it
   assert.equal(current(s), w);
   return ok(apply(s, { type: "act", actor: w, action: "acid-breath", hex: { q: 4, r: -1 } }, DM));
@@ -247,7 +248,7 @@ test("a homebrew foe that the DM later bonds to a party master: what it did as a
   const ov = OV();
   using(ov, () => {
     const { s, w } = wyrmField(false);
-    const r = breathe(s, w);
+    const r = breathe(s, w, 14);
     assert.ok(r.events.some((e) => e.hb && Object.hasOwn(e.hb, w) && e.hb[w] === null), "stamped as the DM's, though it was a foe");
     if (s.encounter) ok(apply(s, { type: "endEncounter" }, DM));
     ok(apply(s, { type: "bond", actor: w, to: "wizard" }, DM));

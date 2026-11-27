@@ -476,9 +476,38 @@ export const druid = {
       "id": "wild-resurgence",
       "name": "Wild Resurgence",
       "level": 5,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Once a turn with no Wild Shape uses, spend a slot for one; once per Long Rest, spend a Wild Shape use for a level 1 slot."
+      "text": "Once on each of your turns, with no Wild Shape uses left, expend a spell slot (no action) to give yourself one use. You can also expend one use of Wild Shape (no action) to give yourself a level 1 spell slot, once per Long Rest.",
+      "uses": {
+        "max": 1,
+        "recharge": "long"
+      },
+      "grants": {
+        "swap": [
+          {
+            "id": "slot-for-shape",
+            "give": {
+              "slot": true
+            },
+            "get": {
+              "resource": "wild-shape"
+            },
+            "onlyEmpty": true,
+            "per": "turn"
+          },
+          {
+            "id": "shape-for-slot",
+            "give": {
+              "resource": "wild-shape"
+            },
+            "get": {
+              "slot": 1
+            },
+            "per": "use"
+          }
+        ]
+      }
     },
     {
       "id": "elemental-fury",

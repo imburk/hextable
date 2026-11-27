@@ -402,7 +402,7 @@ for (const grid of [null, "square"]) {
     const sent = json(A.seen);
     assert.ok(!sent.includes('\\"mage\\"') && !sent.includes("Mira"), "nothing names the hidden druid");
     assert.ok(!sent.includes('"summoned"') && !sent.includes('"bond"') && !sent.includes('"after"'), "nothing says it has a master");
-    assert.equal(A.seen.sent[0][0][0], json([{ type: "spawned", id: A.id }]));
+    assert.equal(A.seen.sent[0][0][0], json([{ id: A.id, type: "spawned" }]));
     assert.ok(A.s.entities[A.id].bond, "it is bonded, for the DM");
     assert.ok(A.dm.some((e) => e.type === "summoned" && e.by === "mage"), "the DM is told who summoned it");
     assert.ok(A.dm.some((e) => e.type === "attack" && e.actor === A.id) || A.dm.some((e) => e.type === "moved" && e.id === A.id), "the insect played its turns");

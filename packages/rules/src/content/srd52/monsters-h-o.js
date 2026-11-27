@@ -626,6 +626,7 @@ export const monsters = [
         id: "flyby",
         name: "Flyby",
         modifiers: [],
+        flyby: true,
         text: "Does not provoke an Opportunity Attack when it flies out of an enemy's reach."
       },
     ],
@@ -6105,6 +6106,7 @@ export const monsters = [
         id: "flyby",
         name: "Flyby",
         modifiers: [],
+        flyby: true,
         text: "Does not provoke an Opportunity Attack when it flies out of an enemy's reach."
       }
     ],

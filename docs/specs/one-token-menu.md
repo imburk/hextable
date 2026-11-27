@@ -187,6 +187,204 @@ opens that character's screen. Aiming folds the menu (one overlay at a time).
 open the existing pickers); no keyboard shortcuts 1 to 6; no pinned bars (M10) and no setting to open the character on my turn; Brutal Strike and Hide are hidden
 rather than greyed in a fight; the sheet is still shown under the status block (M5).
 
+### M5 build notes (sheet sections, Say, DM screens, Setup's groups)
+
+**Built.**
+- **Sheet.** `renderSheet` draws four sections at the foot of the Character screen: Abilities and skills (the facts, the six scores, saving throws, skills, defenses, attacks), Features and traits
+  (class features, pocket dimension, reactions), Spells known, Story (species, background, class, who plays it, gear; for the DM, Refresh from sheet). Each is a bar (48 px) that opens and shuts
+  its section in place; which are shut is kept on the device (`hextable.sheetShut`). The notices (a level to take, a form, a missing pack, an import) stay above the sections. The name and class
+  are the status block's; the sheet keeps the name as a heading for a screen reader only.
+- **Log and chat.** A Say box (`#say-form`, `handouts.js`) above the private note sends the engine's `say`: a player as a character of their own or "Out of character", the DM "As the DM" or as a
+  party member. The clock heads the log (`#log-clock`).
+- **DM tools.** The panel is a list of seven screens (Decision 4d's: Undo and the fight, Creatures, Map, sight and light, Table rules, Party and time, Scenes and handouts, Table file), each row
+  with a line saying what it holds. A row opens its screen as the menu's third level (`table/dm/creatures`): the heading names it, the back arrow and Left return to the list with the focus on
+  the row, and each screen keeps its own scroll. `drawer.js` reads the screens from the page (`.sec-index`, `.sec-screen[data-sec]`), so another panel can have them without new code. What waits
+  for the DM (players to let in, unsettled rewards, the fallen party's card) stays above the list. The old Fight section is split: starting, ending, auto-play and pace are on Undo and the
+  fight; the rules are on Table rules. Every id is kept.
+- **Setup.** Seven sections in Decision 4d's order: Display and controls (theme, floors, walls, caves, shadows, edge of a fight, camera buttons, keys), Dice, The menu (the token's place, slide or
+  appear, side, pin, which group a character's page opens on), Characters and packs, The table's rules, Help and about, Leave the table (Leave for anyone at a table, New game in a solo game).
+
+**Settled.**
+- **"Every DM section is reachable in three taps"** is counted from the menu's first level: Table, DM tools, the screen. With the token it is four. M8's few places (DM tools on the first level,
+  question 24) makes it three with the token; the first level is not changed here because M8 owns it.
+- **A last row, "All tools on one page"**, shows the seven screens one under the other. It is not in the spec. It is there for a DM on a wide screen who would rather scroll one page, and
+  it is what `openMenu(page, 'dm')` taps in the smoke passes, so the thirty-odd passes that click a DM control by its id did not have to learn which screen it is on. A pass about one screen
+  names it (`openMenu(page, 'dm/creatures')`).
+- **The sheet's sections start open** and are independent of each other; M10 makes them part of the one accordion. Started shut, a dozen smoke passes that read the sheet would each need a tap first.
+- **The dice and animation controls stay on the Dice screen** (`#dice-show`, `#pace-pick`, `#dice-auto-mine`): the `drawer` pass pins them there. Setup › Dice has a button that opens the Dice
+  screen and, for the DM, "Throw the monsters' dice for me". They move when D1/D5 give the Dice screen its own content.
+- **Characters and packs** in Setup is words and buttons that open the DM's screens (Creatures, Table file) or the player's character; the tools themselves are not moved.
+- A line the table refuses (too long, too fast) is not put back in the Say box, as the scene's box does; the refusal shows as a toast.
+
+### M6 build notes (the states of Decision 7)
+
+**Built.**
+- **The turn line** (`tracker.js`, `screenTurnLine`): "you in N" counts the turns that will be taken before the viewer's (`turnsAway`): a dead creature's place is none. "Waiting for a reaction…"
+  while the table waits for someone else's answer (a player's view says only `prompt.waiting`). A player whose one character is down reads "You are down · Death saves ✓ ✓ ○ ✗ ○ ○" (or
+  "· Stable"); End turn stays on their own turn. Dead adds nothing to the line.
+- **The banner** (`#turn-banner`): "Your turn, Wren" for 1.6 s when a turn of the viewer's starts, once a turn; it takes no tap, and joining a table in the middle of a turn shows none.
+  A player looking at the first level or a character's page is moved to the character whose turn it is; a closed menu stays closed (question 3's default), and Turns and every other
+  screen are left alone (a player watching the order keeps it: the `drawer` pass has a phone on Turns while turns pass).
+- **The token** (`drawer.js` `paintToken`, from `tokenState()` in `app.js`): a health arc for the selected character (the good colour; the bad one at half or less), the ring lit with a
+  glow on a turn of the viewer's and one pulse when it starts, a flat bar across the die when the character is down, grey when it is dead or the link is lost (then crossed too). Its name
+  stays "Menu" (the `drawer` pass pins it) and its description (`aria-describedby`, `#token-says`) says the rest, so it is read "Menu. Your turn. Wren, 6 of 8 Hit Points. 1 waiting for you." The health label ("Wren 3 / 8 HP") shows beside the token for 3 s after a change.
+- **Waiting for you** (`#menu-waiting`, the top of the first level, only when the badge shows): a player's unopened handouts (Open) and a level their character can take (the DM gives it);
+  the DM's players waiting to join (Let in) and unsettled rewards (Settle), and under them the to-do tray, moved here from DM tools (`#todo-mount`, `todo.js` unchanged). The badge is the
+  count of those lines and cards.
+- **Dead** (`#dead-line` in the status block): "Wren has died. Your DM decides what happens next." and Open the log.
+- **Offline** (the link judged lost, `linkquality.js`): `#offline-bar` across the top with Decision 10's two sentences, the token greyed and crossed, the character's page says "Nothing
+  you do is sent until the table is back." with its bars and rows greyed, and an action tried is answered with that sentence and not sent. "Back at the table." when it returns.
+
+**Settled.**
+- **An unseen creature's turn is counted only while it is being taken.** A player's order holds the slot `{ someone: true }` only then (`view.js`), so "you in 3" cannot count an unseen turn
+  still to come without giving the creature away. The count is right for what the player is sent, and one short when a hidden creature acts in between; the line then reads "Something
+  moves unseen". The test pins both (it plays the order out and compares).
+- **"You are down" is for a player with one character.** The DM, and a solo player with the whole party, keep the round and whose turn it is; their downed character shows on the token
+  (the flat bar) and on its row.
+- **The connection dot stays beside the token while the link is good** (T104 item 4 stands): the `link` pass pins a good dot there. The offline bar and the token carry the lost state.
+- **The DM's badge has no level-ups in it** (Decision 7's DM row lists waiting players, rewards and the tray); a player's has their own character's.
+- With the tray open, a wide screen's first column is 340 px instead of 240 so a card's tools fit.
+
+### #717 build notes (a fight action in two taps again)
+
+**The problem.** After M4 a weapon or spell at a target is: the token, the character's row, the row (its group is open on a turn), the target: about four taps, where the old dock took two.
+Only a plain attack with the default weapon is one (tap the enemy).
+
+**Ways considered.**
+
+| Way | Taps | Why not, or why |
+|---|---|---|
+| The token opens straight on the character's page on my turn | 3 | Saves one tap but breaks "a closed menu opens on its first level", and the menu still covers the map between the choice and the target |
+| The menu stays open after a row arms, the target tapped beside it | 3 | Works only on a wide screen; on a phone the sheet covers the map (and "one overlay at a time") |
+| A radial of rows round the token | 2 | A second menu, and M8's arc already takes the quick tap on the die |
+| **Quick actions on the turn line** | **2** | Picked: the turn line is already on the clean screen on my turn, beside End turn; nothing new floats over the map |
+
+**The approach (built).** On a turn of the viewer's, when the creature whose turn it is is the selected one, the turn line carries up to three **quick actions** on a row of its own above
+"Round 2 · Your turn · End turn": the row used last by this creature in this fight (if it can be used again), then the first usable row of Attack, then of Cast, then the next of each, no row
+twice. They are the same rows the Character screen offers (`groupsFor`, so only what can be used now, R29), with the same names; a tap does exactly what the row does (`run`): an attack or an
+aimed spell arms and the map takes the target, a spell with nothing to aim shows its slot and Cast on the aim bar. The armed one is marked, and a second tap puts it down. So: **the quick
+action, the target: two taps**, and a third only where the row itself asks something first (a weapon with options, a slot).
+
+**What it keeps.** The clean screen: nothing is added outside a turn of the viewer's, nothing while exploring, nothing on anyone else's turn; the token does not move; the menu is not
+opened, so nothing covers the map. Each quick action is 44 px high and at most a third of the line wide (a long name is cut with an ellipsis; its full name is its accessible name). Setup ›
+The menu › "Quick actions on the turn line on my turn" turns them off (on by default; kept on the device as `hextable.quickRows`).
+
+**What it does not do.** It offers no healing, movement or feature rows (the turn bar's segments and the groups hold those; three is what fits a phone), and it follows the selected
+creature: a DM who has selected another creature than the one whose turn it is sees none. The menu's own path is still four taps; question 29 (open the character's page on my turn) is
+M10's.
+
+### M7 build notes (health bars)
+
+**Built** (#798), Rough and Hidden; Exact is not built (it needs E-M3, not approved) and is not a choice anywhere.
+- **`barFor(e, { dm, pref, foeHealth, fight })`** (`three-build.js`) is the one decision, pure and tested (`client/test/healthbars.test.js`): `{ show, frac, notch }`. The preference (`never`, or `fight` with no fight) comes
+  first and beats everything, the DM's own device included; then the DM and the party are exact (Hit Points over maximum, a creature at 0 empty); then a foe for a player: `hidden` shows nothing, `rough` reads the word the view sends (`health`):
+  healthy full, Bloodied **half with a notch**, Down or dead empty. `hpFraction` now says 0.5 for Bloodied (it was 0.45) for the places that draw a plain bar.
+- **How the renderer hears of the rule:** `app.js` `shownState` adds `barRule` (`dm`, `pref`, `foeHealth`) to the copy of the state it gives the renderer, so the renderer interface gains no member. A change of the device preference draws the shown state again at once.
+- **Device preference** `hextable.bars` (`always` default, `fight`, `never`): Setup › Display and controls › "Health bars over creatures". **Table rule** `settings.foeHealth` (`rough` default, absent means rough, no migration; `hidden`): DM tools › Sight and light › "Foes' health bars, for players", and a line in Setup's table rules for everyone. Rules: `SETTINGS` (`engine/dm.js`) and `foeHealth: 'sent'` (`view-fields.js`).
+- **The notch** is a white line down the middle of the bar (`.bar.notch`); a foe's bar stays red, a party bar green.
+- **Hidden and the tracker:** `tracker.js` keeps every foe's row (name, turn) and draws no bar, no word and no greying for Down; under Rough its bar takes `barFor`'s notch. The selected-creature card (`actionpanel.js`) hides its Hit Points line for a foe under Hidden (W50 lists what is left).
+- Looked at by hand at 390x844 (touch) and 1280x800 as a player and as the DM, for each rule and preference; the smoke pass `healthbars` checks the numbers.
+
+### M8 build notes (the arc, the strip, the symbols, the names)
+
+**Built.**
+- **The symbols** (`client/symbols.js`): the whole set of Decision 4c as inline SVG strings on the 24-unit grid, drawn in `currentColor` with no fill (a dot is a short stroke with a round end,
+  so it takes the stroke's colour too), each with a spoken name (`SYMBOL_NAMES`). `PLACE_SYMBOLS` and `placeSymbol` say which a place wears; Turns wears the campfire while nobody fights.
+  A character wears its own sigil (a letter on its colour inside its health ring).
+- **The arc** (`client/menuarc.js` for the sums, `drawer.js` for the page): a tap on the die fans the places out round it, 52 px round buttons on the rings of Decision 4c's table (a phone
+  at bottom centre 7 + 8, a corner 4 + 6, a wide screen 8 + 11 or 4 + 6); with more places than slots the last slot is More, a list of every place with its name and a line about it. The
+  symbols grow out of the die in 0.5 s with a 25 ms stagger; none under Just appear or reduced motion. The words are in each button from the start; on the screen they come up after 3 s
+  (the same timer as the scroll card's) and stay until the arc folds. The die, the dimmed map and Escape fold it; M folds it too. Arrow keys move round it in order, Home and End go to its
+  ends, Enter opens, and the focus starts on the first symbol. Waiting for you (with the DM's to-do tray) and, once on a device, the note about the health ring sit above the arc.
+- **The strip** (`#menu-strip`): the same places in the same order across the top of every screen, 48 px buttons with 44 px symbols; the current one has a rim and an underline and
+  `aria-current="page"`. It scrolls sideways by itself (never `scrollIntoView`, R20) and shows ‹ or › (32 x 48 px) only at an end with more that way; a tap moves it by about three symbols.
+  The strip's buttons are the old first level's rows with their ids (`#tab-turns`, `#tab-settings`, `#party .pr`), so nothing that held one had to change.
+- **The places** are round 4's few: one for each character this person plays (in the party's order, or the turn order in a fight; a symbol keeps its place when another character is
+  selected), Turns (Party while nobody fights), Dice, Log and chat, Setup, and DM tools for the DM. The list "Table" is gone: Setup and DM tools are places, Help and feedback, About and
+  leaving are in Setup (Help and about; Leave the table), where M5 had already put them.
+- **Names.** A screen's heading is its own name (a character's page is the character's name; Turns is Party while nobody fights; no screen is headed "Menu"). A screen inside a screen
+  has a way back that names where it goes ("‹ DM tools" over "Creatures"); the breadcrumb is gone, since there is no first-level list to go back to.
+- **Closing.** A phone's sheet has no ×: the handle closes it (a tap or a drag down), as do the die, the map and Escape. A wide screen's column keeps its × beside Pin.
+- **Setup › The menu › Labels under the symbols**: After 3 seconds / Always (`hextable.menuLabels`). Under Always the strip shows the words too.
+- **Motion** (R20): only the sheet (or the column) and the arc move. Changing place from the strip swaps the screen where it is.
+
+**Settled, and where this differs from the text above.**
+- **Dice is a place; Roll dice is not yet.** Round 4's places name Roll dice, which needs `freeRoll` (E-M2, D5: not in this job). The Dice screen (the last rolls, the dice and animation
+  controls) keeps its place and wears the d20; the two-dice symbol is drawn and waits for D5.
+- **Handouts is still a place for a player when there are any** (with its badge). Round 4 makes it a section of Log and chat; that is M10's accordion.
+- **About is a place only before a table** (the lobby's About link opens it, with Setup beside it on the strip). At a table it is a button of Setup › Help and about.
+- **The slots.** The build plan's "14 slots at bottom centre, 15 at bottom left" is older than Decision 4c's table; the table is what is built and tested: 15 at bottom centre (14 places
+  and More when there are more), 10 in a corner. A second ring's symbols take its middle slots first, so they clear the first ring's.
+- **A phone narrower than 390 px** pulls a centred fan's rings in so no symbol leaves the screen (not in the spec; 320 px is tested).
+- **A phone on its side** has the die in the bottom left corner (M3), so its arc is the corner's quarter circles.
+- **Group names** (question 19) show nowhere yet: the arc has no words for them, and Arrange (M9) and Help are where they would be. Set A is the default when they are.
+- **The banner's move to the character whose turn it is** (M6) now applies to a player looking at a character's page; the arc is left alone.
+- **Leaving says what it does before the first tap**: the note that came up on the first tap of the Table list's "Leave table" row is the standing line of Setup › Leave the table.
+
+### M10 build notes (one accordion, and the ways the menu closes)
+
+**Built.**
+- **One accordion** (`client/accordion.js`; `drawer.js` for Setup, Log and chat and DM tools; `actionpanel.js` for a character's page). A page with sections is marked `data-acc` in
+  `index.html`; the bars are made from the page as written (a section's heading, or a row of DM tools' list), every id kept. One section is open at a time. With none open the bars are
+  a list, each with a line about it (52 px). With one open the page is **pinned**: it fills the screen, the bars before the open section stay at the top and those after it at the
+  bottom (44 px, the title only), and only the open section scrolls (never under 120 px: on a screen too short for that the page scrolls instead of squeezing it). A section is part
+  of the place's path (`settings/menu`, `dm/rules`, `log/talk`), a page remembers which was open while the table is open, and each section keeps its own scroll. The page keeps its
+  own name as the heading. Up and Down move between the bars, Right or Enter opens one, Left or Backspace shuts it with the focus on its bar; each bar is a button with
+  `aria-expanded` and `aria-controls`, and the open content is a region labelled by it.
+- **Setup**: the seven sections of Decision 4d. **DM tools**: the seven screens of M5 are the seven sections; the last row, "All tools on one page", is still there under the bars
+  while none is open (M5 settled it; it is the one screen under a page, with a way back). **Log and chat**: Handouts (a player's, when there are any), Log, Talk (the Say box and the
+  private note); it opens on Log. **Handouts is no place any more** (round 4, question 27): its badge is on the Log symbol, `open('handouts')` opens that section, and the Waiting
+  card still opens a new handout itself.
+- **A character's page**: the status block, then one accordion of the action groups and, last, **Sheet** (`#sheet-body` is moved into it; its four parts have small headings and no
+  longer fold by themselves, R21). With a section open the status block is **compact** (the name, Hit Points and Armor Class on one line, then the turn bar on one line that scrolls
+  sideways), and the other bars stay on the screen above and below the open one. A creature with nothing to do here (someone else's, a foe looked at) opens on its sheet.
+- **Closing** (`scripts/smoke/menuclose.mjs`, in the smoke matrix): sixteen states (the arc, More, every screen, pages with a section open, with none, all on one page) at 390 x 844
+  with touch and at 1280 x 800, each closed by a real tap on the die, a tap on the dimmed map, Escape and M; a phone's sheet also by a tap on the handle and a drag down (a short
+  drag springs back), a column by the × beside Pin; a closing tap changes nothing on the map; with the slide on the die never moves; the arc fans out, folds, and no symbol
+  moves away from where it ends up (R20).
+
+**Settled, and where this differs from the text above.**
+- **The character's page keeps M4's groups as its bars; they are not merged into six sections.** M4 settled ten groups in a fixed order and two smoke passes pin them. Ten bars and
+  the sheet do not fit a phone one under the other, so while a section is open **the closed bars are titles side by side, up to three in a row** (`gridPlan`: as few rows as hold
+  them, as even as they go; each at least 44 px high). On a 390 x 844 phone the open section then keeps about 290 px exploring and never less than 120 px in a fight with every
+  group shown. Decision 4d's six (Attack and cast, Move and defend, ...) would be a change to `groupsFor` and to those passes; the owner may still want it (question 28).
+- **Which section a page opens on.** Log and chat on Log; Setup and DM tools on none the first time, then on the one that was open (kept in memory, not on the device). A
+  character's page as M4 had it: the likely group on a turn, the group opened last otherwise.
+- **"The tapped bar stays where it was under the finger" holds only as far as pinning allows**: a bar that opens moves up under the bars before it, which is where the spec's own
+  layout puts it. The focus stays on it.
+- **Leaving** keeps M5's confirm (a second tap on the same button, with the words of what it does standing above it), not the two buttons Stay / Leave the table.
+- **`openMenu(page, 'sheet')` in the smoke passes means the page with its Sheet section open**; `panelTab` opens a group, `openChar` touches no section. A pass that uses a control
+  of Setup names its section (`settings/menu`).
+
+**Left.** The Dice screen has one section until D5 gives it Roll dice and Last rolls, so it is not an accordion and has no row to Setup › Dice; no shortcut 1 to 9 for a
+character's sections; the open pane of a character's page does not keep its scroll when the menu is closed and opened again (Setup's, Log's and DM tools' sections do).
+
+### M9 build notes (Arrange)
+
+**Built.**
+- **Arrange the symbols** (`client/menuorder.js` for the sums, `drawer.js` for the screen): a screen under Setup (the heading is its own name, the way back says "‹ Setup" and
+  returns to The menu with the focus on the way in). Ways in: Setup › The menu › Arrange the symbols, and **holding a symbol of the arc for half a second** (the symbol lifts
+  when the hold is made, and Arrange opens when it is let go; a quick tap still opens the place).
+- **A row for each place**: a six-dot handle (44 px) to drag it up or down within its group, ▲ and ▼ (disabled at an end of the group), and an eye that hides it from the arc and
+  the strip. A hidden place keeps its row, dimmed, with the eye crossed: that is where it comes back. What a step or a drag did is said once for a screen reader, and the
+  focus stays on the control used. **Reset order** puts the order back and shows everything.
+- **The two groups** carry question 19's names, set A: **Play** (your characters, Turns, Dice, Log and chat) and **This game** (Setup, DM tools).
+- **Kept on the device**: `hextable.menuOrder` (the places in order) and `hextable.menuHidden`. A stored order is made whole when read (unknown names dropped, a place it does
+  not know put where the default has it, the groups kept apart), so an old or broken one cannot lose a place.
+- The order is applied to the arc, the strip (by CSS `order`: the buttons are not moved, so their ids and the keys along the strip follow it) and More.
+
+**Settled, and where this differs from the text above.**
+- **Two kinds of place cannot be hidden, not four**: your character(s) and Setup (round 4). The build plan's "Setup, Help, Leave and the character" is older: Help and
+  leaving are sections of Setup now. Their rows have no eye and say why.
+- **The characters are one row.** They move as one and keep the order they have among themselves (the party's order, or the turn order in a fight, as M8 settled).
+- **DM tools, hidden, leaves the arc and stays on the strip** (question 23's default).
+- **A hidden place can still be opened** by what leads to it (the turn line opens Turns, the Waiting card opens a handout); it only has no symbol.
+- **The arc does not show the groups by ring** (Play inside, This game outside): its rings are filled in order, as M8 built them. The group names show in Arrange only.
+- The hold opens Arrange **on release**, not at half a second with the finger still down: opening under a finger that is still pressing would give the lift's tap to
+  whatever came up under it.
+
+**Left.** No drag between rows by the keyboard beyond ▲ ▼ (they are the keyboard's way); a drag has no animation of the rows making room; Help does not explain the symbols yet.
+
 ### Every control today, and where it goes
 
 "Today" is `packages/client/index.html` and the modules that fill it. "Goes to" uses the
@@ -1534,3 +1732,185 @@ Added in round 6:
     Setup › Dice › Fidget die always win.*
 31. **Tapping someone else on Turns on a wide screen: keep the menu open?** *Default: yes on
     a wide screen (the map is visible beside it); on a phone the menu clears.*
+
+## Amendment: the d20 confirms (#750)
+
+Owner's answers in #750 (24 November 2026, final). This section amends the parts named in
+point 4. Where it and the rest of the spec differ, this section wins. The build is a
+separate pull request and follows this section.
+
+1. **The d20 is the confirm button.**
+   - While an action waits for confirmation, the die's ring pulses slowly.
+   - With reduced motion the ring is steady instead.
+   - A tap on the die confirms. On a computer, Enter confirms.
+   - The aim bar's Go button goes away, because the die does its job.
+   - Desktop and phone work the same way.
+   - The waiting ring must look different from the turn ring and the health arc (Decision 1).
+     It also has a word: the spoken name says what waits, for example "Confirm Fire Bolt".
+   - Nothing is sent before the confirm. A confirm sends the action through `apply()`, as the
+     same action is sent today.
+
+2. **Targeting.**
+   - Pick a spell that needs a target. Tap each target on the map.
+   - Double-tap a chosen target to de-select it. Then tap the die.
+   - A note at the top of the screen counts the choice: "2 of 4 targets". It is not at the
+     bottom.
+   - With fewer targets chosen than the most the spell or attack allows, the die confirms with
+     what is chosen.
+   - With none chosen, the die does nothing. The note says so: "No target yet: tap one, then
+     the die."
+   - The choices are a draft on the device until the die is tapped. A refused confirm changes
+     nothing, and the choices stay on the screen with the reason.
+
+3. **The small prompt and confirm popup by the die goes away.** Its choices appear on the
+   character's sheet. An option that can be used now is highlighted. An option that cannot be
+   used is greyed out, and its reason is said in words (Decision 7's "greyed things say why").
+
+4. **What this replaces.**
+   - Decision 1, "What a quick tap does": while an action waits for confirmation, a tap on
+     the die confirms. It does not fan out the arc. At other times the arc works as written.
+   - Decision 2, row 3 (the aim bar): the die is no longer hidden behind the aim bar while an
+     action waits. The aim bar keeps its text and Cancel only.
+   - Decision 3, "Closing, always": in the waiting state a tap on the die confirms and does not
+     close the menu. A tap on the map and Escape still close it. The closing test (M10) must
+     allow for this state.
+   - Decision 7, the "Aiming" row: the words "Cancel, Cast" become the note and the die. There
+     is no Cast button.
+   - Decision 11, keys: Enter on the die confirms when an action waits, as it throws a die
+     in the throw zone today.
+   - "Every control today", the "Hint and aim bar" row: `#hint-go` goes. The other controls in
+     that row stay.
+   - Decision 3, "Choosing a row that arms an action closes the menu": unchanged, unless point 5(b)
+     settles otherwise.
+
+5. **Open points for the build to settle.**
+   - (a) Where the choices sit on the sheet on a phone. The sheet is one accordion (Decision
+     4d). The choices could be a section at the top of the page, or the section that holds the
+     armed row could open. Check it at 390 x 844 with the status block compact.
+   - (b) Whether arming still folds the menu. If the choices are on the sheet, the sheet has
+     to be open for the player to use them, and Decision 3 would have to change.
+   - (c) Double-tap against the map's own gestures. A double-tap is two taps close together in
+     the same place, so the build sets the time window and the distance. A drag, or a pinch
+     with two fingers, is never a tap. A drag that starts on a target still pans the map.
+   - (d) A double-tap on a target that is not chosen. The build says what it does; the simplest
+     rule is that it chooses the target once.
+   - (e) Order at the top of the screen. The offline bar (Decision 1) and the "Your turn"
+     banner (Decision 5) also sit at the top, next to the note.
+   - (f) Turn ring and waiting ring together. On my turn both can be lit. They differ by a
+     shape or a word, not by colour alone.
+   - (g) The engine. The build checks whether the engine accepts fewer targets than the most a
+     spell allows. This section does not assume it does. If it does not, the change is an engine
+     amendment and goes back to the owner.
+   - (h) Computers. A double-click on a target de-selects it. The build checks that this does
+     not clash with Shift+click for dice (Decision 8b).
+   - (i) Keyboard. How targets are picked with the keys is not settled here.
+   - (j) Throws. Whether an attack waiting to be thrown under the `throw` rule (Decision 9) also
+     uses the die as its confirm. This section leaves the throw zone as it is.
+   - (k) A hold on the die during a confirm. Whether it still pops up the fidget die
+     (Decision 1) is not settled here.
+
+### Build notes: the d20 confirms, part 1 (#750)
+
+Points 1 and 2 of the amendment are built (`confirm.js`, `app.js` `confirmDie`, `drawer.js`). Point 3 (the
+choices on the sheet) is a separate pull request.
+
+- **What waits.** `app.js` `refresh()` sets `waitFor` when the aim bar holds something to send: an area
+  that is aimed, a spell with a slot or weapon to choose, a spell with several targets (even with none
+  chosen yet), a flyer's marked place. The movement an Opportunity Attack gave (Move up to, Give it up)
+  is not a confirm of an armed action and keeps `#hint-go`; it is the only use left of that button.
+- **The ring.** A dashed circle outside the disc (`.tk-wait`), pulsing 2.6 s from 40 % to full
+  opacity and 100 % to 110 % size. The turn ring is solid and glows; the health arc is inside; so the
+  waiting ring differs by shape, not by colour. With reduced motion, or Just appear, it is the same
+  dashed ring, steady. Both rings can be lit on my turn. The die's name is `Confirm <what>`;
+  its description says `Tap to confirm`, or the no-target sentence.
+- **The die, Enter.** A tap on the die confirms and does not open the menu; Enter confirms when no
+  control or dialog has the focus and no dice tray is open (a flyer's column keeps its own Enter).
+  A second tap on an aimed spot confirms too, as before.
+- **A refused confirm.** The aim stays up until the table answers: an update ends it, an error
+  leaves the choices and says the reason in the note after the count (and in the toast). A confirm
+  waits at most 8 s for its answer. Choosing none: the die only redraws; the note already says so.
+- **Spells aimed at creatures** (decided by the coordinator from Isaac's words "tap the target, then tap the die"):
+  every such spell waits for the die, one-target spells included. A tap chooses the target, which is shown as
+  chosen with the note "1 of 1 target"; tapping another target swaps the choice; the die casts. With several
+  targets (`targetCount` above 1, also from an item) each tap adds one, a double-tap takes one off, and
+  reaching the most no longer casts. Fewer than the most goes through: the engine already accepted that from the
+  Cast button (point g needs no engine change). A one-target cast sends `target`, as the tap did.
+- **Weapon attacks and other non-spell actions** (attack, feature, act) still act on the tap, as today.
+  **Open for Isaac:** whether they too should wait for the die.
+- **Darts** (`repeat` spells: Magic Missile, Scorching Ray, Eldritch Blast) stay a dart per tap, so a dart cannot
+  be taken back except by Cancel. **Open for Isaac:** whether darts should work like the other several-target
+  spells (a double-tap takes one off) at the cost of a pause between two darts at one creature.
+- **Open point 5(c), settled.** A double-tap is two taps on the same creature at most **350 ms** apart and at
+  most **24 px** apart on the map (`confirm.js` `isPair`). The renderer's own rule is untouched: a
+  tap needs under 8 px of movement and a single finger, so a drag (even one that starts on a target, which
+  still pans the map) and a pinch are never half of a pair. The pair's first tap is an ordinary tap:
+  on a target that was already chosen it changes nothing, the second takes it off. A third tap starts a new pair.
+- **Open point 5(d), settled.** A double-tap on a target that is not chosen chooses it once: the first tap
+  chooses it, the second does nothing more.
+- **Darts are the exception to the double-tap.** A spell whose targets repeat (`repeat`: Magic Missile,
+  Scorching Ray, Eldritch Blast) is tapped fast at one creature, a dart a tap, so a quick second tap there is
+  another dart and never a pair (see Darts above). Its count is still "2 of 3 targets"; the die confirms it (DEBT T106).
+- **Open point 5(e).** The note is the last line of the aim bar (which is at the top of the screen
+  today), so it sits with the aim bar, under the offline bar's place and the banner's.
+- **Open point 5(h).** On a computer the double-click is the same two taps. Shift is only read by the
+  map as a camera turn with a drag and by the dice, never by a tap on a target, so there is no clash.
+- Not built here: 5(a) and 5(b) (part 3), 5(i), 5(j) (the throw zone is as it was), 5(k).
+
+### Build notes: the d20 confirms, part 2 (#750)
+
+Point 3 of the amendment is built (`app.js` `choicesFor`, `actionpanel.js` `#ap-choices`, `confirm.js` `slotOptions`, `pickOptions`, `weaponOptions`). The two small
+menus of the aim bar (`#hint-pick`, `#hint-slot`) are gone from the page and from its CSS.
+
+- **Every kind of choice the popup showed, and where each is now.** (1) The slot level of a spell that a higher slot improves (Magic Missile, Bless, Cure Wounds):
+  one option for each level the caster has slots at, from the spell's own level up. (2) The weapon a spell changes (Shillelagh, Magic Weapon): the caster's weapons, or
+  the weapons of the creature tapped (they appear once it is tapped). (3) A plain choice of the spell (Guidance's skill, Resistance's damage type, a Protection
+  from Energy type, an ability). Nothing else was in the popup. Not part of this: the choosers of `classes.js` (Divine Smite, Metamagic, Wild Shape and the like) are
+  their own cards with their own buttons, not the die's popup; a flyer's column of heights and its place list (`#hint-fly`, `#hint-step`) choose a place for the
+  move, and stay in the aim bar.
+- **What an option looks like.** A block at the top of the open section: "<Spell> waits for the die. Choose, then tap it.", then each choice as a radio group. An option
+  that can be used has a heavy accent border (highlighted). The one the die will confirm with is also filled and has a tick in front of its name (so it is not colour alone).
+  An option that cannot be used is dashed, dim, and says why in words under its name: "No level 1 spell slot left." for a level with no slot, "<Weapon> cannot be used: not a
+  Melee weapon." (the engine's own reason from `weaponsFor`) for a weapon. A tap on a greyed option shows the reason as a toast and changes nothing. A choice
+  with only one usable option is not offered (as before: nothing to choose). Options are at least 44 px high. The block shows the choices of the armed action only; the
+  engine still checks them on the confirm.
+- **Open point 5(a), settled.** The section that holds the armed row opens, with the choices at its top (the section already open, if it holds the row; else the first
+  that does). If the player then opens another section the choices go to the top of that one; closing every section does not hide them (the armed row's section opens again).
+  At 390 x 844 with the status block compact the block is about 105 px high for one choice (Magic Missile, three levels), so the open section's room (Decision 4d, 147 px)
+  holds it and scrolls for the rows below it; the armed row is the one the block describes and is usually just under it. Checked by `dieconfirm`, `upcast`, `imbue`.
+- **Open point 5(b), settled.** Arming still folds the menu, unless the action has choices to make: then the sheet stays open (if it was closed, because the action was
+  armed from the quick actions or a tapped creature gave its weapons, it opens on the sheet 350 ms after the choices appear: sooner, the browser's own click after a tap on
+  the map lands on the new menu's dimmed map and closes it). The die still confirms and does not close it. For an action that aims at the map the first tap on the map
+  closes the sheet, as Decision 3 and amendment point 4 say (on a computer with the column beside the map a tap on the map plays normally: the column is not a
+  modal); the choice made stays. To change it later: Cancel and arm again, or M (computer) to open the menu again. A spell whose levels cannot differ
+  (one slot level, or no level adds anything) has no choices and folds the menu as before.
+- **Existing passes changed.** `upcast` and `imbue` read the options in `#ap-choices` instead of the two selects and close the sheet before they tap the map; `dieconfirm`
+  closes the sheet after arming Bless (a cleric with two slot levels now has a level to choose) and has a new step for the highlighted and greyed levels.
+- Not built here: 5(i), 5(j), 5(k) (as in part 1). Open for Isaac: whether a tap on the map while an action waits on its choices should keep the sheet and pass the tap through
+  on a phone (today it closes it first, one tap more).
+
+### Build notes: M2 (one overlay at a time, #785)
+
+Client only. `drawer.js` (`fold`, `folded`, the rule in `toggle`, `open` and `sync`), `app.js` (an observer on the body for the cards), the smoke passes `reactions`, `rewards`, `defeat` and the helper `openArc`.
+
+**Every overlay, and what happened when two met (before this stage).**
+
+| Overlay | Where | Before | Now |
+|---|---|---|---|
+| Reaction question (`#rp`, z 15; the DM's `pending` too) | `reactionprompt.js` | The menu was *hidden* while it waited (`held` in `drawer.js`) but stayed open underneath, and **came back by itself** when the question was answered | The menu folds when the question arrives (its place is kept) and stays folded; `open()` is refused while a question waits |
+| Rewards card (`#cc`, z 3) | `conclusion.js` | Under the menu (z 3 against the menu's 5): an open menu hid it, and nothing folded | Folds the menu as it appears; the DM's chip, "Settle" and the tools' button all go through the same rule |
+| Defeat card (`#df`, z 3) | `defeat.js` | As the rewards card | As the rewards card |
+| Conclusion's waiting line (`#cc-wait`), the "table is waiting" bar (`#rp-wait`) | | Lines, not cards: the menu is left as it is | Unchanged: they take no tap |
+| Aim bar (`#hint`) | `app.js` `refresh` | Arming folds the menu (`foldMenu` in `setMode`), unless the action has choices to make (#750 part 2). The die stays visible and confirms (#750 part 1) | Unchanged: it is the amendment's rule |
+| Throw zone (`#dice-tray`) | `dice.js` | `body:has(#dice-tray) #btn-menu` hides the token; arming folds the menu | Unchanged |
+| Toast, turn line, banners | | Never take a tap | Unchanged |
+| The menu, and the fidget die (a hold on the die) | `drawer.js` | The fidget die is not built yet (D6); the menu is the rank-4 overlay | The menu is the one that yields |
+
+**What is built.**
+- **A prompt folds the menu and it stays folded.** `drawer.sync` sees a question (`prompt` or `pending`) arrive and calls `fold()`: the menu closes (no focus move), and its place (`path`, with the open section; each section already keeps its scroll) is remembered in `folded`. Answering the question does not reopen it.
+- **A card folds it the same way**, once, as it appears. The cards show and hide themselves from several places (a sync, a chip, a button of the DM's tools), so `app.js` watches the body's `df-open` and `cc-open` classes and folds on the way up.
+- **One tap on the die returns to the same screen.** From a fold, the next `toggle()` opens `folded` and not the arc. Anything else that opens the menu (a symbol, a key, code) forgets it first; so does closing the menu by hand and `reset()`. Escape, a tap on the map and a tap on the die still close the menu as before.
+- **A pinned column is folded too** (Decision 2 puts no exception: a question or a card is above the menu).
+- **Left as it was, on purpose.** (1) A person may open the menu on purpose while a *card* is up (the defeat smoke step "the menu open, closed or pinned" asks for exactly that): the card yields only when it arrives. (2) The sheet that opens by itself for an armed action's choices (#750 part 2, after 350 ms) and the menu that opens for a player with no character (#756, `renderPick`) are not "reopening by itself" after a fold; the second is refused while a question waits.
+- **Smoke.** `reactions`: Shield on "ask", the menu open on the sheet, the question folds it, "Do not react", the screen is clean (nothing reopens in 700 ms), one tap on the die shows the sheet again. `rewards` (a phone) and `defeat` (both sizes): the menu open on Log, the card folds it, the card goes, the screen stays clean, one tap on the die returns to Log. `openArc` in `lib.mjs` forgets a folded place first, so the passes that want the arc still get it.
+
+**Not built here.** A card shown again while the menu is open on purpose (the chip is hidden while the menu is modal, so only the DM's tools button can do it: it folds the menu, as it did in `foldMenu` for the Waiting card). The fidget die (D6).

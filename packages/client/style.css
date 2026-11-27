@@ -41,9 +41,13 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 .label .marks b { font: 700 10px/1 var(--body); padding: 2px 5px; border-radius: 8px; border: 1px solid #0007; text-shadow: none; color: #1d2622; background: #e9c46a; }
 .label .marks b.dodging { background: #8fd0e8; } .label .marks b.dying { background: #e0685a; color: #fff; animation: pulse 1s ease-in-out infinite alternate; }
 @keyframes pulse { to { opacity: .6; } } @media (prefers-reduced-motion: reduce) { .label .marks b.dying { animation: none; } }
-.label .bar { width: 44px; } .label.dead { opacity: .35; } .label.dead .bar { display: none; }
+.label .bar { width: 44px; position: relative; }
+.bar.notch::after { content: ''; position: absolute; left: calc(50% - 1px); top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 1px #000a; } .label.dead { opacity: .35; } .label.dead .bar { display: none; }
 .label.down span::after { content: ' (down)'; font-weight: 400; }
 .bar { height: 6px; background: #0008; border-radius: 3px; overflow: hidden; border: 1px solid #0006; }
+.label .breath { width: 44px; height: 5px; background: #0008; border-radius: 3px; overflow: hidden; border: 1px solid #0006; } .label .breath[hidden] { display: none; }
+.label .breath i { display: block; height: 100%; background: #8fd0e8; transition: width .3s; } .label .breath.warn i { background: var(--bad); }
+#c-breath { margin: 4px 0 0; font-size: 13px; font-weight: 700; } #c-breath.warn { color: var(--bad); } #c-breath[hidden] { display: none; }
 .bar i { display: block; height: 100%; background: var(--good); transition: width .3s; }
 .label[data-side="foe"] .bar i { background: var(--bad); }
 .floater { position: absolute; left: 0; top: 0; font: 700 20px var(--display); color: #fff; text-shadow: 0 2px 0 #000, 0 0 6px #000; white-space: nowrap; }
@@ -56,6 +60,23 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 
 #cam { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); display: grid; gap: 6px; }
 #cam button { width: 40px; padding: 0; background: var(--panel); font-size: 18px; }
+/* A flyer's way to the column of heights (docs/specs/fly-swim-control.md): shown only for a creature with a Fly Speed. */
+#cam-fly { position: fixed; right: calc(12px + var(--inset-r, 0px)); top: calc(50% - 152px); min-height: 44px; min-width: 44px; padding: 0 10px; background: var(--panel); border-color: var(--accent); font-weight: 700; }
+body.editing #cam-fly, body.in-scene #cam-fly { display: none; }
+@media (max-width: 480px) { #cam-fly { top: calc(38% - 152px); } } #cam-fly[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); } #cam-fly.off { opacity: .55; }
+/* The stepper of a flyer's height in the aim bar (fly-swim-control.md, "Picking a block"): 48 px, the sure way on a phone; and the list of places for those who do not use the picture. */
+#hint-step { display: inline-flex; align-items: center; gap: 4px; } #hint-step[hidden] { display: none; }
+#hint #hint-step button { width: 48px; min-height: 48px; padding: 0; font-size: 18px; } #hint-step button:disabled { opacity: .4; }
+#hint-ft { min-width: 5ch; text-align: center; font-variant-numeric: tabular-nums; }
+#hint #hint-fly { max-width: min(40vw, 16em); min-height: 44px; }
+/* The height under a finger that drags along the column, lifted clear of the finger. */
+#fly-tip { position: fixed; z-index: 4; left: 0; top: 0; pointer-events: none; padding: 6px 12px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700; box-shadow: 0 4px 14px #0007; transform: translate(-50%, -100%); }
+/* The height tag of a creature off the ground: small to read, a thumb to tap (the area round it is its own). */
+.label .alt { pointer-events: auto; position: relative; min-height: 0; padding: 1px 7px; border-radius: 9px; border: 1px solid #0007; background: #1d2622d9; color: #fff; font: 700 11px/1.3 var(--body); text-shadow: none; cursor: pointer; }
+.label .alt::after { content: ''; position: absolute; inset: -12px -10px; }
+.label .alt[hidden] { display: none; }
+.label.col-label { font-size: 11px; font-weight: 700; opacity: .85; padding: 1px 5px; border-radius: 8px; background: #0006; text-shadow: none; }
+.label.col-label.picked { opacity: 1; font-size: 13px; background: var(--accent); color: var(--accent-ink); }
 
 /* the dock is gone (M4): `--dock-h` is the strip the token owns at the bottom of the screen; the turn line, the dice tray and the join bar sit above it */
 :root { --dock-h: calc(max(16px, env(safe-area-inset-bottom)) + 64px + 12px); }
@@ -95,6 +116,17 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 .facts { display: flex; gap: 6px; flex-wrap: wrap; } .facts span { border: 1px solid var(--line); border-radius: 20px; padding: 2px 10px; font-size: 13px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); } th { color: var(--muted); font-weight: 400; font-size: 12px; }
 #dm-table .req { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; }
+/* An offered character (#757): a column, the phone as well as the wide screen. */
+#dm-table .req.offer { flex-direction: column; align-items: stretch; border-top: 1px solid var(--line, #3a3a3a); }
+#dm-table .offer .row, .levelset { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#dm-table .offer button, .levelset button, .levelset select { min-height: 44px; }
+#dm-table .offer-sheet summary { min-height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid var(--line); border-radius: var(--radius); margin: 4px 0; }
+#dm-table .offer-sheet[open] summary::after { content: ' (open)'; color: var(--muted); }
+#dm-table .offer-sheet dl { margin: 0 0 6px; font-size: 13px; }
+#dm-table .offer-sheet dt { font-weight: 600; margin-top: 4px; }
+#dm-table .offer-sheet dd { margin: 0; overflow-wrap: anywhere; }
+#dm-table .offer input[type="text"] { min-height: 44px; width: 100%; }
+#dm-table .offer .check { min-height: 44px; display: flex; align-items: center; gap: 8px; }
 #dm-table code { font-size: 22px; letter-spacing: .15em; color: var(--accent); }
 
 #lobby { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; z-index: 10; padding: 16px; }
@@ -113,7 +145,7 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text
 button.quiet { background: transparent; }
 #toast { position: fixed; left: 50%; bottom: 46%; transform: translateX(-50%); background: var(--bad); color: #fff; padding: 10px 16px; border-radius: var(--radius); font-weight: 600; max-width: calc(100% - 32px); text-align: center; z-index: 20; box-shadow: 0 4px 20px #0006; }
 @media (max-width: 480px) { #cam { top: 38%; } }
-@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .bar i, .label .breath i { transition: none; } }
 #toast.info { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); bottom: auto; top: 30%; }
 
 /* who plays whom, leaving */
@@ -164,6 +196,8 @@ body.editing #hint { display: none !important; }
 #editor .ed-form .ed-dcs input { flex: 0 0 4.5em; }
 #editor .ed-form .ed-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 #editor .ed-form .ed-line > span { flex: 1 1 8em; }
+#editor .ed-form .ed-note { margin: 0; color: var(--danger, #e57373); font-size: 13px; }
+#editor .ed-row .ed-note { font-size: 13px; opacity: .85; } #editor .ed-row[hidden] { display: none; }
 #editor .ed-form button { min-height: 44px; padding: 6px 10px; }
 #editor .ed-form button.sel, #editor .ed-form button.go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 #editor .ed-form ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
@@ -320,12 +354,10 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 @media (prefers-reduced-motion: reduce) { .hold-ring { animation: none; border-style: dashed; } .ping i { animation: none; } .ping-name { animation: none; }
   .hold-ring::after { content: 'Keep holding'; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 4px; white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff; background: #000b; padding: 1px 6px; border-radius: 8px; } }
 
-/* The slot a spell is cast with (#604): a thumb-sized menu on touch, and the bar may wrap its buttons under the words on a narrow screen. */
+/* The aim bar may wrap its buttons under the words on a narrow screen. (The slot a spell is cast with, #604, and its other choices are on the character's sheet now: #750 part 2.) */
 #hint, #join { flex-wrap: wrap; }
-#hint #hint-slot, #hint #hint-pick { max-width: 100%; }
-@media (pointer: coarse) { #hint #hint-slot, #hint #hint-pick { min-height: 44px; } }
-@media (max-width: 480px) { #hint #hint-pick { max-width: 100%; } }
-#join { top: auto; bottom: calc(var(--dock-h, 0px) + 64px); z-index: 5; }      /* above the turn line, which is above the dock */
+#aim-note { flex: 1 0 100%; font-size: 14px; font-weight: 700; } #aim-note[hidden] { display: none; }       /* #750: the count of the choice, at the top with the aim bar */
+#join { top: auto; bottom: calc(var(--dock-h, 0px) + 6px + var(--turn-h, 52px) + 6px); z-index: 5; }      /* above the turn line, which is above the dock; `--turn-h` is the turn line's measured height (app.js): with quick actions it wraps to two rows on a phone */
 #join[hidden] { display: none; }
 @media (pointer: coarse) { #join button { min-height: 44px; padding: 6px 14px; } }
 /* One writer to a solo save (#625): the offer to a second window, and the bar of a read-only one. */
@@ -344,3 +376,24 @@ body.readonly #sheet button, body.readonly #sheet input, body.readonly #sheet se
 
 /* words for a screen reader only (the menu's live region, a slot count): they were used and never defined, so the turn announcement showed in a corner */
 .sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* The sheet's four sections (one-token-menu.md, M5): a bar a thumb can hit opens and shuts each in place; the open state is kept on the device. */
+.sh-sec { border-top: 1px solid var(--line); margin-top: 10px; }
+.sh-sec:first-of-type { border-top: 0; margin-top: 0; }
+.sh-h { margin: 8px 0 4px; font-size: 16px; }
+.sh-in { padding-bottom: 8px; overflow-x: auto; }
+.sh-in > section { margin-top: 10px; }
+/* Log and chat: the Say box sits above the private note, both at the foot of the log */
+#log-clock { margin: 0 0 6px; }
+#say-form { margin-top: 12px; padding: 8px 0 0; flex-wrap: nowrap; gap: 6px; }
+#say-form select { min-height: 44px; max-width: 9.5em; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: inherit; font: inherit; }
+#say-form input { flex: 1; min-width: 0; min-height: 44px; }
+#say-form button { min-height: 44px; }
+/* The DM's water and tides (water.js): thumb-sized controls, the numbers beside their labels. */
+#dm-water .row { flex-wrap: wrap; gap: 8px; align-items: center; }
+#dm-water button, #dm-water select, #dm-water input { min-height: 44px; }
+#dm-water .water-num { display: inline-flex; align-items: center; gap: 6px; }
+#dm-water .water-num input { width: 5.5em; }
+#dm-water .req { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; }
+#dm-water h4 { margin: 10px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+#dm-water #water-says { color: var(--bad, #c0392b); }

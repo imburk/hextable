@@ -447,7 +447,7 @@ function annex({ rule = "light", seed = 5 } = {}) {
     { id: "brazier-B", def: "brazier", level: "ground", at: CLOSETS.B[8], state: "lit" },
   ];
   const regions = [...Object.entries(CLOSETS).map(([k, hs]) => ({ id: k, name: `Closet ${k}`, level: "ground", hexes: hs.map(col) })), { id: "F", name: "Closet F", level: "ground", hexes: F.map(col) }];
-  const map = { format: 2, id: "annex", name: "The annex", grid: "square", cellFeet: 5, levels: [{ id: "ground", name: "Ground", z: 0, light: "bright", tiles }], walls, objects, regions, starts: [{ q: 2, r: 7 }] };
+  const map = { format: 3, id: "annex", name: "The annex", grid: "square", cellFeet: 5, levels: [{ id: "ground", name: "Ground", z: 0, light: "bright", tiles }], walls, objects, regions, starts: [{ q: 2, r: 7 }] };
   assert.deepEqual(lintMap(map), []);
   const s = newGame(seed);
   ok(apply(s, { type: "loadMap", map }, DM));
@@ -820,7 +820,7 @@ function squareCrypt({ rule = "los", seed = 7 } = {}) {
   const walls = [W("n", [-2.5, -2.5], [62.5, -2.5]), W("s", [-2.5, 42.5], [62.5, 42.5]), W("w", [-2.5, -2.5], [-2.5, 42.5]), W("e", [62.5, -2.5], [62.5, 42.5]),
     W("mid-n", [32.5, -2.5], [32.5, 12.5]), W("mid-s", [32.5, 17.5], [32.5, 42.5]), W("cur", [-2.5, 27.5], [17.5, 27.5], "curtain"), W("win", [42.5, 27.5], [42.5, 42.5], "window")];
   pillarOfWalls(3, 1)({ walls });
-  const map = { format: 2, id: "sq-crypt", name: "The square crypt", grid: "square", cellFeet: 5, levels: [{ id: "ground", name: "Ground", z: 0, tiles }], walls,
+  const map = { format: 3, id: "sq-crypt", name: "The square crypt", grid: "square", cellFeet: 5, levels: [{ id: "ground", name: "Ground", z: 0, tiles }], walls,
     objects: [{ id: "door", def: "door-wooden", level: "ground", at: { q: 6, r: 3 }, edge: 0, state: "closed" },
       { id: "brazier", def: "brazier", level: "ground", at: { q: 10, r: 2 }, state: "lit" },
       { id: "plate", def: "pressure-plate", level: "ground", at: { q: 2, r: 4 }, state: "hidden" }],

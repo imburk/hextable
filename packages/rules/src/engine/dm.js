@@ -7,7 +7,8 @@ import { effectsOf, endEffect, useUp } from '../durations.js';
 import { FT, landing, overlapAt, regionAt, SQUARE_RANGES, surfaces, under } from '../space.js';
 import { LIGHTS } from '../content/lights.js';
 import { copyPacks, packsProblem } from '../content/packs.js';
-import { EDITS, lintMap, migrateMap } from '../map.js';
+import { lintMap, migrateMap } from '../map.js';
+import { waterChange } from '../tides.js';
 import { arrivalSpots, marchOrder, setPin } from '../places.js';
 import { loadNode, placeIn } from './travel.js';
 import { handoutActions } from '../handouts.js';
@@ -17,11 +18,12 @@ import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, spot, up } from './shared.js';
-import { airspace, AREA_FILLS, bringIn, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
+import { airspace, AREA_FILLS, editMap, bringIn, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
 import { condition, GRANTS, grantOf, heal, savingThrow } from './rolls.js';
 import { ABILITIES, DAMAGE_TYPES } from '../content/schema.js';
 import { roll } from '../rng.js';
 import { makeEntity } from './sheets.js';
+import { levelRange } from './characters.js';
 import { noteRuns, settle } from '../todo.js';
 import { advanceTurn, AWAY, evades, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
 
@@ -195,22 +197,14 @@ export const handlers = {
     ctx.role === 'dm' || fail('Only the DM can change the map.');
     !s.map?.holding || fail('This is not a battle map: there is nothing to edit here.');
     (Array.isArray(a.ops) && a.ops.length > 0 && a.ops.length <= 2000) || fail('Nothing to change.');
-    const map = structuredClone(s.map);
-    for (const op of a.ops) {
-      const edit = (op && Object.hasOwn(EDITS, op.op) && EDITS[op.op]) || fail(`Unknown map change: ${op?.op}`);
-      const problem = edit(map, op);
-      if (problem) fail(problem);
-    }
-    const problems = lintMap(map);
-    problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
-    const B = barriers(map);
-    for (const e of living(s)) {                         // a floor may give way under someone, but there must be something to land on
-      const sf = under(map, e.pos);
-      (sf && !(sf.z === e.pos.z && B.solid(sf.level.id, e.pos))) || fail(`${e.name} would be left with nowhere to stand.`);
-    }
-    s.map = map;
-    ev.push({ type: 'mapEdit', count: a.ops.length });
-    lookAround(s, ev);
+    editMap(s, a.ops, ev);                              // the DM's map edit and Stone Shape's cut are one path (engine/world.js)
+  },
+  // Change the water of some cells, now or as a tide that moves each round of a fight (tides.js; docs/specs/fly-swim-control.md, E3).
+  // { type: 'water', level, cells | region, surface | by, bed?, rise?: { by, to } } or { type: 'water', tide, stop: true }
+  water(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can change the water.');
+    const problem = waterChange(s, a, ev);
+    problem === null || fail(problem);
   },
   // Take a creature out of the game. { type: 'remove', actor }
   remove(s, a, ctx, ev) {
@@ -256,6 +250,7 @@ export const handlers = {
     ctx.role === 'dm' || fail('Only the DM can change the map.');
     !s.encounter || fail("The map can't change in the middle of a fight.");
     if (a.node !== undefined) return loadNode(s, a, ctx, ev);
+    delete s.tides;                                     // a tide belongs to the map it was set on (tides.js)
     let map;
     try { map = migrateMap(structuredClone(a.map)); } catch { fail("That map can't be used. It is not a map document."); }
     const problems = lintMap(map);
@@ -328,7 +323,7 @@ export const handlers = {
       const G = gridOf(s.map), over = living(s).find((o) => o.id !== e.id && overlapAt(o, o.pos, e, e.pos, G));
       !over || fail(`${over.name} stands where ${e.name}'s body lies: move one of them before bringing ${e.name} back.`);
     }
-    if (hp > e.hp) { e.dead = false; delete e.remains; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
+    if (hp > e.hp) { e.dead = false; delete e.remains; delete e.diedAt; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
     checkEnd(s, ev);
   },
   // The DM's damage and healing, by the rules: Resistance and the like, Temporary Hit Points first, Concentration, death saves.
@@ -444,6 +439,8 @@ export const handlers = {
   },
   setting(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change table settings.');
+    // The adventure's level range (docs/specs/portable-characters.md, Decision 5): a level, or { min, max }, kept as { min, max }.
+    if (a.key === 'level') { s.settings.level = levelRange(a.value) || fail('The level range is a level from 1 to 20, or { min, max } with min no more than max.'); return; }
     Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');
     SETTINGS[a.key].includes(a.value) || fail(`That setting can be: ${SETTINGS[a.key].join(', ')}.`);
     const was = a.key === 'hpMethod' ? (s.settings.hpMethod ?? 'fixed') : null;
@@ -466,7 +463,7 @@ export const SETTINGS = { sight: SIGHT_RULES,
   // Square maps only (docs/specs/square-grid.md): how a diagonal step is counted, how reach and
   // range are measured, and which squares a Sphere, Cylinder or Emanation covers. Absent means the
   // first value. What each means is SETTING_TEXT, below.
-  diagonals: DIAGONALS, squareRange: SQUARE_RANGES, areaFill: AREA_FILLS, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
+  diagonals: DIAGONALS, squareRange: SQUARE_RANGES, areaFill: AREA_FILLS, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], foeHealth: ['rough', 'hidden'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
   // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
   conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'],
   // Travel (docs/specs/travel.md, Decision 5, W4): whether a player whose characters are in a place that is not in play watches the place that is, live (the
@@ -485,9 +482,18 @@ export const SETTINGS = { sight: SIGHT_RULES,
   // Rolled ability scores (docs/specs/ability-scores.md, scores.js): whether a score may be rolled again (once), which, and which result stands. Absent means the first.
   scoreReroll: ['none', 'below', 'each'], scoreRerollBelow: [10, 8, 9, 11, 12, 13, 14], scoreRerollResult: ['new', 'higher'],
   // Hit Points (hitpoints.js, #638): fixed (the first, the SRD's default) or rolled at each level after the first; what a low roll does at a rolled table.
-  hpMethod: ['fixed', 'rolled'], hpRollLow: ['keep', 'reroll1', 'fixedMin'] };
+  hpMethod: ['fixed', 'rolled'], hpRollLow: ['keep', 'reroll1', 'fixedMin'],
+  // Characters people bring (docs/specs/portable-characters.md, Decision 5; engine/characters.js, offer and admit): 'own-trusted' (the default, so first), where the
+  // DM ticks each offered character whose history is not vouched for; 'own', any offer admitted on the DM's say; 'new', no offers. The adventure's level range
+  // is the setting `level`, which the `setting` action takes as a level or { min, max } (above). Words in SETTING_TEXT.
+  characters: ['own-trusted', 'own', 'new'] };
 // What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
+  characters: {
+    'own-trusted': 'Players may offer a character from their own device. You review each one, and tick that you have looked at its history before it is let in (the default).',
+    own: 'Players may offer a character from their own device. You review each one; no tick is asked for.',
+    new: 'Players do not offer characters: you make them or give them out. An offer is refused.',
+  },
   hpMethod: {
     fixed: 'Each level after the first adds the class\'s fixed Hit Point value: half the Hit Die, plus 1, plus Constitution (the default).',
     rolled: 'Each level after the first adds a roll of the class\'s Hit Die, plus Constitution, at least 1. Level 1 stays the highest number of the die. The game rolls it, in the log for everyone, when a character levels up or is added above level 1. Existing characters change the next time they are rebuilt; rolls already made are kept and count again if you switch back.',

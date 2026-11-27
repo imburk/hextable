@@ -1,4 +1,6 @@
-// The Settings tab (docs/specs/table-ui.md, Decisions 2 and 7). Two kinds of thing live here and they are kept apart:
+// Setup (docs/specs/table-ui.md, Decisions 2 and 7; docs/specs/one-token-menu.md, Decision 4d round 4: one page of seven sections, in
+// index.html: Display and controls, Dice, The menu, Characters and packs, The table's rules, Help and about, Leave the table).
+// Two kinds of thing live here and they are kept apart:
 //   client preferences, which change this device's screen and are kept in localStorage (`hextable.*`, through `prefs`);
 //   the table's rules, which the DM alone changes with the `setting` action, shown here in plain words and read only.
 // Nothing here sends an action.
@@ -22,6 +24,7 @@ export function rulesLines(settings = {}) {
     `Dice: ${(settings.diceThrow ?? 'auto') === 'throw' ? 'thrown by whoever acts' : 'rolled as soon as someone acts'}.`,
     `Sight: ${SIGHT[settings.sight ?? 'rooms'] ?? settings.sight}.`,
     `An unseen creature's turn: ${(settings.unseenTurns ?? 'say') === 'quiet' ? 'nothing is said' : 'the table says something moves unseen'}.`,
+    `Foes' health bars for players: ${(settings.foeHealth ?? 'rough') === 'hidden' ? 'none' : 'rough (full, half with a notch, empty)'}. The DM sees exact bars.`,
     `A fight starts when the party comes within ${settings.engageRange ?? 10} ft of enemies: ${on(settings.autoEngage ?? true) ? 'yes' : 'no, the DM calls it'}.`,
     `Noticing hidden things in passing: ${PASSIVE[settings.passiveFind ?? 'off'] ?? settings.passiveFind}.`,
     `Distance when one creature is higher than another: ${VERTICAL[settings.vertical ?? 'max'] ?? settings.vertical}.`,
@@ -31,7 +34,7 @@ export function rulesLines(settings = {}) {
   ];
 }
 
-// ctx: { prefs, themeId(), setTheme(id), look(key, value), dice, repace(), drawer, state(), isDM() }
+// ctx: { bars() (redraw the health bars), prefs, themeId(), setTheme(id), look(key, value), dice, repace(), drawer, state(), isDM() }
 export function initSettings(ctx) {
   const { prefs, drawer } = ctx;
   $('set-theme').innerHTML = Object.entries(THEMES).map(([id, t]) => `<option value="${esc(id)}">${esc(t.name)}</option>`).join('');
@@ -48,6 +51,10 @@ export function initSettings(ctx) {
   $('set-floors').onchange = (ev) => { prefs.set('hextable.floors', ev.target.value); ctx.look('floors', ev.target.value); };
   $('set-cutaway').onchange = (ev) => { prefs.set('hextable.cutaway', ev.target.checked); ctx.look('cutaway', ev.target.checked); };
   $('set-caves').onchange = (ev) => { prefs.set('hextable.caves', ev.target.checked); ctx.look('caves', ev.target.checked); };
+
+  // Health bars over creatures (docs/specs/one-token-menu.md, Decision 7a): this device's own choice; the table's rule for foes is the DM's.
+  { const saved = prefs.get('hextable.bars'); $('set-bars').value = ['always', 'fight', 'never'].includes(saved) ? saved : 'always'; }
+  $('set-bars').onchange = (ev) => { prefs.set('hextable.bars', ev.target.value); ctx.bars?.(); };
 
   // Shadows (docs/specs/renderer.md, R15): it has no place in index.html, so the control is made here. The
   // renderer hears of a change by the page event `hextable-shadows`; it reads the stored preference itself when it starts.
@@ -76,6 +83,8 @@ export function initSettings(ctx) {
   // screen's columns come from, and (wide screens) pinned.
   $('set-token').value = drawer.token; $('set-token').onchange = (ev) => drawer.setToken(ev.target.value);
   $('set-motion').value = drawer.motion; $('set-motion').onchange = (ev) => drawer.setMotion(ev.target.value);
+  // The words under the symbols of the arc and the strip (Decision 4c): after 3 seconds on the arc, or always (then the strip shows them too).
+  $('set-labels').value = drawer.labels; $('set-labels').onchange = (ev) => drawer.setLabels(ev.target.value);
   $('set-side').value = drawer.side; $('set-side').onchange = (ev) => drawer.setSide(ev.target.value);
   $('set-pin').checked = drawer.pinned; $('set-pin').onchange = (ev) => drawer.setPin(ev.target.checked);
   // The camera buttons on the map (docs/specs/one-token-menu.md question 8): off by default; the map turns and zooms by touch, keys and wheel.
@@ -88,7 +97,7 @@ export function initSettings(ctx) {
   kd.innerHTML = `<label class="assign">Keys <select id="set-keys">${Object.entries(PRESETS).map(([id, p]) => `<option value="${esc(id)}">${esc(p.name)}</option>`).join('')}</select></label>`
     + '<p class="note">W A S D or the arrows walk the selected character; hold Shift to look around; Space returns the view. Keys need a keyboard; the choice stays on this device.</p>'
     + '<div class="row"><button type="button" id="set-keys-show" aria-expanded="false" aria-controls="set-keys-list">Show keys</button></div><dl id="set-keys-list" class="keys-list" hidden></dl>';
-  $('set-pin-note').after(...kd.children);
+  $('set-keys-at').append(...kd.children);
   const ksel = $('set-keys'), klist = $('set-keys-list'), kshow = $('set-keys-show');
   const paintKeys = () => { klist.innerHTML = keyList(presetOf(ksel.value)).map((k) => `<dt>${esc(k.words)}</dt><dd>${k.keys.map((x) => `<kbd>${esc(x)}</kbd>`).join(' ')}</dd>`).join(''); };
   ksel.value = presetId(prefs.get('hextable.keys'));
@@ -105,14 +114,18 @@ export function initSettings(ctx) {
   $('dm-dice-monsters').onchange = (ev) => prefs.set('hextable.diceMonsters', ev.target.checked);
 
   // The table's rules: the DM gets a link to where each is changed.
-  $('set-rules').addEventListener('click', (ev) => { if (ev.target.closest('[data-dm]')) drawer.open('dm'); });
+  $('set-rules').addEventListener('click', (ev) => { if (ev.target.closest('[data-dm]')) drawer.open('dm/rules'); });
+  // Help and feedback is its own panel; its button here is feedback.js's own (`#fb-btn`).
   let last = '';
   return {
     sync(S) {
       const dm = ctx.isDM();
       $('set-dm-box').hidden = !dm;
       $('set-table-box').hidden = !S;
-      $('set-token').value = drawer.token; $('set-motion').value = drawer.motion; $('set-side').value = drawer.side; $('set-pin').checked = drawer.pinned; $('set-theme').value = ctx.themeId();
+      // Characters and packs: the DM's tools for them are screens of DM tools; a player has their own character and asks the DM for the rest.
+      $('set-sec-chars').hidden = !S; $('set-chars-dm').hidden = !dm; $('set-chars-pl').hidden = dm;
+      $('set-chars-note').textContent = dm ? 'Who plays whom, adding a character, levelling up and the packs this table uses are DM tools.' : 'Your character\'s page has its sheet. Adding a character, levelling up and the table\'s packs are the DM\'s: ask the DM.';
+      $('set-token').value = drawer.token; $('set-motion').value = drawer.motion; $('set-labels').value = drawer.labels; $('set-side').value = drawer.side; $('set-pin').checked = drawer.pinned; $('set-theme').value = ctx.themeId();
       if (!S) return;
       const lines = rulesLines(S.settings), sig = JSON.stringify([lines, dm]);
       if (sig === last) return;

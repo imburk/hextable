@@ -28,16 +28,16 @@ function sameButHeader(was, now) {
   assert.equal(was.map.format, 1);
   assert.equal(was.map.hexFeet, 5);
   assert.equal(now.version, VERSION);
-  assert.equal(VERSION, 30);                          // 21 for map format 2; 22, turns named by creature (#300); 23, companions (#311); 24, packs (#390); 25, ability scores rolled at the table (#557); 26, places of a world (#579); 27, the table rule strikeFirst (#585); 28, purses and shops (#596)
+  assert.equal(VERSION, 31);                          // 21 for map format 2; 22, turns named by creature (#300); 23, companions (#311); 24, packs (#390); 25, ability scores rolled at the table (#557); 26, places of a world (#579); 27, the table rule strikeFirst (#585); 28, purses and shops (#596)
   assert.deepEqual(Object.keys(now.map).slice(0, 5), HEADER);
-  assert.equal(now.map.format, 2);
+  assert.equal(now.map.format, 3);                     // 3 since #836 (a depth on every water tile)
   assert.equal(now.map.grid, "hex");
   assert.equal(now.map.cellFeet, 5);
   assert.equal("hexFeet" in now.map, false);
   assert.deepEqual(lintMap(now.map), []);
   const STARTERS = ["fighter", "rogue", "cleric", "wizard"];
   assert.ok(STARTERS.some((id) => now.entities[id]?.sheet), "a starter as the pack typed it is given its sheet on load (#672)");
-  const strip = (s) => { const c = structuredClone(s); for (const id of STARTERS) delete c.entities?.[id]?.sheet; delete c.version; delete c.packs; delete c.scoreRolls; for (const k of ["world", "place", "parked", "journey", "markets", "shops"]) delete c[k]; if (c.settings) delete c.settings.strikeFirst; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
+  const strip = (s) => { const c = structuredClone(s); for (const l of c.map.levels) for (const t of Object.values(l.tiles)) delete t.depth; for (const id of STARTERS) delete c.entities?.[id]?.sheet; delete c.version; delete c.packs; delete c.scoreRolls; for (const k of ["world", "place", "parked", "journey", "markets", "shops"]) delete c[k]; if (c.settings) delete c.settings.strikeFirst; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
   assert.deepEqual(now.packs, []);                  // version 24 (#390)
   assert.deepEqual([now.world, now.place, now.parked, now.journey], [null, null, {}, null]);   // version 26 (#579)
   assert.equal(now.settings.strikeFirst, was.settings.autoEngage !== false ? "casts" : "off");   // version 27 (#585)
@@ -73,7 +73,7 @@ test("a table file the server saved at version 20 loads from disk as a hex map a
     assert.equal(first.find((m) => m.t === "welcome").role, "dm");
     const sent = first.find((m) => m.t === "update").state;
     assert.equal(sent.version, VERSION);
-    assert.deepEqual([sent.map.format, sent.map.grid, sent.map.cellFeet, "hexFeet" in sent.map], [2, "hex", 5, false]);
+    assert.deepEqual([sent.map.format, sent.map.grid, sent.map.cellFeet, "hexFeet" in sent.map], [3, "hex", 5, false]);
     // As with every version change, the saved undo history no longer fits and is dropped, once.
     assert.deepEqual(first.find((m) => m.t === "undoable").undo, []);
     await s.stop();

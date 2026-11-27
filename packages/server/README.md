@@ -395,6 +395,10 @@ rather than playing it on the wrong grid. Saved tables and exports migrate when 
 map gains `grid: "hex"` and `cellFeet: 5` and loses `hexFeet`, nothing else changes, and, as with
 every version change, a saved undo history is dropped once.
 
+**Map format 3 (#836, swimming).** A water tile of a map has a `depth`, the feet from its surface to the bed (a multiple of 5, from 5 to 200), and the map's `format` is 3.
+`loadMap` still migrates the document it is sent (`migrateMap`): a format 1 or 2 map comes up to 3 with 10 feet on every water tile, and so does every saved table and
+export when it is loaded (no new state version: the map is migrated on every load). The players are sent the depth with the tile, as they are sent its terrain.
+
 **Spell vocabulary (#165).** No new action. `cast` of a spell with a teleport step (Misty Step,
 Dimension Door) takes the destination in `hex` (`{ q, r, z? }`), as an area spell is aimed; a
 player may name only a place the party has been shown; with no `hex` the DM moves the caster.

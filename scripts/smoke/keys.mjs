@@ -138,7 +138,7 @@ async function desktop(browser, url) {
       await run.do('the feedback panel: "wasd" typed in its textarea is text, nothing moves, and Space and Shift do nothing to the view', async () => {
         if (!(await page.$('#fb-btn'))) throw new Error('no feedback button');
         const from = await posOf(page, id), cam = await page.evaluate(() => JSON.stringify(window.hextable.R.cameraAngles()));
-        await openMenu(page, 'table'); await page.click('#fb-btn'); await waitShown(page, '#fb-panel');      // Help and feedback is a row of the menu; the menu folds away
+        await openMenu(page, 'settings/help'); await page.click('#fb-btn'); await waitShown(page, '#fb-panel');      // Help and feedback is a row of the menu; the menu folds away
         await page.fill('#fb-text', ''); await page.focus('#fb-text');
         await page.keyboard.type('wasd '); await page.keyboard.down('Shift'); await page.keyboard.type('WASD'); await page.keyboard.up('Shift');
         await sleep(500);
@@ -152,7 +152,7 @@ async function desktop(browser, url) {
       });
 
       await run.do('Settings lists the keys of the preset, and the preset is kept on this device', async () => {
-        await openTab(page, 'settings');
+        await openTab(page, 'settings/display');
         await page.click('#set-keys-show');
         await waitShown(page, '#set-keys-list');
         const t = await page.textContent('#set-keys-list');
@@ -299,7 +299,7 @@ async function phone(browser, url) {
       await run.do('play solo; Settings shows the keys control inside the drawer\'s width', async () => {
         await open(page, url); await playSolo(page);
         await wait(page, () => window.hextable.state.entities.fighter);
-        await openTab(page, 'settings');
+        await openTab(page, 'settings/display');
         const r = await page.evaluate(() => { const s = document.getElementById('set-keys').getBoundingClientRect(), d = document.getElementById('drawer').getBoundingClientRect(); return { s: s.right, d: d.right, w: document.documentElement.scrollWidth }; });
         if (r.s > r.d + 1 || r.w > 391) throw new Error(`the control reaches ${r.s} in a drawer to ${r.d}; the page is ${r.w} wide`);
         if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/keys-4-phone.png` }).catch(() => {});

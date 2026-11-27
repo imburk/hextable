@@ -94,10 +94,19 @@ A creature's position becomes `{ q, r, z }`, with `z` in feet.
 - **Stairs and ramps** are simply tiles whose offsets rise from one level to
   the next. **Ladders, ropes and trapdoors** are objects that connect two
   positions (decision 4).
+- **Water can change** (#849, E3). A tile may carry `dry`, the tile it was before water covered it (`tides.js`; the linter checks it as a tile): a tile's height is
+  still `level.z + tile.h`, but a `water` tile's can rise and fall, and the `water` action rewrites it. Nothing else about the format changed.
 - **Movement modes.** A record has a speed per mode: walk, climb, swim, fly,
   burrow, plus `hover`. Climbing a tree, a wall or a ladder and flying are
   the same mechanism moving through `z`, which is why fighting from a tree
-  or a balcony needs no separate code.
+  or a balcony needs no separate code. Swimming is the same again (#836,
+  `docs/specs/fly-swim-control.md`, "Build notes (E1)"): a water tile has a
+  `depth` (map format 3), a position between its bed and its surface is in the
+  water, and a creature swims through it in 5 foot steps level, up and down
+  (5 feet a step from a Swim Speed, 10 from the walking Speed without one).
+  Under the surface it also holds its breath, fights as the SRD's "Underwater
+  Combat" says, and has Resistance to Fire (#840, "Build notes (E2)").
+  Burrowing has no rules yet.
 - **Distance** uses all three axes. How vertical distance combines with
   horizontal is a table rule, since tables differ.
 - **Falling.** A creature with nothing under it and no way to stay up falls
@@ -527,8 +536,8 @@ Where the build settled a detail the design left open, or changed it.
 - **Floors block** (M6). An attack or spell is refused if a floor lies between
   the two creatures. A wall blocks only if neither is above its top. Both are
   centre to centre and are replaced by the sight spec.
-- Not built from decision 2: swimming and burrowing have speeds but no rules of
-  their own yet, and two creatures landing in one hex are left for the DM.
+- Not built from decision 2: burrowing has a speed but no rules of its own yet
+  (swimming is built, #836), and two creatures landing in one hex are left for the DM.
 
 - **Footprints** (M7) are 1, 3, 7 and 12 hexes: the hex, a triangle, the hex and
   its six neighbours, the triangle and everything around it. Heights are 5, 10,
@@ -640,3 +649,96 @@ Where the build settled a detail the design left open, or changed it.
 
 - [Universal VTT (Dungeondraft guide)](https://dungeondraft-encyclopaedia.gitbook.io/guide/final-steps/exporting-your-map/universal-vtt)
 - [Universal Virtual Tabletop (UVTT) Support (Roll20 Help Center)](https://help.roll20.net/hc/en-us/articles/41643201127831-Universal-Virtual-Tabletop-UVTT-Support)
+
+## Amendment: solid ground, carving, thick walls and secret passages (owner's request, 24 Nov)
+
+1. **The ask.** The owner wants discovery built into a map:
+   1. secret rooms, found in play;
+   2. places where a wall is just thick, not a single line;
+   3. places where elevation is just terrain, such as a hill or a ledge;
+   4. ground painted as solid and then hollowed out for caves and tunnels;
+   5. thick castle walls that can hide a secret passage or a stairway down.
+
+2. **What already covers it.**
+   1. Regions (decision 7) keep a room out of a player's browser until a party
+      member enters it or stands beside it. A secret room is a region that is
+      not yet revealed.
+   2. A secret door is sent to players as plain wall until a Search meets its
+      DC (decision 6, and M5 in the build notes). Its object has `find.dc`.
+   3. Solid hexes (decision 4) already cover rock and pillars, and the spec
+      says a cave is mostly solid hexes with open ones carved out.
+   4. Levels and the ways between them (decision 2, and the M6 build notes on
+      climbing, ladders and falling) cover a ledge, a stair, a ladder and a drop.
+
+3. **What is new, editor first.** The editor (M8, with Trace from M10) gets:
+   1. **A Solid brush.** It fills hexes with solid rock up to a height, so
+      terrain that is only elevation is painted as solid ground with a top.
+   2. **A Carve brush.** It hollows solid hexes back to floor at a height, for
+      caves, tunnels and rooms cut into rock.
+   3. **A thick wall is a band of solid hexes**, not a thin wall line. Its
+      thickness is the width of the band. Thin walls and doors stay as segments
+      (decision 4).
+   4. **A secret passage is a hidden region carved inside solid**, with a
+      secret door at each end. A stairway down is a way to the level below,
+      placed inside the passage (decision 2).
+   5. **Players see plain solid or plain wall** until a door is found. Finding
+      a door reveals the door and the region behind it in the usual way
+      (decisions 6 and 7).
+
+4. **Rules that hold.**
+   1. Everything hidden is withheld from player views by the existing rules in
+      "What players are sent". Each new hidden thing (a hidden region inside
+      solid, a passage's stairway) lands with a `twin()` test.
+   2. No code is written for a particular room. A secret passage is a region,
+      two doors and carved hexes; the engine does not need to know it is a
+      passage.
+   3. A solid or carved hex is map data and is checked by the map linter in
+      `map.js`.
+   4. A carved hex that is hidden must belong to a region. Hexes in no region
+      are always sent (decision 7), so a hidden passage outside a region would
+      show as an open gap in the rock.
+   5. If the stored shape changes, the map format version goes up and `map.js`
+      gets a migration. The format is `format: 1` today.
+
+5. **Open points for the build.**
+   1. Does solid have a height for each hex, or does it fill the whole level up
+      to one height?
+   2. How is carving under an upper level drawn: does the upper floor hide the
+      cut, or is the opening shown?
+   3. How is a hidden region inside solid drawn? Proposed: the DM sees an
+      outline, and players see nothing.
+   4. Square grids as well as hexes. The brushes should work through the
+      geometry interface in `grid.js`, so they work on squares too, with the
+      same cost as walls on squares (decision 4).
+
+6. **Status.** A design note, not built. It waits behind the current rules
+   work.
+
+## Amendment: deep pits (#806)
+
+1. **The ask.** A pit object always fell 10 feet (`fall: 10` in its definition) and the creature stayed on its level. A
+   module map needs a pit that drops a creature 30, 40 or 60 feet into the room directly beneath.
+2. **The field.** A placed object may carry `fall`: the pit's depth in feet. It is a whole multiple of 10 from 10 to 200
+   (200 is where falling damage stops growing, 20d6). The definition's number is the default, so a placement with no
+   `fall` plays exactly as before. The field replaces the number of every `fall` step the object runs (its triggers and
+   its uses); a spell's own `fall` step is not touched. The linter refuses `fall` on an object whose kind has no `fall` step.
+3. **Where it lands.** When `fall` is more than 10, the creature lands on the highest floor in its own column that is at
+   least 10 feet and at most `fall` feet below where it stood, on any other level. It takes the fall rule's damage for
+   the actual drop (1d6 Bludgeoning per full 10 feet, 20d6 at most) and is Prone if that hurt; the spiked pit's piercing
+   step then runs as it always did. If another creature stands where it would land, it lands on the nearest free place on
+   that floor (the search ignores walls, so it may be a place across a wall; see DEBT W55). A creature whose own column has no floor in range (a big creature set off by a hex it covers; only its anchor column counts), a rider or ridden creature, or a landing with no room, is handed to the DM with a `manual` note, as
+   `fall: "surface"` does. With `fall` of 10, or none, nothing moves: the creature stays on the pit's own level and takes
+   1d6, as before. The engine lands it with `lookAround`, as any fall to a surface does: a party member that lands in an
+   unrevealed room reveals it by the usual rules (it stands in it); a monster that lands there reveals nothing.
+4. **No floor below.** A `fall` above 10 with no floor in that range under the pit's hex is a linter problem, so a map
+   cannot be saved or loaded that way. The linter also refuses a `fall` that is not a multiple of 10 or is outside 10 to 200.
+5. **Editing.** `fall` is a placement field like `dc`: the `object` edit carries it and `mapEdit` lints the result whole.
+   Taking away the floor beneath a deep pit (`unlevel`, `tile`) is refused for the same reason.
+6. **Tests.** `packages/rules/test/deep-pits.test.js`, and a twin test (`packages/server/test/twin-worlds.test.js`) that a
+   party member falling into the room below reveals that room by the usual rules and sends players nothing of another
+   unrevealed room of that level (a bare cell in the plain world). Monsters avoid pits (forced movement runs no
+   trigger), so a monster falls only by the DM's hand.
+
+## Amendment: a spell aimed at an object (#786 wave 4 part 6, Knock)
+
+A spell's `target` may be `{ object: {} }`: the cast names a map object by id (`object`), and `engine/world.js` `aimObject` checks it as `docs/specs/rules-expansion.md` ("Build notes: wave 4 part 6") says. Nothing about the objects themselves changes: an object is "locked" when its state is `locked` and its definition has a use named `unlock` (`key: true`, `from: ['locked']`, `to: 'closed'`). A spell reaches that use's end by the `set` step with `from: 'locked'`, so it needs no key and no check; picking and forcing (`pick`, `force`, their DCs) and the key are not touched. An object in a hidden state (an undiscovered secret door) is not one a player may name: the answer is the same as for no object at all.

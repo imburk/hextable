@@ -291,7 +291,7 @@ test("a group's arrival is told to the DM whole, and to a player as the place th
   assert.deepEqual(viewEvents(more, s, SAM).filter((e) => e.type === "arrived").map((e) => [e.node, e.name, e.ids.sort()]), [["pl3", "The cave", ["fighter", "rogue"]]]);
   // From the record later, with the group parked elsewhere, the line is the same.
   ok(apply(s, { type: "goTo", node: "keep" }, DM));
-  assert.equal(json(viewEvents(more, s, PAT).filter((e) => e.type === "arrived")), json([{ type: "arrived", node: "pl3", name: "The cave", ids: ["fighter", "rogue"] }]));
+  assert.equal(json(viewEvents(more, s, PAT).filter((e) => e.type === "arrived")), json([{ ids: ["fighter", "rogue"], name: "The cave", node: "pl3", type: "arrived" }]));
 });
 
 test("an arrival at a place a player was not given, or by a group they may not know of, is no event for them; a watcher with watching: off gets nothing", () => {

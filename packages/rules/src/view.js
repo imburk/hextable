@@ -9,20 +9,21 @@
 // the game state later stays private until someone lists it.
 //
 // The engine never reads a view and never produces one. Design: docs/specs/hidden-information.md
-import { HEX, gridOf, col, parse } from './grid.js';
+import { HEX, boxOf, gridOf, col, parse, squareAround } from './grid.js';
 import { conditionDef, visibleConditions } from './modifiers.js';
-import { concealed, inArea } from './space.js';
+import { DAMAGE_TYPES } from './content/schema.js';
+import { FT, concealed, footprint, inArea, surfaces } from './space.js';
 import { memoryOf, partyView, seenName, sightRule, tileSent } from './vision.js';
 import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
 import { playerShop } from './shopids.js';
 import { playerConclusion } from './rewards.js';
-import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
+import { barriers, clipWall, objectDef, objectHexes, objectSegment, reachOf, SQUARE_CLIP } from './walls.js';
 import { hasWorld, knownOf, partyAt, playerEntry, playerNode, playerPin, playerRoute } from './known.js';
 import { acNow, controllerOf, hbId, homebrewBlock, isPile, lineName, marketEnv, marketOfShop, openContents, ownerOf, pileOpen } from './engine.js';
 import { buysOf, kindOf, listPrice } from './market.js';
 import { isOwnName } from './todo.js';
-import { SETTING_FIELDS, partyFields, sentFields } from './view-fields.js';
+import { SETTING_FIELDS, ZONE_AREA_FIELDS, ZONE_FIELDS, partyFields, sentFields } from './view-fields.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -32,6 +33,7 @@ export function classify(state, id) {
   const e = state.entities[id];
   if (!e) return 'hidden';
   if (e.side === 'party') return 'open';
+  if (e.melded) return 'hidden';                             // merged with stone (Meld into Stone): known to nobody, as if it were not there
   if (concealed(state.map, e)) return 'hidden';             // hidden by the DM, hiding, or somewhere not yet seen
   // Under the los and light table rules, also any creature nobody in the party can see now.
   return sightRule(state) !== 'rooms' && !partyView(state).creatures.has(id) ? 'hidden' : 'seen';
@@ -343,7 +345,7 @@ function scrub(x, hidden) {
 const hiddenIds = (state) => new Set(Object.keys(state.entities).filter((id) => classify(state, id) === 'hidden'));
 
 export function playerView(state) {
-  const entities = {}, hidden = hiddenIds(state);
+  const entities = {}, hidden = hiddenIds(state), alias = zoneAliases(state);
   for (const [id, e] of Object.entries(state.entities)) {
     const c = classify(state, id);
     if (c === 'open') {
@@ -360,6 +362,7 @@ export function playerView(state) {
       Object.assign(entities[id], acShown(state, e));
       Object.assign(entities[id], heldBy(state, e));
       scrub(entities[id], hidden);
+      for (const k of Object.values(entities[id].cond ?? {})) if (alias.has(k?.effect)) k.effect = alias.get(k.effect);      // the effect of a zone they do not know the caster of, by its id for them
     }
     else if (c === 'seen') entities[id] = seenRecord(e, state);
   }
@@ -449,42 +452,8 @@ export function viewShopArea(state, shop, viewer) {
 // Players are sent the hexes of revealed regions and of no region, the stretches of wall beside
 // those hexes, the objects that touch them, and the regions already revealed. Nothing else: an
 // unrevealed room is simply absent. Built once and kept until the map or what is revealed changes.
-// A cell's corner, in feet from its centre, and a hair more: `G.cornerReach` of the map's grid
-// (5/√3 on hexes; docs/specs/square-grid.md, E7). On squares the stretch is the part inside the
-// square itself and a hair round it (half a side and 0.02 ft each way), not a circle through its
-// corners, which would reach a foot into the square beyond (review of #262, L2).
-const reachOf = (G) => G.cornerReach + 0.02;
-export const SQUARE_CLIP = 2.5 + 0.02;
-// The stretches of a wall that lie within `reach` of any of these cell centres, or, with
-// `box` set, within `box` feet of one along each axis (a square).
-export function clipWall(w, centres, reach = reachOf(HEX), box = 0) {
-  const REACH = reach;
-  const [ax, ay] = w.a, dx = w.b[0] - ax, dy = w.b[1] - ay, len2 = dx * dx + dy * dy, spans = [];
-  for (const [cx, cy] of centres) {
-    if (box) {                                                     // the segment's part inside the box round this centre
-      let t0 = 0, t1 = 1;
-      for (const [d, v, c] of [[dx, ax, cx], [dy, ay, cy]]) {
-        if (Math.abs(d) < 1e-12) { if (Math.abs(v - c) > box) { t0 = 1; t1 = 0; } continue; }
-        let u0 = (c - box - v) / d, u1 = (c + box - v) / d;
-        if (u0 > u1) [u0, u1] = [u1, u0];
-        t0 = Math.max(t0, u0); t1 = Math.min(t1, u1);
-      }
-      if (t0 <= t1) spans.push([t0, t1]);
-      continue;
-    }
-    const fx = ax - cx, fy = ay - cy;
-    if (!len2) { if (fx * fx + fy * fy <= REACH * REACH) spans.push([0, 1]); continue; }
-    const b = 2 * (fx * dx + fy * dy), disc = b * b - 4 * len2 * (fx * fx + fy * fy - REACH * REACH);
-    if (disc < 0) continue;
-    const root = Math.sqrt(disc), t0 = Math.max(0, (-b - root) / (2 * len2)), t1 = Math.min(1, (-b + root) / (2 * len2));
-    if (t0 <= t1) spans.push([t0, t1]);
-  }
-  spans.sort((p, q) => p[0] - q[0]);
-  const merged = [];
-  for (const sp of spans) { const last = merged.at(-1); if (last && sp[0] <= last[1] + 1e-9) last[1] = Math.max(last[1], sp[1]); else merged.push([...sp]); }
-  const whole = merged.length === 1 && merged[0][0] === 0 && merged[0][1] === 1;
-  return merged.map(([t0, t1], i) => ({ id: whole ? w.id : `${w.id}~${i}`, level: w.level, kind: w.kind, a: [ax + dx * t0, ay + dy * t0], b: [ax + dx * t1, ay + dy * t1] }));
-}
+// clipWall, reachOf and SQUARE_CLIP live in walls.js (engine/world.js `aimWall` judges what a player is sent by the same clip).
+export { clipWall, SQUARE_CLIP };
 const stateDef = (o, st) => objectDef(o)?.states[st];
 const mapCache = new WeakMap();
 // Under the los and light rules (vision.js) a thing is sent as it is while the party sees it, and
@@ -502,7 +471,7 @@ function shownMap(state) {
   const G = gridOf(map), cols = new Set(), levels = [], centres = new Map();
   for (const l of map.levels) {
     const tiles = {}, cs = [];
-    for (const k in l.tiles) { const h = parse(k); if (tileSent(state, l.id, h, rule)) { tiles[k] = { ...l.tiles[k] }; cols.add(k); cs.push(G.center(h)); } }
+    for (const k in l.tiles) { const h = parse(k); if (tileSent(state, l.id, h, rule)) { { const { dry, ...shown } = l.tiles[k]; tiles[k] = shown; } cols.add(k); cs.push(G.center(h)); } }
     // A level with nothing shown is not mentioned, and neither is its background picture.
     if (cs.length) { levels.push({ id: l.id, name: l.name, z: l.z, tiles, ...(l.image && { image: { asset: l.image.asset, feet: [...l.image.feet], origin: [...l.image.origin] } }) }); centres.set(l.id, cs); }
   }
@@ -544,7 +513,7 @@ function shownMap(state) {
   // out, with the light of each that is not bright. Only tiles that are sent.
   let sight;
   if (rule !== 'rooms') {
-    const now = {}, light = {}, sources = rule === 'light' ? lightSources(state) : null;
+    const now = {}, light = {}, sources = rule === 'light' ? lightSources(state, { party: true }) : null;
     for (const t of pv.seen.values()) {
       if (!has(t.level, t)) continue;
       (now[t.level] ??= []).push(col(t));
@@ -563,10 +532,14 @@ function shownMap(state) {
 // it does they see everything on their own characters and, on other creatures, only the
 // conditions they could see by looking.
 function viewEffects(state) {
-  const out = [], hidden = hiddenIds(state);
+  const out = [], hidden = hiddenIds(state), zones = viewZones(state), alias = zoneAliases(state);
   for (const fx of state.effects ?? []) {
-    const src = classify(state, fx.source);
-    if (src !== 'open' && !fx.parts.some((p) => classify(state, p.target) === 'open')) continue;
+    const src = classify(state, fx.source), zone = zones.get(fx.id);
+    // An effect that is not theirs is sent only for its zone, if it has one they can see (below): as a zone and nothing else.
+    if (src !== 'open' && !fx.parts.some((p) => classify(state, p.target) === 'open')) {
+      if (zone) out.push({ id: zone.id, name: fx.name, spell: fx.spell, ...(src === 'hidden' ? { conc: false, lasts: null, until: null } : { source: fx.source, conc: fx.conc, lasts: fx.lasts, until: fx.until ? { ...fx.until } : null }), parts: [], zone: zone.zone });
+      continue;
+    }
     const parts = [];
     for (const p of fx.parts) {
       const c = classify(state, p.target);
@@ -575,6 +548,10 @@ function viewEffects(state) {
         const q = structuredClone(p);
         // `born` names the turn it was made in, by whose turn it was (durations.js, turnKey): never sent.
         delete q.born;
+        // `turn` is what the part runs at the start of its creature's turns, with its caster's numbers (effects.js, turnSteps): never sent.
+        delete q.turn;
+        // `water` is what Control Water changed (every cell's tile before and after, `dry` tiles and depths, cells of places not yet seen): the DM's record, never sent (tides.js).
+        delete q.water;
         if (q.ends?.who !== undefined && classify(state, q.ends.who) === 'hidden') delete q.ends.who;
         // A modifier that holds against, or not for, a creature they do not know of: that it does, never who.
         for (const k of ['against', 'except']) if (typeof q[k] === 'string' && classify(state, q[k]) === 'hidden') q[k] = 'someone';
@@ -582,8 +559,98 @@ function viewEffects(state) {
       }
       else if (c === 'seen' && p.cond && conditionDef(p.cond)?.visible) parts.push({ target: p.target, cond: p.cond, ...(p.ended ? { ended: true } : {}) });
     }
-    out.push({ id: fx.id, name: fx.name, spell: fx.spell, ...(src === 'hidden' ? {} : { source: fx.source }), conc: fx.conc, lasts: fx.lasts,
-      until: fx.until ? { ...fx.until } : null, parts });
+    // A zone of a caster they do not know of is told as such whatever it holds of theirs: no concentration, no end, an id of its own.
+    out.push({ id: alias.get(fx.id) ?? fx.id, name: fx.name, spell: fx.spell, ...(src === 'hidden' ? {} : { source: fx.source }), ...(alias.has(fx.id) ? { conc: false, lasts: null, until: null } : { conc: fx.conc, lasts: fx.lasts, until: fx.until ? { ...fx.until } : null }), parts, ...(zone ? { zone: zone.zone } : {}) });
+  }
+  return out;
+}
+
+// ---------- lasting zones (#842) ----------
+// A zone is a thing on the ground that anyone looking at it sees: Moonbeam's beam, Spirit Guardians' spirits, a Flaming Sphere, the runes of
+// a Magic Circle. A player is sent its shape (view-fields.js, ZONE_FIELDS, says field by field) and not how it works. Which zones, and where:
+//  - only the cells of it that are sent of the map: a zone in a region not yet revealed is not sent until it is (the rule of an object there, and
+//    of the cells an event names); under los and light only the cells the party sees now, so one that appears or goes out of sight tells nothing;
+//  - one whose spell says it looks natural (`CAMOUFLAGED`: Spike Growth) only to the caster's side, the party; a Magic Circle (`ward`) only where its caster is one they know of;
+//  - a zone of a caster the party does not know of without `source`, `conc`, `lasts` and `until`, and with an id of its own (`z1`, `z2`...) in
+//    place of the effect's, which comes from the counter creatures share (DEBT T11);
+//  - an Emanation as the cells it covers now, never `follows`, and not at all while the creature it surrounds is one they do not know of: its
+//    cells would move as the creature does.
+// The spells that say their zone is camouflaged. Spike Growth is the only one in the SRD that says so ("camouflaged to look natural"); Zone of
+// Truth says nothing of how it looks and is treated as the others.
+const CAMOUFLAGED = new Set(['spike-growth']);
+
+// The cells an Emanation round `c` covers now, as zones.js `holds` counts them: on hexes every cell within the size of the creature's place, on
+// squares the table's `areaFill` round its footprint.
+function emanationCells(state, c, size) {
+  const G = gridOf(state.map), n = size / FT;
+  return (G.kind === 'square' ? squareAround(boxOf(footprint(c, c.pos, G)), n, state.settings?.areaFill ?? 'round') : G.range(c.pos, n)).map(col);
+}
+// The first kind of damage the zone's steps deal: the tint a client draws it in.
+function zoneLook(steps) {
+  const walk = (v) => {
+    if (Array.isArray(v)) { for (const x of v) { const t = walk(x); if (t) return t; } return null; }
+    if (v && typeof v === 'object') {
+      if ('damage' in v && typeof v.type === 'string' && DAMAGE_TYPES.includes(v.type)) return v.type;
+      for (const x of Object.values(v)) { const t = walk(x); if (t) return t; }
+    }
+    return null;
+  };
+  return walk(steps);
+}
+// The record a player is sent of a zone, or null where none is. `seen` is the cells they are sent of the map (`seenCols`).
+function zoneRecord(state, fx, seen) {
+  const z = fx.zone;
+  if (!z || !z.area) return null;
+  if (CAMOUFLAGED.has(fx.spell) && state.entities[fx.source]?.side !== 'party') return null;
+  // A Magic Circle of a caster the party does not know of is not enforced against their creatures (engine/world.js, `circlesFor`: a refusal would tell them something stands
+  // there), so it is not drawn either: runes that bar nobody would be a lie. The DM holds it by hand (the cast told them so).
+  if (z.ward && classify(state, fx.source) === 'hidden') return null;
+  let cells, origin;
+  if (z.follows) {
+    const c = state.entities[z.follows];
+    if (!c || c.dead || classify(state, z.follows) === 'hidden') return null;
+    cells = emanationCells(state, c, z.area.size);
+    origin = { q: c.pos.q, r: c.pos.r, z: c.pos.z ?? 0 };
+  } else { cells = z.hexes ?? []; origin = z.origin; }
+  const hexes = cells.filter((k) => seen.has(k)), whole = hexes.length === cells.length;
+  if (!hexes.length) return null;
+  const rec = {};
+  for (const k of Object.keys(ZONE_FIELDS)) {
+    if (ZONE_FIELDS[k] === 'withheld' || k === 'follows') continue;
+    // How big it is (`size`, `height`, `width`) only when every cell of it is sent: else two zones that differ only in a part nobody has seen would be told apart by them.
+    if (k === 'area') rec.area = structuredClone(Object.fromEntries(ZONE_AREA_FIELDS.filter((f) => z.area[f] !== undefined && (whole || !['size', 'height', 'width'].includes(f))).map((f) => [f, z.area[f]])));
+    else if (k === 'hexes') rec.hexes = hexes;
+    else if (k === 'origin') {
+      // The place where its cell is sent; else only a height, the lowest surface of a cell of it that is sent (the client draws from the cells), never the origin's own.
+      if (origin) rec.origin = seen.has(col(origin)) ? { q: origin.q, r: origin.r, z: origin.z ?? 0 } : { z: surfaces(state.map, parse(hexes[0]))[0]?.z ?? 0 };
+    }
+    else if (k === 'body') { if (z.body) rec.body = z.body.filter((x) => seen.has(x)); }
+    else if (z[k] !== undefined) rec[k] = structuredClone(z[k]);
+  }
+  rec.look = zoneLook(z.steps) ?? 'neutral';
+  return rec;
+}
+// The cells that are sent of the map, which a zone's cells are cut to: under `rooms` the tiles of revealed regions, under los and light those in view now.
+const seenCols = (state) => { const sm = shownMap(state); return sightRule(state) === 'rooms' ? sm.cols : sm.nowCols; };
+// The effects of a zone of a caster the party does not know of, that a player is sent in any way (its zone, or a part on one of theirs), by an id of their own
+// (`z1`, `z2`, in the order of the state): the effect's own number comes from the counter creatures share (T11). Map(effect id -> alias). The alias goes wherever
+// players are told of the effect: its entry in `effects`, a condition's `effect`, and the events `effectStart`, `effectEnd` and `zoneMoved`.
+function zoneAliases(state) {
+  const out = new Map(), seen = seenCols(state);
+  let n = 0;
+  for (const fx of state.effects ?? []) {
+    if (!fx.zone || classify(state, fx.source) !== 'hidden') continue;
+    if (zoneRecord(state, fx, seen) || fx.parts.some((p) => classify(state, p.target) === 'open')) out.set(fx.id, `z${++n}`);
+  }
+  return out;
+}
+// Every zone a player is sent: Map(effect id -> { id, zone }), `id` as `effects` names the effect.
+function viewZones(state) {
+  const out = new Map(), seen = seenCols(state), alias = zoneAliases(state);
+  for (const fx of state.effects ?? []) {
+    if (!fx.zone) continue;
+    const zone = zoneRecord(state, fx, seen);
+    if (zone) out.set(fx.id, { id: alias.get(fx.id) ?? fx.id, zone });
   }
   return out;
 }
@@ -618,8 +685,19 @@ export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
   // A player whose characters are in another place, with the table rule `watching: 'off'`, is told the table's out-of-character talk and what is shown
   // to them, and nothing of the place in play.
-  return viewEventsOf(offWatcher(state, viewer) ? events.filter((ev) => (ev?.type === 'say' && (ev.as === null || (ev.far === true && Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId)))) || ev?.type === 'handoutShown') : events, state, viewer);
+  return inOrder(viewEventsOf(offWatcher(state, viewer) ? events.filter((ev) => (ev?.type === 'say' && (ev.as === null || (ev.far === true && Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId)))) || ev?.type === 'handoutShown') : events, state, viewer));
 }
+// Every event a player is sent has its fields in one fixed order (#779): keys sorted, recursively, in plain string order;
+// arrays keep their order. What was withheld, scrubbed or rebuilt on the way then cannot show in the order of the fields
+// (#748). One copy per object, none for a primitive. (An integer-like key is always written first, ascending, by JavaScript itself.)
+function sorted(v) {
+  if (v === null || typeof v !== 'object') return v;
+  if (Array.isArray(v)) return v.map(sorted);
+  const o = {};
+  for (const k of Object.keys(v).sort()) Object.defineProperty(o, k, { value: sorted(v[k]), enumerable: true, writable: true, configurable: true });      // a key named __proto__ stays a key
+  return o;
+}
+const inOrder = (evs) => evs.map(sorted);
 function viewEventsOf(events, state, viewer) {
   // The faces of a damage, healing or Temporary Hit Points roll (docs/specs/dice.md) go with the
   // event only where the player has the number they add up to: always if one of theirs rolled
@@ -665,6 +743,8 @@ function viewEventsOf(events, state, viewer) {
   // Cells named by an area, only where they are sent, under every rule (under `rooms` too, DEBT
   // P26: an area reaching into a region not yet revealed does not show its cells there).
   const hexesOf = (hs) => (!hs ? hs : hs.filter((h) => sm.cols.has(col(h))).map((h) => ({ q: h.q, r: h.r })));
+  let zonesMemo = null;
+  const zonesNow = () => (zonesMemo ??= viewZones(state)), seenNow = seenCols(state);
   const kept = [];
   // Timeline entries are events with the in-world time `t` added; the time survives redaction.
   const out = { push(e) { delete e.unseen; delete e.hb; if (this.ev.t !== undefined) e.t = this.ev.t; kept.push(e); }, ev: null };
@@ -763,6 +843,19 @@ function viewEventsOf(events, state, viewer) {
           ...(ev.against !== undefined && cls(ev.against) !== 'hidden' ? { against: ev.against } : {}),
           ...(ev.amount !== undefined && cls(ev.id) === 'open' ? { amount: ev.amount, ...facesFor(ev) } : {}) });
         break;
+      // A zone rolled to a new place (Flaming Sphere, a Conjure Animals pack), where the zone is one they are sent: from and to, as far as they are cells
+      // that are sent; who moved it only where they know of them; the creature it rolled into only where they know of it. A zone they are not sent
+      // is not told of. Its own id, as `effects` names it.
+      case 'zoneMoved': {
+        const zone = zonesNow().get(ev.fx);
+        if (!zone) break;
+        const at = (h) => h && typeof h.q === 'number' && typeof h.r === 'number' && seenNow.has(col(h)) ? { q: h.q, r: h.r } : undefined;
+        const from = at(ev.from), to = at(ev.to);
+        if (!from && !to) break;
+        out.push({ type: ev.type, fx: zone.id, name: ev.name, ...(from ? { from } : {}), ...(to ? { to } : {}),
+          ...(ev.by !== undefined && cls(ev.by) !== 'hidden' ? { by: ev.by } : {}), ...(ev.met !== undefined && cls(ev.met) !== 'hidden' ? { met: ev.met } : {}) });
+        break;
+      }
       case 'cast':
         out.push({ ...pick(ev, ['type', 'actor', 'spell', 'name', 'slot', 'reaction', 'item']),
           hexes: hexesOf(ev.hexes),
@@ -830,8 +923,12 @@ function viewEventsOf(events, state, viewer) {
         const unknownIds = [...(unknownCaster ? [ev.source] : []), ...(ev.targets || []).filter((id) => typeof id === 'string' && cls(id) === 'hidden')];
         if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) {
           const e = { ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(unknownCaster ? [] : ['source']), ...(unknownIds.length ? [] : ['why'])]), targets };
+          if (unknownCaster) delete e.fx;      // its number comes from the counter creatures share, and a zone's own id for them is not kept once it has ended
           if (unknownIds.length && ev.why !== undefined) e.why = unknownIds.some((id) => !namesOf(id).length || namesOf(id).some((n) => n && String(ev.why).includes(n))) ? 'it ended' : ev.why;
-          out.push(e);
+          // Keys in the event's own order whatever was withheld, so the bytes are not a tell (#748).
+          const ordered = {};
+          for (const k of [...Object.keys(ev), ...Object.keys(e)]) if (k in e && !(k in ordered)) ordered[k] = e[k];
+          out.push(ordered);
         }
         break;
       }
@@ -964,6 +1061,9 @@ function viewEventsOf(events, state, viewer) {
         break;
       case 'privateNote':                              // a note is between the two people it names, and the DM
         if (typeof viewer?.userId === 'string' && (ev.from === viewer.userId || ev.to === viewer.userId)) out.push(pick(ev, ['type', 'from', 'to', 'text']));
+        break;
+      case 'declined':                                 // the DM turned an offered character down (engine/characters.js, decline): the offering player is told, with the note; nobody else
+        if (typeof viewer?.userId === 'string' && ev.user === viewer.userId) out.push(pick(ev, ['type', 'user', 'note']));
         break;
       case 'scoresRolled':                             // ability scores rolled (scores.js): the numbers are the roller's and the DM's; the others are told only that it happened
       case 'scoreRerolled':

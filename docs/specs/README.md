@@ -19,15 +19,16 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [AI casting](ai-casting.md) | Built spellcasters played by the AI cast spells | Draft; AC1 and AC2 built |
 | [Renderer](renderer.md) | Rooms from the map, timeline, models, the renderer interface, Three.js | Draft; Three.js default and the old renderer removed (R14) |
 | [Table UI](table-ui.md) | Drawer, tracker, action panel, defeat, rewards, log by combat | Draft; largely built |
-| [One token, one menu](one-token-menu.md) | One token that opens one menu; supersedes the player's screen where they differ | Draft |
+| [One token, one menu](one-token-menu.md) | One token that opens one menu; supersedes the player's screen where they differ | Draft; amended 24 November (#750): the d20 confirms, tap-to-target, choices on the sheet |
 | [The DM's to-do tray](dm-todo.md) | A card for each note the engine hands the DM, with tools and Done; "You run" cards; the caster's "waiting for the DM" | Built (#675) |
 | [Player's screen](player-screen.md) | The moments of a player at the table | Draft; superseded in part |
 | [Starting page](start-page.md) | Play and Tools, Carry on | Draft |
 | [Flying and swimming control](fly-swim-control.md) | A column of translucent cubes to pick a height, then a plane of reachable cells; swimming needs one engine step | Draft; nothing built |
 | [Keyboard](keyboard.md) | WASD and arrows, follow camera, key maps | Built (#357) |
+| [Pop-out windows](popout-windows.md) | Turn order, log, dice and a sheet in their own windows on a computer; the map later | Draft; owner's answers of 21 November; not built |
 | [Feedback button](feedback.md) | A comment with what the player was just shown | Built (first version) |
-| [Portable characters](portable-characters.md) | A character file with a signed history and level meter | Draft; nothing built |
-| [Homebrew](homebrew.md) | Table packs, the registry, reader, dry run, builder | Draft; B1 to B7 and the CLI built; builder (B9 to B11) not |
+| [Portable characters](portable-characters.md) | A character file with a signed history and level meter; it carries its own homebrew (#592) | Draft; nothing built |
+| [Homebrew](homebrew.md) | Table packs, the registry, reader, dry run, builder; a character file may carry its own pieces, which the DM allows one by one (#592) | Draft; B1 to B7 and the CLI built; builder (B9 to B11) not |
 | [Homebrew subclasses](homebrew-subclasses.md) | A subclass of an SRD class as a pack entry | Draft; B1 to B5 built |
 | [Species](species.md) | SRD species as content, the sheet field, homebrew species | Draft; SP1 and SP2 built |
 | [Ability scores](ability-scores.md) | Standard array, point buy, rolling, the DM's reroll rule | Agreed; built |

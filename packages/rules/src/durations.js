@@ -1,12 +1,20 @@
 // Things that last: a spell's lasting effect, how long it runs, what ends it, and Concentration.
 //
 // A lasting effect is a record in state.effects:
-//   { id, name, spell, source, conc, lasts, until, parts }
+//   { id, name, spell, source, conc, lasts, until, parts, level?, aimed? }
+//   aimed: for a spell cast at creatures or at its caster, the ids it was aimed at and could affect (state version 31): where no part is on any of
+//          them (the DM applies the spell), Dispel Magic takes the spell to be on each.
+//   level: for a spell, the level it was cast at (the slot's, or the spell's own; 0 for a cantrip): what Dispel Magic reads (state version 31).
+//          A spell's effect without one (a bound effect, one from before version 31 the migration could not read) counts at the spell's own level.
 //   until: null (only the DM ends it) | { clock } (world time, in minutes)
 //          | { enc, round } (in a fight: the start of the source's turn in that round)
 //   parts: what it put on creatures, so ending it takes exactly that off again:
 //          { target, cond, ends?, dc?, born? }, { target, modifier, ends?, dc?, born?, against? }
-//          { target, light: true } (a light it gave to carry), or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
+//          { target, confuse: { had } } (a `confuse` step: Confusion; `had` is what its Reaction was before),
+//          { target, turn: { steps, src } } (an `eachTurn` step: what the effect runs on the creature at the start of each of its turns, effects.js `turnSteps`;
+//          never sent to players), { target, meld: true } (a `meld` step: Meld into Stone; the creature's `melded` mark names this effect, and ending the effect
+//          brings it out of the stone: see `ON.meldEnd`), { target, light: true } (a light it gave to carry), { target, size: { was, now } } (a size it gave: Enlarge/Reduce), { target, water: { mode, map, level, cells: { key: { was, now } } } } (water a `water` step changed: Control Water; `target` is the caster, and
+//          ending the effect puts the water back, tides.js `endWater`), or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
 //          raised creature under control). `born` names the turn it was made in (turnKey).
 // A `summon` part is the creature a spell made (docs/specs/companions.md, Decision 4): its bond names the
 // effect (`bond.fx`), and once the part has ended, or the effect has, the creature vanishes ('ended'). Ending
@@ -20,8 +28,10 @@
 // an effect anyway, `bound`, that ends when its parts do.
 // Ending an effect removes its parts. Design: docs/specs/rules-expansion.md.
 import { has, incapacitated } from './modifiers.js';
+import { submerged } from './space.js';
 import { leaveForm } from './forms.js';
 import { homebrewBlock, srcOf } from './homebrew.js';
+import { endWater } from './tides.js';
 
 export const ROUND = 0.1;                 // one round is six seconds; the world clock counts minutes
 const EPS = 1e-6;                         // rounds are added as 0.1, which does not sum exactly
@@ -35,13 +45,15 @@ export function durationMinutes(text) {
   return m ? +m[1] * MINUTES[m[2]] : null;
 }
 
+// Is anyone under the surface of water now (space.js `submerged`)?
+const anyUnder = (s) => Object.values(s.entities ?? {}).some((e) => !e.dead && submerged(s, e));
 export const effectsOf = (s) => (s.effects ??= []);
 const inFight = (s, id) => !!s.encounter && s.encounter.order.some((o) => o.id === id);
 
-export function startEffect(s, { name, spell, source, conc, duration }) {
+export function startEffect(s, { name, spell, source, conc, duration, level }) {
   const minutes = durationMinutes(duration);
   const fx = {
-    id: `fx${++s.seq}`, name, spell, source, conc: !!conc, lasts: duration, parts: [],
+    id: `fx${++s.seq}`, name, spell, source, conc: !!conc, lasts: duration, parts: [], ...(Number.isInteger(level) ? { level } : {}),
     until: minutes === null ? null
       : inFight(s, source) ? { enc: s.encounter.id, round: s.encounter.round + Math.round(minutes / ROUND) }
       : { clock: s.clock + minutes },
@@ -54,6 +66,10 @@ export function startEffect(s, { name, spell, source, conc, duration }) {
   return fx;
 }
 
+// Things this module cannot do itself because they need the engine's placing and zones (engine/resolve.js sets them when it loads): a creature merged
+// with stone comes out of it (`meldEnd(s, ev, creature, melded)`), at the place it went in or the nearest one free.
+export const ON = { meldEnd: null, sizeEnd: null, breath: null };
+
 function endPart(s, ev, fx, p) {
   if (p.ended) return;
   p.ended = true;
@@ -62,12 +78,31 @@ function endPart(s, ev, fx, p) {
   // A Hit Point maximum it raised comes down again; current Hit Points stay within it.
   if (p.hpMax && t && !t.dead) { t.maxHp -= p.hpMax; t.hp = Math.min(t.hp, t.maxHp); ev.push({ type: 'maxHp', id: t.id, maxHp: t.maxHp, hp: t.hp }); }
   // A form it held ends: what the form replaced is put back (forms.js).
-  if (p.form && t?.form?.fx === fx.id) { leaveForm(t); ev.push({ type: 'form', id: t.id, form: null }); }
+  if (p.form && t?.form?.fx === fx.id) {
+    // The size the form puts back (`form.kept.size`) already carries every change of size made under it or before it (engine/world.js `resize`); those changes are in the creature's own size from now on.
+    const formSize = t.size;
+    leaveForm(t);
+    for (const x of effectsOf(s)) for (const q of x.parts) if (q.under === fx.id) delete q.under;
+    ev.push({ type: 'form', id: t.id, form: null });
+    if (t.size !== formSize) ev.push({ type: 'size', id: t.id, size: t.size });
+  }
+  // Confusion ends on it (a `confuse` step): its Reaction comes back as it was, unless another Confusion still holds it.
+  if (p.confuse && t && !t.dead && !effectsOf(s).some((x) => x.parts.some((q) => q !== p && q.confuse && !q.ended && q.target === t.id))) t.reactionUsed = !!p.confuse.had;
+  // The stone lets go of a creature merged with it (a `meld` step: Meld into Stone): its mark goes, and it comes out where it went in.
+  if (p.meld && t?.melded?.fx === fx.id) { const m = t.melded; delete t.melded; if (!t.dead) ON.meldEnd?.(s, ev, t, m); }
+  // A size it gave goes back (a `resize` step: Enlarge/Reduce): what it was, if the creature is still the size the effect left it; engine/world.js `sizeEnd` says whether there is room.
+  if (p.size && t) ON.sizeEnd?.(s, ev, t, p.size.was, p.size.now, fx.name);
+  // Water it changed goes back (a `water` step: Control Water): a flood comes down, a trench fills in (tides.js).
+  if (p.water) endWater(s, ev, fx, p.water);
   // A light it gave goes out (a `light` step: Light).
   if (p.light && t?.light?.fx === fx.id) { delete t.light; ev.push({ type: 'light', id: t.id, bright: 0, dim: 0 }); }
+  // An action a spell gave it goes (an `arm` step: Flame Blade).
+  if (p.arm && t?.actions) { t.actions = t.actions.filter((x) => !(x.id === p.arm && x.armed === fx.id)); if (ev) ev.push({ type: 'note', id: t.id, text: `${fx.name}: ${t.name} no longer has it` }); }
   // Temporary Hit Points that came from this effect vanish with it (those from elsewhere since stay).
   if (p.temp && t?.tempFx === fx.id) { const lost = t.tempHp ?? 0; t.tempHp = 0; delete t.tempFx; if (lost) ev.push({ type: 'tempHp', id: t.id, amount: -lost, tempHp: 0 }); }
 }
+// Is a creature held by Confusion (a `confuse` part, not ended)? Its Reaction is then spent, as the fight begins or it joins one (resolve.js, world.js).
+export const confusedNow = (s, e) => effectsOf(s).some((fx) => fx.parts.some((p) => p.confuse && !p.ended && p.target === e.id));
 const targetsOf = (fx) => [...new Set(fx.parts.map((p) => p.target))];
 // Does the lasting effect its bond names still keep this creature? (a `summon` part on it, not ended: on the map; or a
 // `bond` part, Animate Dead's and Create Undead's 24 hours of control, Decision 7: under its master's control. What
@@ -81,8 +116,13 @@ export function endEffect(s, ev, fx, why) {
   for (const p of fx.parts) endPart(s, ev, fx, p);
   ev.push({ type: 'effectEnd', fx: fx.id, name: fx.name, source: fx.source, targets: targetsOf(fx), why });
 }
+// The ward a creature has from a spell (the `ward` step: Sanctuary) ends when it makes an attack roll, casts a spell or deals damage.
+export function endWards(s, ev, id, why) {
+  for (const fx of [...effectsOf(s)]) if (fx.parts.some((p) => !p.ended && p.ward && p.target === id)) endEffect(s, ev, fx, why);
+}
 // An effect whose every part has ended has nothing left to do.
-const spent = (fx) => fx.parts.length > 0 && fx.parts.every((p) => p.ended);
+// `ends.keeps` (Heat Metal): a part that ended with it leaves the spell standing, though nothing is left on any creature.
+const spent = (fx) => fx.parts.length > 0 && fx.parts.every((p) => p.ended && !p.ends?.keeps);
 
 // The turn now being taken, as a part records it: a part made in a creature's turn does not end
 // at the end of that same turn ("until the end of its next turn"). Named by the fight, the round and
@@ -120,6 +160,21 @@ function expire(s, ev, fx) {
 
 // The world clock moved: end whatever has run out.
 export function tick(s, ev) {
+  // Everyone under water holds its breath through the time that passed since the clock was last looked at (engine/rolls.js `breathe`). `breathAt` is that moment, kept
+  // from one look to the next. It is written only once a game has had a creature under water (a table that never swims has no new field: its state is what it was), and it is
+  // optional (no state version): a game with none works the first advance out from the `time` or `rest` event it just made, and from nothing else (that one is counted from now).
+  if (Number.isFinite(s.clock) && (Number.isFinite(s.breathAt) || anyUnder(s))) {
+    const told = ev.findLast?.((x) => x?.type === 'time' || x?.type === 'rest');
+    const from = Number.isFinite(s.breathAt) ? s.breathAt : told?.type === 'time' ? s.clock - told.minutes : told?.short === true ? s.clock - 60 : told ? s.clock - 480 : s.clock;
+    const dt = s.clock - from;
+    s.breathAt = s.clock;
+    if (dt > EPS) ON.breath?.(s, ev, null, Math.round(dt * 60), false);
+  }
+  // A whole form (Polymorph) ends on the creature when it has no Temporary Hit Points left, however they went (a rest clears them; damage ends it as it soaks).
+  for (const e of Object.values(s.entities)) {
+    const fx = e.form?.whole === true && !(e.tempHp > 0) ? effectsOf(s).find((x) => x.id === e.form.fx) : null;
+    if (fx) endEffect(s, ev, fx, `${e.name} has no Temporary Hit Points left`);
+  }
   for (const fx of [...effectsOf(s)]) if (fx.until?.clock !== undefined && fx.until.clock <= s.clock + EPS) expire(s, ev, fx);
 }
 
@@ -152,8 +207,11 @@ function boundary(s, ev, e, kit, when) {
     if (spent(fx)) endEffect(s, ev, fx, 'nothing is left of it');
   }
 }
-export const turnStarted = (s, ev, e, kit) => boundary(s, ev, e, kit, 'turnStart');
-export const turnEnded = (s, ev, e, kit) => boundary(s, ev, e, kit, 'turnEnd');
+// A turn boundary is also where a swimmer's breath is looked at (`secs` 0: surfacing is noticed here), and where a game with no `breathAt` yet takes the clock as it is, so that
+// the first round of a fight counts.
+const watch = (s, ev, e, turnEnd) => { if (!Number.isFinite(s.breathAt) && Number.isFinite(s.clock) && anyUnder(s)) s.breathAt = s.clock; ON.breath?.(s, ev, e, 0, turnEnd); };
+export const turnStarted = (s, ev, e, kit) => { boundary(s, ev, e, kit, 'turnStart'); watch(s, ev, e, false); };
+export const turnEnded = (s, ev, e, kit) => { boundary(s, ev, e, kit, 'turnEnd'); watch(s, ev, e, true); };
 
 // The fight is ending (call before the encounter is cleared). Whatever was counted in rounds
 // carries on by the clock, and whatever was waiting for a turn boundary ends now.

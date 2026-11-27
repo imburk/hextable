@@ -88,6 +88,7 @@ const MAKE = {
   'attack.advantage': (c) => { c.tgt.cond.prone = {}; },
   'attack.disadvantage': (c) => { c.atk.cond.poisoned = {}; },
   'ally.adjacentToTarget': (c) => c.ally(),
+  'target.ally': (c) => { c.tgt.side = c.atk.side; },                  // the target on the attacker's own side (the default scene has them on two)
   // The target held by the attacker (docs/specs/grapple-shove.md, Decision 2), with a range the scene's gaps never pass.
   'target.grappledBySelf': (c) => { c.tgt.cond.grappled = { source: c.atk.id, holds: [{ by: c.atk.id, with: 'hand', escape: 10, range: 60 }] }; },
 };
@@ -127,6 +128,7 @@ function play(hook, tag, withMod, how = {}) {
   } };
   void R;
   if (tag === 'check.proficient') F.skills = ['perception'];
+  if (tag === 'check.unskilled') { F.skills = (F.skills ?? []).filter((k) => k !== 'perception'); if (F.skillBonus) delete F.skillBonus.perception; }   // #732: the check below is Perception
   if (how.abil) F.attacks[0].abil = how.abil;
   const put = () => { if (withMod) wear(holder, { on: hook, op: hook === 'damage.taken' ? 'immune' : hook === 'opportunity' ? 'autoFail' : 'add', ...(hook === 'damage.taken' || hook === 'opportunity' ? {} : { value: how.onFail ? '1d20' : BONUS }), ...(how.onFail ? { onFail: true } : {}), when: [tag] }); };
   const setUp = () => { MAKE[tag]?.(ctx); put(); };

@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, spawnNear, selectAndMove, panelTab, rowOf, settle, onCanvas, tapAt, chipPick, openMenu } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, spawnNear, selectAndMove, panelTab, rowOf, settle, onCanvas, tapAt, chipPick, openMenu, tapDie } from './lib.mjs';
 
 // ---------- companions ----------
 // The client side of companions C1 (docs/specs/companions.md; issue #318). Solo at both sizes, the DM bonds a foe to Brenna as a familiar that
@@ -117,8 +117,8 @@ async function table(browser, url) {
         await waitShown(phone, '#lobby', false);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
-        name = (await b.locator('strong').textContent()).replace('Play as ', '').trim();
+        await openMenu(phone, []); const b = phone.locator('#arc .arc-b:has-text("Play as")').first();
+        name = (await b.locator('.ab-label').textContent()).replace('Play as ', '').trim();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
         await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
@@ -395,6 +395,7 @@ export async function screens(browser, url, label, opts) {
         await clickRow('companions', 'Shocking Grasp through');
         const fpos = await state(page, (S, f) => S.entities[f].pos, foe);
         await tapHex(fpos, foe);
+        await tapDie(page, false);
         await wait(page, () => /delivers/.test(document.getElementById('log-list')?.textContent ?? '') || window.hextable.state.timeline?.some?.((x) => x.type === 'delivered') || true);
         await calm(page);
         const got = await page.evaluate(() => window.hextable.state.timeline.some((x) => x.type === 'delivered'));

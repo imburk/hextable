@@ -3,7 +3,7 @@
    sets them all to nothing, and nothing moves. */
 body { --menu-in: .72s; --menu-out: .66s; --menu-level: .68s; --menu-col: .7s; }
 body[data-menu-motion="appear"] { --menu-in: 0s; --menu-out: 0s; --menu-level: 0s; --menu-col: 0s; }
-body[data-menu-motion="appear"] :is(#drawer, #drawer .menu-level, #drawer-scrim, #btn-menu, #btn-menu *) { transition: none !important; animation: none !important; }
+body[data-menu-motion="appear"] :is(#drawer, #drawer .menu-level, #drawer-scrim, #btn-menu, #btn-menu *, #menu-root) { transition: none !important; animation: none !important; }
 
 /* the token: one die at the bottom of the screen, drawn by the theme (its colours are the theme's --die tokens) */
 #btn-menu { position: fixed; z-index: 6; width: 64px; height: 64px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: none; display: block; touch-action: manipulation;
@@ -21,10 +21,83 @@ body[data-token="right"] #btn-menu { left: auto; right: calc(16px + env(safe-are
 body.drawer-pretable #btn-menu, body:has(#dice-tray) #btn-menu { visibility: hidden; }       /* no table yet; or a throw is waiting where the token sits */
 #menu-badge { position: absolute; top: -2px; right: -2px; background: var(--bad); color: #fff; border-radius: 11px; min-width: 22px; height: 22px; padding: 0 5px; font: 700 13px/22px var(--body); text-align: center; }
 
+/* M6, the token's states (Decision 7). The arc is the selected character's health, a stroke as long as --hp of 100; the ring lights on my turn and pulses once. */
+#btn-menu .tk-arc { fill: none; stroke: var(--good); stroke-width: 4; stroke-linecap: butt; stroke-dasharray: var(--hp, 0) 100; opacity: 0; transition: stroke-dasharray .4s ease, stroke .2s; }
+#btn-menu.has-hp .tk-arc { opacity: 1; }
+#btn-menu.low .tk-arc { stroke: var(--bad); }
+#btn-menu.turn .tk-disc { stroke: var(--accent); stroke-width: 3; }
+#btn-menu.turn svg { filter: drop-shadow(0 0 7px var(--accent)); }
+#btn-menu.pulse svg { animation: tk-pulse .7s ease-out 1; }
+@keyframes tk-pulse { 0% { transform: scale(1); } 35% { transform: scale(1.14); } 100% { transform: scale(1); } }
+#btn-menu .tk-bar { display: none; fill: var(--die-ink); stroke: var(--die); stroke-width: 1.5; }
+#btn-menu.down .tk-bar { display: block; } #btn-menu.down .tk-num { visibility: hidden; }
+#btn-menu .tk-x { display: none; fill: none; stroke: var(--bad); stroke-width: 5; stroke-linecap: round; }
+#btn-menu.offline .tk-x { display: block; }
+#btn-menu:is(.dead, .offline) :is(.tk-face, .tk-line, .tk-num, .tk-disc, .tk-arc) { filter: grayscale(1); opacity: .55; }
+#btn-menu.dead .tk-arc { opacity: 0; }
+/* #750: the die confirms. While an action waits, a dashed ring outside the disc (a shape the turn ring and the health arc do not have) pulses slowly; with reduced motion it is steady. */
+#btn-menu .tk-wait { display: none; fill: none; stroke: var(--accent); stroke-width: 3; stroke-dasharray: 6 5; transform-box: fill-box; transform-origin: center; }
+#btn-menu.waiting .tk-wait { display: block; animation: tk-wait 2.6s ease-in-out infinite; }
+@keyframes tk-wait { 0%, 100% { opacity: .4; transform: scale(1); } 50% { opacity: 1; transform: scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { #btn-menu.pulse svg { animation: none; } #btn-menu .tk-arc { transition: none; } #btn-menu.waiting .tk-wait { animation: none; opacity: 1; } }
+/* the banner at the start of my turn: over the map for 1.6 s, and it takes no tap */
+#turn-banner { position: fixed; z-index: 5; left: 50%; top: 22%; transform: translateX(-50%); pointer-events: none; max-width: calc(100% - 32px); padding: 10px 22px; border-radius: var(--radius);
+  background: var(--panel); border: 2px solid var(--accent); font: 700 22px/1.2 var(--head, var(--body)); text-align: center; box-shadow: 0 6px 18px #0008; }
+#turn-banner[hidden] { display: none; }
+#turn-banner.go { animation: banner 1.6s ease both; }
+@keyframes banner { 0% { opacity: 0; transform: translate(-50%, 8px); } 12%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 0); } }
+body[data-menu-motion="appear"] #turn-banner.go { animation: none; }
+@media (prefers-reduced-motion: reduce) { #turn-banner.go { animation: none; } }
+/* the health label: beside the token for 3 s after the selected character's Hit Points change */
+#hp-note { position: fixed; z-index: 6; pointer-events: none; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 18px); right: calc(50% + 42px); background: var(--panel); border: 1px solid var(--good); border-radius: 14px; padding: 4px 10px; font: 700 13px/1.2 var(--body); white-space: nowrap; }
+#hp-note.bad { border-color: var(--bad); }
+#hp-note[hidden] { display: none; }
+body[data-token="left"] #hp-note { right: auto; left: calc(16px + env(safe-area-inset-left)); bottom: calc(max(16px, env(safe-area-inset-bottom)) + 70px); }
+body[data-token="right"] #hp-note { right: calc(16px + env(safe-area-inset-right)); bottom: calc(max(16px, env(safe-area-inset-bottom)) + 70px); }
+/* offline: a bar across the top; it takes no tap (the connection dot may be under it) */
+#offline-bar { position: fixed; z-index: 8; top: max(0px, env(safe-area-inset-top)); left: 0; right: 0; pointer-events: none; padding: 8px 14px; background: var(--bad); color: #fff; font-size: 14px; text-align: center; }
+#offline-bar[hidden] { display: none; }
+body.offline #ap-body :is(.ap-row, .ap-bar), body.offline #c-res button, body.offline #c-end, body.offline #btn-end { opacity: .45; }
+#offline-why[hidden], #dead-line[hidden] { display: none; }
+#offline-why, #dead-line { margin: 8px 0 0; }
+#dead-line { padding: 8px 10px; border: 1px solid var(--bad); border-radius: var(--radius); }
+#turnline.down { border-color: var(--bad); }
+/* Waiting for you: the top of the first level, only when the badge shows */
+#menu-waiting { padding: 8px 10px; border: 1px solid var(--accent); border-radius: var(--radius); }
+#menu-waiting[hidden] { display: none; }
+#menu-waiting > h3 { margin: 0 0 6px; font-size: 14px; }
+#waiting-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#waiting-list[hidden] { display: none; }
+#waiting-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
+#waiting-list button { min-height: 44px; flex: none; }
+/* Pick who you play (#756): the unclaimed characters, each with Play as, in the same box as Waiting for you */
+#menu-pick { padding: 8px 10px; border: 1px solid var(--accent); border-radius: var(--radius); }
+#menu-pick[hidden] { display: none; }
+#menu-pick > h3 { margin: 0 0 6px; font-size: 14px; }
+#menu-pick > .note { margin: 6px 0 0; font-size: 13px; }
+#menu-pick > .bring { margin: 8px 0 0; }
+#menu-pick .bring button { min-height: 44px; width: 100%; }
+#menu-pick .bring-text { margin: 6px 0 0; font-size: 13px; }
+#pick-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#pick-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
+#pick-list li > span { min-width: 0; display: grid; }
+#pick-list li small { color: var(--muted, inherit); opacity: .8; }
+#pick-list button { min-height: 44px; flex: none; max-width: 60%; }
+#pick-list button.sure { outline: 2px solid currentColor; outline-offset: 2px; }
+#menu-waiting #todo-mount { border: 0; padding: 0; margin: 6px 0 0; }
+
 /* the turn line: one line above the token in a fight */
 #turnline { position: fixed; z-index: 3; left: calc(50% + (var(--inset-l, 0px) - var(--inset-r, 0px)) / 2); transform: translateX(-50%); bottom: calc(var(--dock-h, 0px) + 6px); width: max-content; max-width: calc(100% - 24px - var(--inset-l, 0px) - var(--inset-r, 0px));
   display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 2px 2px 4px; font-size: 14px; }
 #turnline[hidden] { display: none; }
+/* #717: the quick actions, a row of their own above the words on my turn; each a thumb high and at most a third of the line */
+#turnline:has(#turn-quick:not([hidden])) { flex-wrap: wrap; justify-content: space-between; max-width: min(calc(100% - 24px - var(--inset-l, 0px) - var(--inset-r, 0px)), 420px); }
+#turn-quick { flex: 1 0 100%; display: flex; gap: 4px; padding: 2px 2px 4px 0; min-width: 0; }
+#turn-quick[hidden] { display: none; }
+#turn-quick .tq { flex: 1 1 0; min-width: 0; max-width: 12em; min-height: 44px; padding: 4px 10px; background: var(--panel-2); font-weight: 700; font-size: 14px; }
+#turn-quick .tq span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#turn-quick .tq.armed { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+body.offline #turn-quick .tq { opacity: .45; }
 #turnline.mine { border-color: var(--accent); }
 #turn-text { min-height: 44px; padding: 0 10px; background: none; border: 0; font: inherit; font-size: 13px; line-height: 1.2; font-weight: 600; text-align: left; min-width: 0; }
 #btn-end { min-height: 44px; padding: 4px 14px; white-space: nowrap; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
@@ -40,13 +113,13 @@ button.undo { flex-direction: row; align-items: center; gap: 10px; } button.undo
 body.drawer-pretable #chips { visibility: hidden; }
 body:not([data-cam="on"]) #cam { display: none; }
 
-/* where a pinned menu is, the rest of the table keeps clear of it */
+/* the menu slides over the map and the map stays put (#749): the insets stay 0; the pieces below still read them (and a later piece that wants room can set them) */
 body { --inset-l: 0px; --inset-r: 0px; }
-canvas#gl { inset: 0 var(--inset-r) 0 var(--inset-l); width: calc(100% - var(--inset-l) - var(--inset-r)); height: 100%; }
-#labels { inset: 0 var(--inset-r) 0 var(--inset-l); }
 #hint, #join { left: calc(50% + (var(--inset-l) - var(--inset-r)) / 2); }
 #cam { right: calc(12px + var(--inset-r)); }
 #editor { left: var(--inset-l); right: var(--inset-r); }
+/* #738: the token and its undo and redo arrows own the strip `--dock-h` at the bottom; while the editor is open its bar stands on top of that strip, not behind the token */
+body.editing #editor { bottom: var(--dock-h); max-height: calc(55vh - var(--dock-h)); border-bottom: 1px solid var(--line); border-radius: var(--radius); }
 
 /* the menu, both shapes */
 #drawer { position: fixed; z-index: 5; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border: 1px solid var(--line); backdrop-filter: blur(6px); overflow: hidden; }
@@ -57,14 +130,39 @@ body.drawer-over #drawer { z-index: 12; } body.drawer-over #drawer-scrim { z-ind
 @media (max-width: 899px) { #drawer-pin, #set-pin-row, #set-pin-note { display: none; } }
 
 #drawer-handle { display: none; }
-#drawer-head { display: flex; align-items: center; gap: 4px; padding: 2px 8px 2px 2px; border-bottom: 1px solid var(--line); min-height: 52px; user-select: none; }
+/* the strip (Decision 4c): the places as symbols across the top of every screen, 48 px each; the current one has a rim and an underline in the accent colour */
+#menu-strip { position: relative; flex: none; border-bottom: 1px solid var(--line); }
+#menu-root { display: flex; align-items: flex-start; gap: 6px; padding: 4px 10px 6px; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; scrollbar-width: none; }
+#menu-root::-webkit-scrollbar { display: none; }
+#menu-root #party, #menu-root .menu-list, #menu-root .menu-list li { display: contents; }
+#menu-root :is(.menu-row, .pr) { position: relative; flex: none; display: grid; justify-items: center; align-content: start; gap: 2px; width: 48px; min-width: 48px; min-height: 48px; padding: 0; border: 0; border-radius: 0; background: none; color: var(--accent); text-align: center; }
+#menu-root :is(.menu-row, .pr)[hidden] { display: none; }
+#menu-root :is(.mr-sym, .pr-sig) { width: 44px; height: 44px; margin-top: 2px; border-radius: 50%; display: grid; place-items: center; box-sizing: border-box; }
+#menu-root .mr-sym { background: var(--panel-2); border: 1px solid var(--line); }
+#menu-root .mr-sym .sym { width: 26px; height: 26px; display: block; }
+#menu-root .pr-sig b { width: 34px; height: 34px; }
+#menu-root :is(.menu-row, .pr)[aria-current="page"] :is(.mr-sym, .pr-sig) { outline: 2px solid var(--accent); outline-offset: 1px; }
+#menu-root :is(.menu-row, .pr)[aria-current="page"]::after { content: ''; position: absolute; left: 8px; right: 8px; bottom: -5px; height: 3px; border-radius: 2px; background: var(--accent); }
+#menu-root :is(.menu-row, .pr):focus-visible { outline: none; } #menu-root :is(.menu-row, .pr):focus-visible :is(.mr-sym, .pr-sig) { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* the words are in each button for a screen reader; on the screen they show under the symbols only when the setting says Always */
+#menu-root :is(.mr-name, .pr-txt) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+body[data-menu-labels="always"] #menu-root :is(.menu-row, .pr) { width: 60px; }
+body[data-menu-labels="always"] #menu-root :is(.mr-name, .pr-txt) { position: static; width: 60px; height: auto; clip-path: none; overflow: hidden; text-overflow: ellipsis; font: 600 10px/1.2 var(--body); color: var(--ink); display: block; }
+body[data-menu-labels="always"] #menu-root .pr-txt small { display: none; }
+#menu-root .mr-sum { position: absolute; top: 0; right: -2px; font-size: 0; color: transparent; pointer-events: none; }
+#menu-root :is(.pr-state, .mr-chev) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#menu-root .pr.now .pr-sig { box-shadow: 0 0 0 2px var(--accent); }
+.strip-more { position: absolute; top: 4px; z-index: 1; width: 32px; min-width: 32px; height: 48px; min-height: 48px; padding: 0; border: 0; border-radius: 0; background: var(--panel-solid, var(--panel)); color: var(--accent); font-size: 26px; line-height: 1; }
+.strip-more[hidden] { display: none; }
+#strip-prev { left: 0; box-shadow: 8px 0 8px -4px #0007; } #strip-next { right: 0; box-shadow: -8px 0 8px -4px #0007; }
+
+#drawer-head { display: flex; align-items: center; gap: 4px; padding: 0 8px 0 2px; border-bottom: 1px solid var(--line); min-height: 46px; user-select: none; }
 #drawer-crumb { flex: 1; min-width: 0; display: flex; align-items: center; }
-#drawer-back { flex: none; width: 48px; min-height: 48px; padding: 0; font-size: 30px; line-height: 1; background: none; border: 0; color: var(--accent); }
+#drawer-back { flex: none; min-width: 48px; max-width: 45%; min-height: 44px; padding: 0 8px; font-size: 15px; font-weight: 600; line-height: 1; background: none; border: 0; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #crumb-list { display: flex; align-items: center; margin: 0; padding: 0 0 0 12px; list-style: none; min-width: 0; white-space: nowrap; }
 #drawer-back:not([hidden]) + #crumb-list { padding-left: 0; }
+#drawer-back:not([hidden]) + #crumb-list li::before { content: '\203a'; color: var(--muted); padding: 0 2px; }
 #crumb-list li { display: flex; align-items: center; min-width: 0; }
-#crumb-list li + li::before { content: '\203a'; color: var(--muted); padding: 0 2px; }
-#crumb-list button { min-height: 44px; min-width: 44px; padding: 0 6px; background: none; border: 0; color: var(--muted); font-weight: 600; }
 #crumb-here { min-width: 0; }
 #drawer-title { margin: 0; font-size: 20px; outline: none; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; } #drawer-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #drawer-head > button { min-width: 44px; min-height: 44px; padding: 0 10px; } #drawer-head #drawer-close { font-size: 26px; line-height: 1; }
@@ -72,68 +170,142 @@ body.drawer-over #drawer { z-index: 12; } body.drawer-over #drawer-scrim { z-ind
 
 #menu-levels { flex: 1; min-height: 0; position: relative; display: flex; }
 .menu-level { min-width: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--panel-solid, var(--panel)); }
+.menu-level[data-pos="over"] { display: none; }      /* one screen at a time; switching places swaps it where it is (R20: only the sheet itself slides) */
 .menu-level.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent); }   /* more below: the last rows fade out, which says to scroll */
 .menu-list { list-style: none; margin: 0; padding: 12px 14px; display: grid; gap: 8px; }
-.menu-gap { margin-top: 10px; }
-.menu-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 6px 14px; text-align: left; background: var(--panel-2); }
-.menu-row[aria-current="true"] { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.menu-level .menu-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 6px 14px; text-align: left; background: var(--panel-2); }
+.menu-level .menu-row[aria-current="page"] { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.menu-level .mr-sym { flex: none; width: 36px; height: 36px; display: grid; place-items: center; color: var(--accent); } .menu-level .mr-sym .sym { width: 26px; height: 26px; } .menu-level .mr-sym .pr-sig { width: 36px; height: 36px; } .menu-level .mr-sym .pr-sig b { width: 27px; height: 27px; font-size: 13px; }
 .mr-name { font-weight: 700; font-size: 16px; white-space: nowrap; }
-.mr-sum { flex: 1; min-width: 0; text-align: right; color: var(--muted); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mr-sum b, #table-badge { display: inline-block; background: var(--bad); color: #fff; border-radius: 10px; min-width: 20px; height: 20px; padding: 0 5px; font: 700 12px/20px var(--body); text-align: center; }
+.menu-level .mr-sum { flex: 1; min-width: 0; text-align: right; color: var(--muted); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-sum b, .ab-badge { display: inline-block; background: var(--bad); color: #fff; border-radius: 10px; min-width: 20px; height: 20px; padding: 0 5px; font: 700 12px/20px var(--body); text-align: center; }
 .mr-chev { color: var(--muted); font-size: 24px; line-height: 1; }
-#menu-session { padding: 8px 14px 14px; margin-top: 10px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
-#menu-session[hidden] { display: none; }
-#menu-session button { min-height: 52px; width: 100%; }
-#menu-session .note { margin: 0; }
-#drawer-body { padding: 12px 14px 24px; }
+#menu-table { flex: 1; }
+#drawer-body { flex: 1; padding: 12px 14px 24px; }
 #drawer-body > .tabpanel:not([hidden]) { display: block; }
 .tabpanel > section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
 .tabpanel > section:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
 #drawer-body h2 { margin: 0 0 8px; }
 #dm h2 { display: none; }
 
-/* the sheet: below 900 px it rises from the bottom, stops 12 % below the top (the dimmed map there is the clear zone) and above the token,
-   and pushes one level at a time from the right. There is no x: the handle is the close control. */
+/* the arc (Decision 4c): a tap on the die fans the places out round it, 52 px round buttons on rings; the die is above it and does not move */
+#menu-arc { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+#menu-arc[hidden] { display: none; }
+#arc { position: absolute; left: var(--tx, 50%); top: var(--ty, 100%); width: 0; height: 0; }
+.arc-b { position: absolute; left: var(--x); top: var(--y); width: 52px; height: 52px; min-width: 0; min-height: 0; margin: -26px 0 0 -26px; padding: 0; border-radius: 50%; display: grid; place-items: center; pointer-events: auto;
+  background: var(--panel-solid, var(--panel)); border: 1px solid var(--line); color: var(--accent); box-shadow: 0 3px 8px #0008; touch-action: manipulation;
+  transform: translate(calc(-1 * var(--x)), calc(-1 * var(--y))) scale(.3); opacity: 0; transition: transform .5s cubic-bezier(.2, .7, .3, 1) calc(var(--i) * 25ms), opacity .25s ease calc(var(--i) * 25ms); }
+#menu-arc.out .arc-b { transform: none; opacity: 1; }
+.arc-b .ab-mark { display: grid; place-items: center; } .arc-b .sym { width: 28px; height: 28px; display: block; }
+.arc-b.char { border: 0; background: none; } .arc-b .pr-sig { width: 52px; height: 52px; box-shadow: 0 0 0 1px var(--line); } .arc-b .pr-sig b { width: 40px; height: 40px; font-size: 18px; }
+.arc-b[aria-current="page"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 3px 8px #0008; }
+.arc-b:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.ab-label { position: absolute; top: calc(100% + 1px); left: 50%; transform: translateX(-50%); max-width: 84px; padding: 1px 6px; border-radius: 8px; background: var(--panel-solid, var(--panel)); border: 1px solid var(--line); color: var(--ink);
+  font: 600 11px/1.25 var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; opacity: 0; transition: opacity .2s ease; z-index: 1; }
+#menu-arc.labels .ab-label { opacity: 1; }
+.ab-badge { position: absolute; top: -4px; right: -4px; }
+/* above the arc: Waiting for you, and once the note about the health ring; each only as big as its words, so the map round them still closes the menu */
+#arc-above { position: absolute; left: 12px; right: 12px; bottom: calc(100% - var(--arc-top, 60%) + 12px); max-height: calc(var(--arc-top, 60%) - 24px); display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; pointer-events: none; }
+#arc-above > * { pointer-events: auto; width: min(420px, 100%); box-sizing: border-box; margin: 0; background: var(--panel-solid, var(--panel)); box-shadow: 0 3px 10px #0008; }
+#arc-above > :is(#menu-waiting, #menu-pick) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+#ring-note { padding: 8px 10px; border: 1px solid var(--good); border-radius: var(--radius); font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#ring-note[hidden] { display: none; }
+#ring-note button { flex: none; min-height: 44px; }
+body.menu-arc :is(#chips, #hp-note) { visibility: hidden; }      /* the symbols take the room beside the die while the arc is out */
+body[data-menu-motion="appear"] :is(.arc-b, .ab-label) { transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .arc-b, .ab-label { transition: none; } }
+/* M10, one accordion for every page with sections (Decision 4d, R21, R27; accordion.js): Setup, Log and chat, DM tools. A bar is a button: the title, a line about
+   the section, a chevron. With none open the bars are a list, each with its line. With one open the page is pinned: it fills the screen, the bars before the
+   open section stay at its top and those after it at its bottom (44 px each, the title only), and only the open section scrolls. A character's page is pinned
+   the same way (actionpanel.css). */
+.acc-sec[hidden], .acc-body[hidden], .acc-all[hidden] { display: none; }
+.tabpanel.acc > .acc-sec { border-top: 0; padding-top: 0; margin-top: 6px; }
+.tabpanel.acc > .acc-sec:first-child { margin-top: 0; }
+.acc-h { margin: 0; font-size: inherit; font-family: inherit; letter-spacing: 0; }
+.acc-bar { width: 100%; min-height: 52px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; align-content: center; gap: 0 12px; text-align: left; padding: 6px 12px; }
+.acc-bar .acc-t { grid-column: 1; font-weight: 700; font-size: 16px; }
+.acc-bar .acc-tip { grid-column: 1; color: var(--muted); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-bar .acc-tip:empty { display: none; }
+.acc-bar .acc-chev { grid-column: 2; grid-row: 1 / span 2; color: var(--muted); font-size: 20px; line-height: 1; transition: transform .15s; }
+.acc-bar[aria-expanded="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.acc-bar[aria-expanded="true"] .acc-chev { color: inherit; transform: rotate(90deg); }
+.tabpanel.acc:not([data-sec=""]) .acc-bar { min-height: 44px; padding: 4px 12px; }
+.tabpanel.acc:not([data-sec=""]) .acc-bar .acc-tip { display: none; }
+.acc-body { padding: 10px 2px 6px; }
+.acc-body > section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.acc-body > section:first-child, .acc-body > .sec-screen > section:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.acc-body > :first-child { margin-top: 0; }
+body[data-menu-motion="appear"] .acc-chev, body[data-menu-motion="appear"] .ap-chev { transition: none; }
+@media (prefers-reduced-motion: reduce) { .acc-chev { transition: none; } }
+/* pinned: the screen does not scroll, the page fills it, and the open section takes what the bars leave (never under 164 px: a shorter screen scrolls the page instead) */
+#drawer-body:has(> .tabpanel.pin:not([hidden])) { overflow: hidden; display: flex; flex-direction: column; padding-bottom: 8px; }
+#drawer-body > .tabpanel.pin:not([hidden]) { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+#drawer-body > .tabpanel.pin > * { flex: none; }
+#drawer-body > .tabpanel.acc.pin > .acc-sec.open { flex: 1 0 164px; min-height: 0; display: flex; flex-direction: column; }
+#drawer-body > .tabpanel.acc.pin > .acc-sec.open > .acc-body { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* a screen under a page (Arrange, under Setup): the page's bars give way to it */
+.tabpanel.acc[data-sub] > :is(.acc-sec, .acc-all) { display: none; }
+.sub-screen[hidden] { display: none; }
+/* Arrange (Decision 4c; M9): a row for each place: the six dots to drag it by, its symbol and name, up and down, the eye. Every control is 44 px. */
+.arr-cap { margin: 12px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-family: var(--body); }
+.arr-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.arr-row { display: grid; grid-template-columns: 44px 36px minmax(0, 1fr) 44px 44px 44px; align-items: center; gap: 4px; min-height: 52px; padding: 2px 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); }
+.arr-row.dragging { border-color: var(--accent); box-shadow: 0 4px 12px #0008; position: relative; z-index: 1; }
+.arr-row.off :is(.arr-sym, .arr-name) { opacity: .5; }
+.arr-row button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; display: grid; place-items: center; background: none; border: 0; color: var(--accent); }
+.arr-row button:disabled { opacity: .3; }
+.arr-row button .sym { width: 24px; height: 24px; display: block; }
+.arr-grip { cursor: grab; touch-action: none; color: var(--muted); }
+.arr-sym { width: 36px; height: 36px; display: grid; place-items: center; color: var(--accent); } .arr-sym .sym { width: 26px; height: 26px; } .arr-sym .pr-sig { width: 36px; height: 36px; } .arr-sym .pr-sig b { width: 27px; height: 27px; font-size: 13px; }
+.arr-name { min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+.arr-why { display: block; font-weight: 400; font-size: 12px; color: var(--muted); white-space: normal; }
+.arr-row:has(.arr-why):not(:has(.arr-eye)) .arr-name { grid-column: 3 / span 1; }
+#arrange > .row { margin-top: 12px; } #arr-reset { min-height: 44px; }
+#menu-root .pr { order: var(--o-chars, 0); }
+.arc-b.held { transform: scale(1.12) !important; box-shadow: 0 0 0 3px var(--accent), 0 3px 8px #0008; }
+/* the row under the bars of DM tools: every section on one page (M5) */
+.tabpanel.acc > .sec-index.acc-all { margin-top: 6px; }
+.tabpanel.acc[data-sec="all"] > .acc-sec { margin-top: 12px; }
+.sec-screen > section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.tabpanel > .sec-index { padding: 0; margin: 12px 0 0; }
+.tabpanel > .sec-index:first-child { margin-top: 0; }
+.sec-index[hidden], .sec-screen[hidden] { display: none; }
+.sec-index .menu-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 0; min-height: 56px; }
+.sec-index .mr-name { grid-column: 1; white-space: normal; }
+.sec-index .mr-sum { grid-column: 1; text-align: left; font-size: 13px; }
+.sec-index .mr-chev { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.tabpanel > .sec-screen > section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.tabpanel > .sec-screen > section:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.tabpanel > .sec-screen + .sec-screen:not([hidden]) { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+
+/* the sheet: below 900 px it rises from the bottom, stops 12 % below the top (the dimmed map there is the clear zone) and leaves the token's strip
+   empty at its foot. There is no x: the handle is the close control. */
 body[data-menu-shape="sheet"] #drawer { left: 0; right: 0; margin: 0 auto; width: min(100%, 560px); top: max(12vh, env(safe-area-inset-top)); bottom: 0;
   border-width: 1px 1px 0; border-radius: 16px 16px 0 0; transform: translateY(100%); transition: transform var(--menu-out) cubic-bezier(.4, 0, 1, 1); padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
 body[data-menu-shape="sheet"] #drawer.open { transform: none; transition: transform var(--menu-in) cubic-bezier(.16, .84, .3, 1); }
 body[data-menu-shape="sheet"] #drawer-handle { display: grid; place-items: center; flex: none; width: 100%; height: 44px; min-height: 44px; padding: 0; background: none; border: 0; border-radius: 16px 16px 0 0; touch-action: none; }
 body[data-menu-shape="sheet"] #drawer-handle[hidden] { display: none; }
 #drawer-handle i { display: block; width: 56px; height: 6px; border-radius: 3px; background: var(--muted); opacity: .6; }
-body[data-menu-shape="sheet"] #drawer-head { touch-action: none; padding-top: 0; }
+body[data-menu-shape="sheet"] #drawer-head { touch-action: none; }
 body[data-menu-shape="sheet"] #drawer-close { display: none; }
-body[data-menu-shape="sheet"] .menu-level { position: absolute; inset: 0; width: auto; visibility: hidden; opacity: .35; transform: translateX(100%);
-  transition: transform var(--menu-level) cubic-bezier(.2, .8, .2, 1), opacity var(--menu-level) ease, visibility 0s linear var(--menu-level); }
 /* the footer: the token stays where it is, over the bottom of the sheet, so the sheet leaves room for it and no screen scrolls under it */
 body[data-menu-shape="sheet"] #menu-levels { margin-bottom: 84px; }
 body[data-menu-shape="sheet"].drawer-pretable #menu-levels { margin-bottom: 0; }
-body[data-menu-shape="sheet"] .menu-level[data-pos="here"] { visibility: visible; opacity: 1; transform: none; transition-delay: 0s; }
-body[data-menu-shape="sheet"] .menu-level[data-pos="under"] { transform: translateX(-30%); }
 body[data-menu-shape="sheet"] .menu-level > .menu-list { padding-bottom: 12px; }
 #drawer-body { overflow-y: auto; }
 
-/* columns: from 900 px (or a phone on its side) the menu comes from the side and the levels are beside each other; the map is the clear zone */
-body[data-menu-shape="columns"] #drawer { top: 0; bottom: 0; width: max-content; max-width: 100vw; transition: transform var(--menu-out) cubic-bezier(.4, 0, 1, 1); }
+/* a column: from 900 px (or a phone on its side) the menu comes from the side, the strip across its top; the map beside it is the clear zone */
+body[data-menu-shape="columns"] #drawer { top: 0; bottom: 0; width: min(420px, 45vw); min-width: min(340px, 100vw); max-width: 100vw; transition: transform var(--menu-out) cubic-bezier(.4, 0, 1, 1); }
 body[data-menu-shape="columns"] #drawer.open { transition: transform var(--menu-col) cubic-bezier(.16, .84, .3, 1); }
 body[data-menu-shape="columns"][data-drawer="left"] #drawer { left: 0; right: auto; border-left: 0; transform: translateX(-100%); padding: env(safe-area-inset-top) 0 0 env(safe-area-inset-left); }
 body[data-menu-shape="columns"][data-drawer="right"] #drawer { right: 0; left: auto; border-right: 0; transform: translateX(100%); padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 0; }
 body[data-menu-shape="columns"] #drawer.open { transform: none; }
 body[data-menu-shape="columns"] #drawer-head { cursor: grab; touch-action: pan-y; }
 body[data-menu-shape="columns"] #menu-levels { overflow: hidden; }
-body[data-menu-shape="columns"][data-drawer="right"] #menu-levels { flex-direction: row-reverse; }
-/* the columns end above the token's strip (it does not move for them: round 6, R25) */
+/* the column ends above the token's strip (it does not move for it: round 6, R25) */
 body[data-menu-shape="columns"] #menu-levels { margin-bottom: 84px; }
 body[data-menu-shape="columns"].drawer-pretable #menu-levels { margin-bottom: 0; }
-body[data-menu-shape="columns"] .menu-level { flex: none; width: 240px; border-right: 1px solid var(--line); padding-bottom: 12px; }
-body[data-menu-shape="columns"][data-drawer="right"] .menu-level { border-right: 0; border-left: 1px solid var(--line); }
-body[data-menu-shape="columns"] .menu-level[data-active="false"] { display: none; }
-body[data-menu-shape="columns"] #drawer[data-depth="1"] #drawer-body { width: min(420px, 45vw); }
-body[data-menu-shape="columns"] #drawer[data-depth="2"] #drawer-body { width: min(360px, 40vw); }
-@keyframes col-in-l { from { transform: translateX(-100%); } } @keyframes col-in-r { from { transform: translateX(100%); } }
-body[data-menu-shape="columns"] .menu-level[data-new="true"] { animation: col-in-l var(--menu-col) cubic-bezier(.16, .84, .3, 1); }
-body[data-menu-shape="columns"][data-drawer="right"] .menu-level[data-new="true"] { animation-name: col-in-r; }
-/* a wide screen that cannot hold three columns folds the first level away while a screen is open under Table; the breadcrumb goes back */
-@media (max-width: 1099px) { body[data-menu-shape="columns"] #drawer[data-cols="3"] #menu-root { display: none; } }
+body[data-menu-shape="columns"] .menu-level { padding-bottom: 12px; }
 .set-rules { margin: 0 0 8px; padding-left: 18px; font-size: 14px; display: grid; gap: 4px; }
 .set-rules a, .set-rules button.link { background: none; border: 0; padding: 0; min-height: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font-size: 13px; margin-left: 6px; }
 #set-theme, #set-floors, #set-side { max-width: 60%; }
@@ -168,16 +340,16 @@ body[data-menu-shape="columns"][data-drawer="right"] .menu-level[data-new="true"
   body[data-token] #chips { left: auto; right: calc(8px + env(safe-area-inset-right)); bottom: auto; top: max(8px, env(safe-area-inset-top)); flex-direction: row-reverse; }
   body[data-token] #turnline { left: calc(50% + 30px); }
   :root { --dock-h: max(8px, env(safe-area-inset-bottom)); }
+  body.editing[data-token] #editor { left: calc(var(--inset-l) + 68px + env(safe-area-inset-left)); }       /* the token keeps the bottom-left corner: the bar starts beside it */
 }
 
-/* the characters (Decision 4b): a row each at the top of the first level, with the sigil's health ring, the name and class, and a state on the right */
-#menu-root #party { display: grid; gap: 6px; padding: 12px 14px 0; }
-#menu-root #party:empty { display: none; }
-#menu-root #party .pr { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 56px; padding: 6px 12px; text-align: left; background: var(--panel); }
-#menu-root #party .pr.under { margin-left: 22px; }
-#menu-root #party .pr.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-#menu-root #party .pr.now .pr-state { background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 0 8px; }
-.pr-sig { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--good, #5a9a5a) calc(var(--hp, 100) * 1%), var(--line) 0); }
+/* a character's sigil (Decision 4b): a letter on its colour inside its health ring; the same ring as the die's, on the strip, the arc and More */
+.pr-sig { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--good, #5a9a5a) var(--hp, 100%), var(--line) 0); }
 .pr-sig b { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--c, #888); color: #fff; text-shadow: 0 1px 2px #0008; font-size: 15px; }
-.pr-txt { display: grid; min-width: 0; } .pr-txt strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .pr-txt small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pr-state { font-size: 12px; color: var(--muted); white-space: nowrap; }
+#dm-waiting-li .menu-row { border-color: var(--accent); }      /* #844: the first row of the DM tools, only while something waits */
+#dm-waiting-ul { padding: 0; margin: 0 0 10px; list-style: none; }
+#dm-waiting-ul[hidden] { display: none; }
+#dm-waiting .mr-sum { position: static; font-size: 13px; color: inherit; display: block; text-align: left; pointer-events: auto; }
+#dm-waiting { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-height: 56px; width: 100%; text-align: left; }
+#dm-waiting .mr-name { white-space: normal; }
+#dm-waiting .mr-chev { grid-column: 2; grid-row: 1 / span 2; align-self: center; }

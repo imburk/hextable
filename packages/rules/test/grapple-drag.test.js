@@ -462,3 +462,22 @@ test("a hidden creature standing where a held creature would be pulled is found 
   assert.ok(!r.events.some((e) => /can't drag/.test(e.text ?? "")));
   assert.ok(s.entities[a].cond.grappled && s.entities[b].cond.grappled);
 });
+
+// A creature hiding on the ledge the grappler's way would climb to (#847): the refusal is the one the plain world gives, in the same words (it must not tell something is there).
+for (const [label, to] of [["a height given", { q: -1, r: 0, z: 10 }], ["none given", { q: -1, r: 0 }]]) test(`off the ground: a creature hiding on the ledge does not change the refusal to a dragging climber (${label})`, () => {
+  const refusal = (lurks) => {
+    const s = field();
+    s.map.levels[0].tiles["-1,0"].h = 10;
+    ok(apply(s, { type: "setSpeed", actor: "hero", mode: "climb", feet: 30 }, DM));
+    hold(s, s.foe);
+    if (lurks) {
+      const id = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 5 } }, DM)).events.find((e) => e.type === "spawned").id;
+      Object.assign(s.entities[id], { pos: { q: -1, r: 0, z: 10 }, hiding: true, hp: 500, maxHp: 500 });
+    }
+    const r = apply(s, { type: "move", actor: "hero", to }, DM);
+    assert.equal(r.ok, false);
+    return r.error;
+  };
+  assert.match(refusal(false), /drags along the ground only|can't drag/);
+  assert.equal(refusal(true), refusal(false));
+});

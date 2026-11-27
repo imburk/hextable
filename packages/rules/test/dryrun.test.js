@@ -14,10 +14,10 @@ const TARGETS = [...new Set(Object.values(HOMEBREW_LOOKUPS).flatMap((l) => l.map
 const picture = () => TARGETS.map((t) => Object.keys(t).join("\n"));
 
 // ---------- the sample pack ----------
-test("the sample pack passes strict lint through loadPack and holds 12 to 17 spells", () => {
+test("the sample pack passes strict lint through loadPack and holds 12 to 22 spells", () => {
   const r = loadPack(JSON.stringify(PACK));
   assert.ok(r.ok, r.problems?.join("; "));
-  assert.ok(PACK.spells.length >= 12 && PACK.spells.length <= 17, `${PACK.spells.length} spells`);
+  assert.ok(PACK.spells.length >= 12 && PACK.spells.length <= 22, `${PACK.spells.length} spells`);
   assert.equal(PACK.spells.length, r.pack.ids.length);
   for (const s of PACK.spells) assert.ok(s.text.length > 20 && s.text.length < 300 && (s.text.match(/\./g) ?? []).length <= 2, `${s.id}: text is one or two plain sentences`);
 });
@@ -177,4 +177,13 @@ test("dryRunPack tries every spell of a pack in order, and a refused pack runs n
 test("dryrun.js is pure: no I/O, clock or Math.random", () => {
   const src = readFileSync(new URL("../src/content/dryrun.js", import.meta.url), "utf8").replace(/^\s*\/\/.*$/gm, "");
   for (const bad of [/node:/, /Math\.random/, /Date\b/, /performance\./, /process\./, /\bfetch\b/, /setTimeout|setInterval/]) assert.doesNotMatch(src, bad);
+});
+
+test("a homebrew spell aimed at an object (a copy of Knock) is tried on a locked chest, and unlocks it", () => {
+  const k = structuredClone(SPELLS.knock.def ?? SPELLS.knock);
+  Object.assign(k, { id: "hb-t-knock", name: "Zz Knock", source: "homebrew:t", checked: false });
+  const r = dryRun("spells", k);
+  assert.ok(r.ok, JSON.stringify(r.problems));
+  assert.ok(r.events.some((e) => e.type === "cast" && e.object === "dryrun-chest"));
+  assert.ok(r.events.some((e) => e.type === "object" && e.object === "dryrun-chest" && e.state === "closed"), "unlocked: locked to closed");
 });

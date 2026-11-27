@@ -13,6 +13,7 @@ import { edgeSegment } from '../packages/rules/src/walls.js';
 import { SQUARE } from '../packages/rules/src/grid.js';
 import { MAP_FORMAT, lintMap } from '../packages/rules/src/map.js';
 import { CONTENT } from '../packages/rules/src/content/index.js';
+import { WATER_DEPTH } from '../packages/rules/src/content/terrain.js';
 
 const OUT = fileURLToPath(new URL('../packages/rules/src/content/maps/', import.meta.url));
 const ASCII = process.argv.includes('--ascii');
@@ -189,7 +190,7 @@ function finish(b) {
   const levels = b.levels.map((L) => {
     const tiles = {};
     for (const [k, v] of [...L.cells].sort(([x], [y]) => { const p = H.parse(x), q = H.parse(y); return p.r - q.r || p.q - q.q; })) {
-      tiles[H.col(T(H.parse(k)))] = { t: v.t, ...(v.h ? { h: v.h } : {}) };
+      tiles[H.col(T(H.parse(k)))] = { t: v.t, ...(v.h ? { h: v.h } : {}), ...(v.t === 'water' ? { depth: WATER_DEPTH.default } : {}) };      // water has a depth since map format 3
     }
     return { id: L.id, name: L.name, z: L.z, ...(L.light ? { light: L.light } : {}), tiles };
   });

@@ -2,6 +2,7 @@
 // height in feet. A position is { q, r, z } with z in feet. Design: docs/specs/maps-and-objects.md
 import { HEX, gridOf, col, parse } from './grid.js';
 import { SIZES } from './content/sizes.js';
+import { depthOk } from './content/terrain.js';
 
 export const FT = 5;            // feet per hex
 export const STEP_FREE = 2.5;   // a rise or drop up to this is ordinary walking
@@ -18,8 +19,30 @@ export function surfaces(map, h) {
 }
 export const hasColumn = (map, h) => map.levels.some((l) => l.tiles[col(h)]);
 
-// The surface a position stands on, or null if it is in the air (or off the map).
-export const ground = (map, pos) => surfaces(map, pos).find((sf) => sf.z === (pos.z ?? 0)) ?? null;
+// The water a position is in (docs/specs/fly-swim-control.md, stage E1): water is a volume from the bed of a water tile up to its
+// surface, inclusive, so a position over the tile whose height is between the two is in the water. Returns the tile's surface
+// ({ level, tile, z }, `z` its surface) with `bed` (feet, the height of the bed) and `depth`, or null if the position is not in water.
+// A water tile with no depth (a hand-built map; maps of format 3 have one on every water tile) is a surface and nothing more, as it was
+// before swimming. The nearest surface at or above the position decides: a floor of another level between it and the water is not water.
+export const waterAt = (map, pos) => waterIn(surfaces(map, pos), pos.z ?? 0);
+export function waterIn(column, z) {
+  for (const sf of column) {
+    if (sf.z < z) continue;
+    if (sf.tile.t !== 'water' || !depthOk(sf.tile.depth) || z < sf.z - sf.tile.depth) return null;
+    return { ...sf, bed: sf.z - sf.tile.depth, depth: sf.tile.depth };
+  }
+  return null;
+}
+// Is this creature in the water, and under its surface (the water holds it up; E2 adds its breath)? `submerged` is false at the surface.
+export const inWater = (s, e) => !!e?.pos && !!waterAt(s.map, e.pos);
+export const submerged = (s, e) => { const w = e?.pos ? waterAt(s.map, e.pos) : null; return !!w && (e.pos.z ?? 0) < w.z; };
+
+// The surface a position stands on, or null if it is in the air (or off the map). The water holds a creature up: a position in
+// the water below its surface stands on the water (the surface's own record, with `z` the surface, above the position).
+export function ground(map, pos) {
+  const column = surfaces(map, pos), z = pos.z ?? 0;
+  return column.find((sf) => sf.z === z) ?? waterIn(column, z);
+}
 
 // The position on the surface in this column nearest a height: the hex's own z if it has one,
 // otherwise `hint`. Null if the column is empty. This is how a tap without a height is read.
@@ -39,8 +62,11 @@ export function allTiles(map) {
 
 // The surface under a position: what it stands on, or the nearest one below it if it is in the air.
 export function under(map, pos) {
+  const column = surfaces(map, pos), z = pos.z ?? 0;
+  const wet = column.length && column.some((sf) => sf.z > z) ? waterIn(column, z) : null;
+  if (wet) return wet;                                      // in the water below its surface: the water is what it is in
   let best = null;
-  for (const sf of surfaces(map, pos)) if (sf.z <= (pos.z ?? 0)) best = sf;
+  for (const sf of column) if (sf.z <= z) best = sf;
   return best;
 }
 

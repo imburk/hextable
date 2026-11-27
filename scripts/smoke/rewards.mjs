@@ -26,8 +26,8 @@ async function rewards(browser, url) {
         await waitShown(phone, '#lobby', false);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
-        name = (await b.locator('strong').textContent()).replace('Play as ', '').trim();
+        await openMenu(phone, []); const b = phone.locator('#arc .arc-b:has-text("Play as")').first();
+        name = (await b.locator('.ab-label').textContent()).replace('Play as ', '').trim();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
         await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
@@ -78,8 +78,11 @@ async function rewards(browser, url) {
         await host.fill('[data-nb-amt]', '');
       });
       await run.do('publishing shows the phone the card with its XP, the bonus line and the loot', async () => {
+        await openTab(phone, 'log');          // M2: the menu is open when the card comes, and the card folds it
         await host.click('#cc [data-cc="publish"]');
         await waitShown(phone, '#cc');
+        const up = await phone.evaluate(() => ({ open: window.hextable.drawer.isOpen, cls: document.body.classList.contains('drawer-open'), scrim: !document.getElementById('drawer-scrim').hidden }));
+        if (up.open || up.cls || up.scrim) throw new Error(`the card came and the menu stayed up: ${JSON.stringify(up)}`);
         const t = await phone.textContent('#cc');
         const { per, xp1 } = await phone.evaluate((i) => ({ per: window.hextable.state.conclusion.xp.per[i], xp1: window.hextable.state.entities[i].xp }), id);
         if (!/Freed the prisoner/.test(t) || !/Shortbow/.test(t) || !t.includes(name) || !/\+50/.test(t)) throw new Error(`card: ${t}`);
@@ -96,6 +99,14 @@ async function rewards(browser, url) {
         await waitShown(phone, '#cc', false);
         await host.click('#cc [data-cc="continue"]');
         await waitShown(host, '#cc', false);
+        await sleep(700);                                                       // the folded menu must not come back by itself; one tap on the die returns to where it was
+        const clean = await phone.evaluate(() => ({ open: window.hextable.drawer.isOpen, cls: document.body.classList.contains('drawer-open'), scrim: !document.getElementById('drawer-scrim').hidden }));
+        if (clean.open || clean.cls || clean.scrim) throw new Error(`the menu came back by itself after the card: ${JSON.stringify(clean)}`);
+        await phone.locator('#btn-menu').tap();
+        await waitShown(phone, '#drawer');
+        const back = await phone.evaluate(() => document.getElementById('drawer').dataset.path);
+        if (back.split('/')[0] !== 'log') throw new Error(`one tap on the die did not return to the same screen: ${back}`);
+        await closeMenu(phone);
         await openTab(phone, 'log');
         if (!/Experience: .* XP/.test(await phone.textContent('#log-list'))) throw new Error('the phone log has no line for the rewards');
         await phone.click('#log-rewards');

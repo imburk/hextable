@@ -1,6 +1,7 @@
 # Spec: flying and swimming control (a column of cubes, a plane of cells)
 
-Status: draft by an agent, for the owner to read. A design job; no code is changed by this document. Nothing here is built.
+Status: C1 to C4 are built (#716, flying), E1 (the swimming engine, #836) and E2 (breath, underwater combat, Water Breathing, #840); C5 (the swimming control) is not. The owner answered questions 1 to 8 with the defaults (board, 23 November 2026). What was
+settled while building is in "Build notes" at the end.
 
 Written 22 November 2026, after the owner's game night. It sits beside `maps-and-objects.md` (the rules for height, M6),
 `one-token-menu.md` (where the controls live) and `renderer.md` (how things are drawn). Where it touches them it says so.
@@ -40,7 +41,7 @@ height that is a picture, not a number (a design problem). The recommendation be
   costs the rise as well, doubled without a Climb Speed. There is no "straight up a wall" with no ledge to stop on.
 - **Falling.** After every action, whatever has nothing under it and cannot stay up falls and takes damage
   (`engine/resolve.js`). A creature that is still `aloft` never falls; a flyer knocked Prone, or whose Fly Speed ends, does.
-- **Swimming is not built.** A `water` tile has cost `Infinity` (`content/terrain.js`): nobody enters it, and a creature
+- **Swimming (built since #836, see "Build notes (E1)").** Before it, a `water` tile had cost `Infinity` (`content/terrain.js`): nobody enters it, and a creature
   can only be placed over it by the DM. A Swim Speed is kept on the sheet and read by nothing (`content/reader.js`
   `MOVE_ENGINE.swim = false`; debt items T54 (6) and P3). There is no depth to water and no "in the water" position.
 - **The monster AI flies**, because it reads the same `moveOptions`: every place a flyer could stop is a candidate, and a
@@ -390,3 +391,179 @@ sentence, and is worth shipping on its own with C1.
 - Burrowing (a Burrow Speed is read by nothing either; the same shape of column, downward, could serve it later).
 - Straight-up climbing with no ledge, and jumping.
 - A shared "ruler" in three axes; the maps spec's `vertical` table rule already counts distance.
+
+## Build notes (C1 to C4, #716)
+
+What was settled while building, where the text above left room or the code turned out otherwise.
+
+- **Where it lives.** `packages/client/heights.js` is the pure part (the heights, the feet left, the pick, the highlights, the words, the
+  pick-area growth, the framing arithmetic, the warning); `three-build.js` draws the column and the plane in `buildOverlay` from
+  `hl.column` and `hl.plane`; `render-three.js` picks them (`#pickFly`) and draws the height numbers and the height tag; `app.js` holds the
+  mode `{ kind: 'fly' }`. The app still reaches the renderer only through the interface of `renderer.js`: the column goes in through
+  `setHighlights`, a tap comes back through `onTap` (the hit carries `block`, or `plane`, and the `pointer` type), a hover through `onHover`, a drag
+  through `onDrag`, and the height tag's tap is a page event (`hextable-height-tag`), as the arena flash is.
+- **A height is a height on the map, not above each cell.** A block is 5 ft of the map's own height, counted from the creature's position, and the
+  plane is flat: every place of it has the same `z`. (The old rows counted "feet above the floor under each cell", which is the same on flat ground
+  and a bumpy carpet elsewhere.) The number on a block is feet above the floor under the creature.
+- **The ground block** is every floor the creature can stop on, at whatever height (the walking reach, ledges and roofs included), so one block lands
+  it anywhere. A floor at a block's own height (a roof at 10 ft) is also in that block's plane, drawn solid, and the block carries the ledge sign.
+- **The pick** is `{ id, z, stamp }`; the stamp is the creature's place and the fight's round and turn, so a move, a fall, a landing, a turn change
+  and the loss of flight all drop it with no bookkeeping (`livePick`). The column closes on the same stamp.
+- **Higher and Lower** now step to the next height the engine has a place at (one block), and are greyed with "Nowhere higher in reach" at the end of
+  the column, instead of counting 5 ft up for ever.
+- **Three ways in, as built:** the "Fly…" row (first in Move in a fight; among Explore's first tiles out of one, where there is no Move group), a
+  "Fly" button at the right edge of the map for a creature with a Fly Speed (the aim bar does not exist while nothing is armed, so the button cannot
+  sit on it), and Page Up (or R) and a tap on the creature's height tag. "Fly to…" opens the same column with the list of places focused.
+- **Keys.** `heightUp`, `heightDown`, `heightGround`, `heightTop` are actions of `keys.js` in every preset (Page Up and R, Page Down and F, Home,
+  End). They act only for a creature that has a Fly Speed; for anyone else the keys stay the browser's. Enter and Space send the marked place while the
+  column is open. Alt or Ctrl with the wheel steps the pick (a listener on the canvas ahead of the renderer's keeps it from zooming).
+- **Shading (C3).** `themes.js` makes three tints of each theme's own move colour (`costTints`: paler and thinner, the colour itself, deeper and more
+  solid); a theme may give its own as `hl.cost`. There are three themes, not four. The thirds are of the feet the way has left: flying for a place in
+  the air, the most of the ways for a floor. `three-parity`'s golden did not change (it records places and picks, not colours) and was not recorded again.
+- **A block on a phone, measured:** at 390 x 844, the default zoom (the camera is 30 away on a narrow screen, not 22) and a tilt of 0.9, a block is
+  39 px tall at the ground and 58 px at 20 ft (nearer the camera). So the lowest blocks are under a thumb's 44 px and get the grown pick area
+  (1.5 times as tall, the nearer middle winning where two overlap); the stepper is always there.
+- **Two taps** are for a place in the air on touch (and pen). A tap on the ground block's places, and any mouse click, sends at once.
+- **The falling warning** reads the lasting effects in the state (`effects[].until` and a part's `ends`, with a `speed.fly` modifier on the creature):
+  the fields exist. It names the feet of the fall and quotes the rule; it does not work out dice (DEBT T105 (1)).
+- **The camera.** A view steeper than 1.05 rad goes to 0.9 over 0.5 s (at once with reduced motion or at pace `instant`) and back when the column
+  closes, unless the view was turned or tilted meanwhile. The view also goes to the creature when the column opens. Framing slides the picture down
+  through `inset` (2 px of inset is 1 px of picture) until the top block is under the aim bar or the creature's cell would go under the menu's strip.
+- **Multiplayer.** No state was added and nothing is sent but the ordinary `move`, so there is no `twin()` test.
+- **Not built, with reasons:** DEBT T105.
+
+## Build notes (E1, #836)
+
+What was settled while building the swimming engine (the owner said yes to question 1 on 26 November 2026).
+
+- **Depth.** A water tile has `depth`, in feet from its surface to the bed: a multiple of 5 from 5 to 200 (`WATER_DEPTH` in `content/terrain.js`). The map format is 3
+  (`map.js`); `migrateMap` gives every water tile of a format 1 or 2 map 10 feet, without writing to the document it is given. The linter wants a depth on every water
+  tile (and on no other). A save needs no new state version: `migrate.js` already runs `migrateMap` on the table's map and on each parked place's on every load. A water
+  tile with no depth (a hand-built map in a test; the linter refuses it) is read as before swimming: a surface, and no one enters it. A `mapEdit` that paints water with no
+  depth gives it 10 feet (the editor's Depth field is a client follow-up, DEBT T109).
+- **In the water** (`space.js`). `waterAt(map, pos)` is the water volume a position is in: over a water tile with a depth, at or below its surface and at or above its bed. The
+  nearest surface at or above the position decides, so a floor of another level between it and the water is not water. `submerged(s, e)` is true below the surface (false at
+  it; E2 reads it for breath), `inWater(s, e)` at or below it. `ground()` returns the water's own record for a position in the water below its surface, so the water holds a
+  creature up whatever its speeds (`gravity` and `drop` look at `ground` first); `under()` returns it too, so a creature under the water is in the water's level: its region
+  (and what players are sent of it), its light.
+- **Falling into water** stops at the surface, as it always did (the surface is a surface); the fall's damage is the engine's as before (DEBT T109 (3)).
+- **Moving** (`engine/world.js`, `moveOptions`). From the shore it steps onto the water's surface (a rise or drop up to 5 feet), as from any water position it steps in the grid's
+  directions level, up or down 5 feet, or straight up or down, between the bed and the surface (the same shape as the flying steps). It leaves the water onto a shore from the
+  surface by a walking step; from under the surface there is no walking out (it swims up first). Cost: with a Swim Speed 5 feet a step from that Speed; without it, 10 feet a
+  step from the walking Speed (a creature with both may use either, whichever gets it further); one more foot where the space is Difficult Terrain (a hostile creature that can be
+  passed, ground a spell made difficult): 15 without a Swim Speed, 10 with one (Freedom of Movement takes that away). The turn's feet are shared as for flying and climbing
+  (`limit.swim`, `left(speed)`); a Dash doubles them. Not where only the ground is used (a formation's places, a creature that drags another) and not for a creature standing
+  on water by Water Walk, which keeps to the surface. A Speed 0 creature goes nowhere; one with only a Swim Speed moves through water and nowhere else. A big creature goes
+  where its whole footprint is in water. The monster brain swims by the same costs but does not choose to end a turn under the water with no Swim Speed.
+- **Squares.** A diagonal step in the water is open to a swimmer past a corner of water (`cornerFree`'s `swim`); the true length (5 x root 2) doubled is the cost, as on land.
+- **Water Walk** works as before; when it ends on a creature standing on water, the creature is in the water at the surface and swims (the spell's text says so).
+- **Acrobatic Movement** is as before (it crosses water and may not stop in it); it does not swim in from the shore (DEBT T109 (5)).
+- **A hidden creature under the water** is sent to no player: `under()` gives a submerged creature its level, so a creature under the water in a region the party has not seen is
+  concealed as on land. A party mover that names a column of water without a height chooses its place among those the party knows (`move`), so a creature the party does not
+  know of, in the nearest place, does not send the mover to another place of the column. Twin tests: `packages/server/test/twin-worlds.test.js`.
+- **Reader.** `MOVE_ENGINE.swim` is true: a swim speed is no longer handed to the DM, and a monster's reading says how it swims; the goldens moved.
+- **Not built, with reasons:** DEBT T109.
+
+## Build notes (E2, #840)
+
+What was settled while building what being under water does (the owner said yes to swimming on 26 November 2026; Water Breathing is the druid Ventus's, #786). Every number is
+from the SRD: "Suffocation" (Hazards), "Underwater Combat", "Swimming", the spell Water Breathing, and the monster traits Amphibious, Water Breathing and Hold Breath.
+
+- **Under water** is `submerged(s, e)` (E1): below the surface, not at it. A creature swimming at the surface is not under water, for breath, for weapons or for Fire.
+- **Holding breath** (`engine/rolls.js` `breathe`, `modifiers.js` `breathOf`). A creature under the surface that needs air holds its breath for 1 + its Constitution modifier
+  minutes, 30 seconds at least (a `hold-breath` trait: 1 hour). Its record is `breath: { held, gave, out?, told? }` (seconds held, Exhaustion levels suffocation gave it, said to
+  be out of breath, the DM told); it is optional, so there is no new state version and no migration. The time is the game clock's: in a fight a round is 0.1 of a minute and the
+  clock moves a round at the start of each round (as it always did), outside one it is whatever `advanceTime`, a rest or travel moves it. `durations.js` `tick` counts it for every
+  creature under the surface, from `state.breathAt` (the clock at the last look: optional too, and written only once someone has been under water, so a table that never swims keeps the state it had; a game with
+  none works the first advance out from the `time` or `rest` event it just made, and from nothing else), and every turn boundary of a creature looks at it with 0 seconds, which is where surfacing is noticed.
+- **Running out.** In a fight the rounds are counted as they complete, and the round whose turn is ending counts too: a creature with three minutes holds its breath for rounds 1 to 30,
+  and gains 1 Exhaustion level at the end of each of its turns from round 31 on. Outside a fight a turn is a round: one
+  level for each full 6 seconds past the limit. The sixth level is death (Exhaustion, SRD "Rules Glossary"): `kill` runs, so Death Ward holds against it as against any other kill
+  that deals no damage. A creature immune to Exhaustion (`conditionImmune`) gains none.
+- **Breathing again** (it is at or above the surface, or breathes water): the levels suffocation gave it come off (`breath.gave`, kept apart from Exhaustion that came from elsewhere:
+  no more than it has) and the count starts again. A level a long rest took off meanwhile is not taken twice.
+- **Who needs no air** (`breathOf`): a lasting `{ on: 'breath', op: 'immune' }` modifier (Water Breathing), or a trait of its stat block, or of the form it has taken (Wild Shape lays
+  the beast's traits over the druid), with the id `amphibious` or `water-breathing`, breathes water as well as whatever it breathes otherwise. A character, and a creature of a kind
+  that lives by breathing (beast, humanoid, dragon, monstrosity, giant, fey), is judged to need air. The SRD says nothing of whether an Aberration, a Celestial, a Construct, an
+  Elemental, a Fiend, an Ooze, a Plant or an Undead breathes, and a creature with no stat block of its own says nothing at all: the engine does not guess; the DM is told once (a
+  `manual` that is `partial`: for the DM alone, once for the creature and never again), the creature is not counted, and the DM applies Exhaustion by hand. A form never changes the
+  creature's kind (SRD, Wild Shape). A creature that breathes only water (a fish, Water Breathing trait) and is out of the water suffocates in the SRD's hour; that half is not built.
+- **Underwater combat** (`rollMode` in `engine/rolls.js`, `damage` in `engine/resolve.js`). A weapon attack roll is judged by where the attacker or its target is, under the surface.
+  Melee (the SRD: "a creature that lacks a Swim Speed ... underwater"): the attacker is under the surface, has no Swim Speed, and the weapon deals no Piercing damage: Disadvantage
+  (reason "weapon underwater"). Ranged: **either end** under the surface (the arrow passes through water however it is shot): beyond the weapon's normal range the attack
+  **automatically misses** (the die is still rolled, and never hits, a natural 20 included; reason "beyond normal range underwater"), within it Disadvantage. A spell attack and an
+  Unarmed Strike are not weapon attacks; a creature's own attack counts as a weapon attack (its stat block calls it one), by the damage types its steps deal, and one that names no type is
+  left as it is. A ranged attack at point blank keeps its other Disadvantage; they do not add. **Fire**: damage of the Fire type to a creature under the surface is halved, as any
+  Resistance is (once, with any other Resistance: it does not stack; Overchannel's damage that ignores Resistance still does).
+- **Water Breathing** is `auto`: `[{ modifier: { on: 'breath', op: 'immune' } }]` for 24 hours on up to ten willing creatures, ritual too. The hook is `breath`, a modifier step
+  only (`schema.js`, `reader.js`); it adds water to what the creature breathes, so "also retain normal respiration" is the rule itself. Water Walk is as it was.
+- **The brain** (`ai.js`). A creature that needs air and has two rounds of it or less left comes up first, before it does anything else: it moves to the cheapest place it can reach that
+  is not under the surface, or as far up as it can get, and it does not choose to end a turn under the surface while it is down to those two rounds (a creature with a Swim Speed may
+  otherwise stay under, as it could before). It reads the true state and rolls nothing. It does not dive on purpose, drown a foe, or hold a foe under.
+- **Players are sent** a party creature's `breath` (`view-fields.js`: sent) and the notes "is out of breath" and "can breathe again" for it, and its Exhaustion as any condition of its own. Of a
+  creature that is not the party's, nothing: the events name it (`id`, `actor`) and `view.js` drops them; the notes are not even made for it; the DM is told by a `partial` `manual`. Twin
+  tests: `packages/server/test/twin-worlds.test.js` (a hidden creature running out of breath, gaining Exhaustion, and surfacing, by time and by the rounds of a fight).
+- **Not built, with reasons:** DEBT T110.
+- **The client shows the breath** (#857, `packages/client/breath.js`, pure and tested in Node). `breathView(S, e)` reads the record the engine sends and the limit from `breathOf` (the rules'
+  own, through `./shared/modifiers.js`, never recomputed) and gives the share left, the rounds left and the words: "Holding breath: 2 rounds left" (a long breath, over 20 rounds, in
+  minutes) and "Out of breath". It gives nothing for a creature not under the surface (`submerged`), dead, that breathes water or that the engine cannot judge, or whose `breath` was not sent
+  (a foe, for a player; the DM's view is the whole state, so the DM sees it for every creature that has a record). Over the token (`render-three.js`) a bar under the health bar empties as the
+  breath goes and turns to `--bad` (the theme's warning colour) in the last two rounds and when out; the words are a line under the Hit Points on the character's page (`app.js` `breathLine`).
+
+## Build notes (E3, #849)
+
+What was settled while building water that rises and falls (the Cliff Keep's sea cave; Control Water's Flood and Part Water use the same mechanism in E4).
+
+- **A water level is a change of tiles** (`tides.js`, pure). `setSurface(map, levelId, cells, surface, opts)` returns `{ tiles }` or `{ problem }`. A cell's floor is the top of its
+  *dry* tile (the tile as it was before any water change, kept on the tile as `dry`, a copy, the first time; a tile that has one keeps its first), or its bed if that was water
+  (`z - depth`). Surface above the floor: `{ t: 'water', h: surface - level.z, depth: surface - floor, dry }` (depth must be one `WATER_DEPTH` allows; the deepest is 200, and a
+  floor that is not a multiple of 5 refuses). Surface at or below it: the dry tile again with no `dry`, except a dry tile that was water, which becomes its bed
+  `{ t: opts.bed ?? 'stone', h: bed - level.z, dry }` (the Sluice Gallery drained). The linter accepts `dry` on any tile and checks it as a tile (a `dry` inside a `dry` is refused).
+  **No state version and no migration:** `dry` and `state.tides` are optional, an old save has neither, and a game that never changes water has the state it had.
+- **Never in place.** `waterChange` copies the level's tiles and puts a new `map` in whole (as `mapEdit` does), so the restore copy that holds the terrain by reference stays sound.
+  `water` is not in `TERRAIN_ACTIONS` (`engine.js` was not the issue's to change); `apply-terrain.test.js` lists it as copy-on-write: DEBT T111 (1).
+- **The action** `water` (DM only; `engine/dm.js`): `{ level, cells | region, surface | by, bed?, rise?: { by, to } }` or `{ tide, stop: true }`. `by` is relative to each cell's
+  current top (its surface where it is water, its floor where it is dry). `surface` with `rise` is where the tide starts; with `rise` alone it starts at the highest water on its cells,
+  or at their lowest floor if they have none. `by` with `rise` is refused. Everything is checked before anything changes; a change that changes no cell is refused ("already there").
+- **A tide** is `state.tides: [{ id, map, level, cells, by, to, at, bed? }]` (ids T1, T2...; at most 16): `at` is where its water stands, `map` the map it was set on. At the start of
+  each round of a fight (`engine/resolve.js`, after `newRound`) each tide moves `by` feet, not past `to`, and is removed when it gets there. Outside a fight nothing moves (DEBT T111 (2)).
+  A tide whose map is not the one in play waits, and `loadMap` without a node drops them. One that cannot go on (the water would be deeper than 200) stops, and the DM's `water`
+  event says why. The Cliff Keep shape (a causeway at 0, ledges at -5, a dais at +5, an inlet with its bed at -10, `rise: { by: 5, to: 5 }`): round 2 the inlet has water (-5, the
+  ledges at its edge), round 3 the ledges are under, round 4 the causeway is under and the tide ends; the dais stays dry (`tides.test.js`).
+- **Who is carried** (`tides.js` `carry`). Rising: a creature standing on a covered cell is lifted to the new surface; **a creature swimming at the old surface rises with it** (the issue did
+  not say; it is the same as the falling case); one under the old surface stays where it is, deeper. Falling: a creature at or under the old surface and now above the new one is at the new
+  surface (or the floor), with no fall damage. A creature that flies above the surface stays where it is. A big creature is judged by its whole footprint and goes to the highest new surface under it,
+  **only if its anchor cell is then held up** (the gravity pass would drop it from anywhere else, with a fall): otherwise it stays where it is (DEBT T111 (3)). A rider goes with its mount. Piles
+  and objects stay on the floor. Events: a `water` event (the DM's alone: the table's players are not told of it) and a `moved` event with `water: true` for each creature carried,
+  which `view.js` treats as any other `moved`: never sent for a creature a player may not know of.
+- **Players are sent** the tiles as any map edit sends them, **without `dry`** (`view.js` strips it: it is the DM's record of what the ground was, and a drained cell's `dry` would say how deep
+  water used to be, in a place that may be unseen when it was). Never `state.tides`: a player's view is an allow list and has no such field. Twin test (`twin-worlds.test.js`, "tides:"): a hidden
+  creature lifted by a tide and a tide in a region the party has not seen; it fails if the lift event names the creature, and passes as built.
+- **The DM's control** (#854, `packages/client/water.js`): a Water section on DM tools' Map screen. Cells are chosen by tapping or dragging on the map (a drag adds, or takes out if it starts on a chosen hex; one level at a time) or by room name; Raise 5 ft, Lower 5 ft, Set surface, and Start a tide (by +5/+10/-5/-10 to a height, optionally from a surface) each send one `water` action; running tides (`state.tides`) are listed with Stop. A refusal is shown in the section as well as in the toast. The log line comes from `history.js` ("The water changed", "A tide was set", "A tide was stopped").
+- **Not built, with reasons:** DEBT T111.
+
+## Build notes (E4, #853)
+
+What was settled while building Control Water's Flood and Part Water on the water of E3 (`control-water` in `spells-4.js` is `assist`, `checked: true`: every number compared with `reference/srd52/srd52-flow.txt`, "Control Water": level 4, Action, 300 feet, V S M, Concentration up to 10 minutes, a Cube up to 100 feet, a rise of up to 20 feet, the wave 20 feet tall and 25 percent to capsize, the whirlpool 5, 50 and 25 feet, 25 feet of pull, 10 feet pulled, 2d8 Bludgeoning, a Strength save).
+
+- **The step.** `{ water: { mode: 'flood', by?: 5..20, size } }` or `{ water: { mode: 'part', size } }` (`schema.js` `STEPS`, `reader.js`, `HOMEBREW_RANGES` `water.by` 5 to 20 and `water.size` 5 to 200). `size` is the cube's side, the spell's own: the engine runs a step knowing only the cast, not
+  the spell's area (`effects.js` may not import the content index: a new import cycle), so the step carries it and the linter holds it equal to `target.area.size` (a `water` step needs a cube target and a range). `by` defaults to 20. It is a step for a spell that lasts.
+- **The choice.** `choice: { of: 'water' }` with `WATERS = flood, part, redirect, whirlpool` (`CHOICES.water`), and `ifChoice` on the steps. `casting.js` `chooseIn` strips the steps of the other choices for a curse, an affliction, a shape and a resize,
+   `effects.js` `exec` reads the choice from the cast event (`ev`, `choice`) and leaves out a step whose `ifChoice` does not list it. One line of `chooseIn` would let the cast strip them as it does for the others (DEBT T112 (1)).
+- **Once for the cast.** An area spell runs its steps for each creature in the area, and for none if nobody is there. `begin` (`effects.js`) puts a frame of its own on the stack, run first, for a spell with a `water` step: it runs the `water` and `manual` steps once whether or not a creature stands in the
+  area (the `told` marks are shared with the creatures' frames, so a note is said once); a creature's frame leaves a `water` step alone. The cube's cells are those the `cast` event names (`hexes`, laid out and clipped to the map by `casting.js`, Globe of Invulnerability's included); its base is the aimed point's height (`src.origin`).
+- **What is in the cube.** A cell on any level whose tile holds standing water (a water tile with a depth: the engine has no flowing water) any of which lies in the cube's height: its surface is at or above the cube's base, and its bed at or below its top. Water that the cube only reaches into counts; a cell wholly above or below does not.
+  Flood adds `by` to each such cell's surface (`setSurface`, so `dry` is kept and a creature at the surface rises with it, as `carry` does for a tide); a cell that would be deeper than 200 feet, or whose bed is off the 5-foot steps, is left and the DM is told (a `partial` `manual`). Part Water sets the surface at the cell's bed: the bed tile as a drained cell has it (stone), the creatures come down to it.
+- **It lasts with the spell.** Each level changed is a part of the lasting effect (`{ target: caster, water: { mode, map, level, cells: { key: { was, now } } } }`, whole tiles, `durations.js` `endPart`). When the effect ends for any reason (Concentration, ten minutes, the DM's `endEffect`), `tides.js` `endWater` undoes it:
+  a cell whose tile is still `now` goes back **exactly** to `was` (the lake tile with no `dry` kept). **The rule chosen for a cell something else has changed since** (a tide, the DM's `water`, a second Control Water): a flooded cell that still holds water comes down by what this spell raised it, **never below its floor and keeping what the other change did** (flood +20, the DM takes 5 off, the spell ends: 15 less 20 is 5 feet under where it began);
+  a cell the water has left, or a trench that has been filled or changed, is not touched. The map in play is not the one it was made on: the water is left and the DM is told.
+- **When.** The SRD says only the trench "slowly fills in ... over the course of the next round". A trench that ends in a fight is recorded in `state.refills` (`{ map, level, fx, name, source, cells }`, an optional field: no migration) and fills at the start of the next round (`stepTides`, which `resolve.js` already calls each round); outside a fight, at once.
+  **A flood comes down at once**: the SRD says nothing of a delay, and the creatures at its surface come down with it. A trench still waiting when the fight ends fills then (`endEncounter` calls `refill`); a map cannot change in a fight, so none outlives it. `water` parts are never sent to players (`view.js` `viewEffects`).
+- **Players are sent** the tiles as any water change sends them, without `dry`; never the effect's parts, `refills`, the `water` events (the DM's), or the carried creature's `moved` for a creature they may not know of. An area spell reveals the creatures it catches (`casting.js`'s own rule, Fireball's too), so the twin tests put a hidden creature in the water after the cast, and ending the spell carries it.
+  Twin tests (`twin-worlds.test.js`, "control water:"): a Flood, and a Part Water, cast by a DM-hidden caster, then a hidden creature at the surface or on the bed, then the spell ends; each fails when a note of the end is let through.
+- **Not built, with reasons:** DEBT T112. Redirect Flow and Whirlpool, the wave in a large body of water and a later-turn change of effect are `manual` steps for the DM.
+
+## Build notes (water depth in the client, #850)
+
+- **Editor** (`packages/client/editor.js`): with Paint on Water a Depth select (5 to 200 in 5s, default 10, kept while the editor is open) sets `depth` on what is painted ("Depth 10 ft (to the bed)"); painting water of another depth over water repaints it; painting another terrain over water drops the key. The Properties tool on a water tile (no object on it) shows its Depth and changes it with a `tile` op carrying the tile with its new `depth`. DEBT T109 (1).
+- **Drawing** (`waterdepth` helpers in `packages/client/three-build.js`): three steps from the theme's water colour, by `depth`: 5-10 ft lighter, 15-30 ft as the theme has it, 35 ft and more darker. A tint per tile; no new geometry or texture. `tileSig` includes a water tile's depth so a change redraws.

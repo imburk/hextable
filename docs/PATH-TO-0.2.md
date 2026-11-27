@@ -569,7 +569,7 @@ repo; no test, smoke run or browser was run.
 | confusion | 4 | manual | Forced behaviour and orders |
 | conjure-minor-elementals | 4 | manual | Inside an area, or an area that moves |
 | conjure-woodland-beings | 4 | assist | Extra actions or turn limits |
-| control-water | 4 | manual | Objects, walls, terrain |
+| control-water | 4 | assist | Objects, walls, terrain |
 | death-ward | 4 | manual | A trigger with no hook |
 | dimension-door | 4 | assist | Movement and travel |
 | divination | 4 | manual | Information or small utility |

@@ -80,12 +80,17 @@ test("joinFight is the DM's, needs a fight, and a refusal changes nothing", () =
   assert.deepEqual(s, copy);
 });
 
-test("joinFight: a hero too far to get in stays out and is told so, in a note the screen can show", () => {
+// Before #771 this started a fight with the whole party out of range, so nobody in the fight could lead the hero in. Such a fight is now
+// refused; one hero stands in the arena, and the other cannot get in because it is down (Stable at 0 Hit Points): the same refusal and note.
+test("joinFight: a hero who cannot get in stays out and is told so, in a note the screen can show", () => {
   const s = newGame(7);
   ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
   const [a, b] = party(s);
+  a.pos = { q: 2, r: -1, z: 0 };
   b.pos = { q: -13, r: 4, z: 0 };
+  b.hp = 0; b.cond = { ...b.cond, stable: true };
   ok(apply(s, { type: "startEncounter", center: { q: 2, r: -1 } }, DM));
+  assert.ok(inOrder(s, a.id));
   assert.ok(!inOrder(s, b.id));
   const r = ok(apply(s, { type: "joinFight", who: [b.id] }, DM));
   assert.ok(!inOrder(s, b.id));

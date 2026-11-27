@@ -23,7 +23,7 @@ export const UNDO_LIMIT = 30;
 export const UNDO_BYTES = 8 * 1024 * 1024;       // per game, both lists together
 
 // Lobby changes are who sits where, not the game: they are never undone.
-const LOBBY = new Set(['claim', 'release', 'ping']);      // a ping changes nothing to take back
+const LOBBY = new Set(['claim', 'release', 'ping', 'offer', 'decline']);      // a ping changes nothing to take back
 export const undoable = (action) => !LOBBY.has(action?.type);
 
 // What a state looked like, cheaply enough to take before every action. The timeline only ever
@@ -224,7 +224,7 @@ const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage acti
   editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set', harm: 'took damage', mend: 'was healed', setAc: 'had their Armor Class set',
   condition: 'had a condition changed', place: 'was placed', remove: 'was removed', setLight: 'had their light changed', hide: 'tried to hide',
   feature: 'used a feature', stand: 'stood up', shortRest: 'took a Short Rest', setSheet: 'had their sheet set', rollHp: 'rolled Hit Points', rerollHp: 'rolled a Hit Point die again', rollAbilityScores: 'rolled ability scores', rerollAbilityScore: 'rolled an ability score again', levelUp: 'levelled up', equip: 'put on or took off an item', shield: 'put a Shield away or took it up', attune: 'chose an item to attune to',
-  forgoMove: 'gave up their movement', drop: 'dropped something', pickUp: 'picked something up', escape: 'tried to escape a grapple' };
+  forgoMove: 'gave up their movement', drop: 'dropped something', pickUp: 'picked something up', escape: 'tried to escape a grapple', stabilize: 'tried to stabilize a creature' };
 
 // How a formation reads in a step's label (engine/world.js, SHAPES).
 const SHAPE_WORDS = { column: 'in single file', pairs: 'two abreast', line: 'four across', wedge: 'in a wedge', held: 'as they stand' };
@@ -273,6 +273,7 @@ export function describeStep(action, events, before, after) {
   let label;
   switch (a.type) {
     case 'move': label = `${who} moved`; break;
+    case 'leap': label = `${who} leaped`; break;
     case 'shield': label = ev('shield')?.on === false ? 'Shield away' : 'Shield up'; break;
     // An Unarmed Strike's Grapple and Shove options are named for what they are (docs/specs/grapple-shove.md).
     case 'attack': label = `${who} ${a.option === 'grapple' ? 'grappled' : a.option === 'shove' ? 'shoved' : 'attacked'} ${name(a.target)}`; break;
@@ -291,6 +292,7 @@ export function describeStep(action, events, before, after) {
     case 'setObject': label = 'Something on the map was changed'; break;
     case 'refresh': label = 'Refreshed from sheet'; break;
     case 'mapEdit': label = 'The map was edited'; break;
+    case 'water': label = a.stop ? 'A tide was stopped' : a.rise ? 'A tide was set' : 'The water changed'; break;
     case 'loadMap': label = a.node === undefined ? 'A new map was loaded' : { label: `${names(ev('arrived')?.ids, name)} went to ${place(ev('arrived'))}`, shown: told(names(ev('arrived')?.ids, name, true), 'moved on') }; break;
     // Places of a world (docs/specs/travel.md, W2). A place is named for the DM only: players are told who went, never where.
     case 'enter': label = { label: `${names(ev('arrived')?.ids, name)} went into ${place(ev('arrived'))}`, shown: told(names(ev('arrived')?.ids, name, true), 'went in') }; break;
@@ -303,6 +305,8 @@ export function describeStep(action, events, before, after) {
     case 'startEncounter': label = 'The fight began'; break;
     case 'endEncounter': label = 'The fight was ended'; break;
     case 'endEffect': label = 'A lasting effect was ended'; break;
+    case 'unmeld': label = `${who} left the stone`; break;
+    case 'moveZone': label = `${who} rolled a lasting area to ${a.to && Number.isInteger(a.to.q) ? `${a.to.q},${a.to.r}` : 'a new place'}`; break;
     case 'rest': label = 'The long rest'; break;
     case 'advanceTime': label = `${a.minutes} minutes passed`; break;
     case 'chronicle': label = `Chronicle: ${String(a.title ?? '').trim().slice(0, 40)}`; break;
@@ -359,6 +363,10 @@ export function describeStep(action, events, before, after) {
     case 'askCheck': label = 'A check was asked for'; break;
     case 'sceneChronicle': label = `Chronicle: ${String(a.title ?? '').trim().slice(0, 40)}`; break;
     case 'claim': label = `${name(a.entity)} was taken by ${a.userName ?? 'a player'}`; break;
+    // An offered character is the DM's business until it is let in: players are told nothing of an offer or a refusal, and of an admission only what `claim` says.
+    case 'offer': label = { label: `${ev('offered')?.name ?? 'A character'} was offered`, shown: null }; break;
+    case 'decline': label = { label: 'An offered character was declined', shown: null }; break;
+    case 'admit': label = `${real(ev('admitted')?.id)} was admitted to the table`; break;
     case 'release': label = `${name(a.entity)} was given up by their player`; break;
     case 'note': label = 'A note was sent'; break;
     // Stepping away (E20). Players are told of a party creature's; of another's only that the order changed.

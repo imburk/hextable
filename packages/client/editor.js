@@ -3,7 +3,7 @@
 // before taking it. Design: docs/specs/maps-and-objects.md, "Putting a place into the game".
 import * as Gr from './shared/grid.js';
 import { symbol } from './symbols.js';
-import { TILES } from './shared/content/terrain.js';
+import { TILES, WATER_DEPTH } from './shared/content/terrain.js';
 import { CONTENT } from './shared/content/index.js';
 import { WALL_KINDS, barriers, objectHexes, objectSegment } from './shared/walls.js';
 import { newMap, lintMap, migrateMap } from './shared/map.js';
@@ -42,6 +42,11 @@ const SQUARE_HINTS = {
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'x';
 const fresh = (base, taken) => { let id = base, n = 2; while (taken.has(id)) id = `${base}-${n++}`; return id; };
 const same = (p, q) => Math.abs(p[0] - q[0]) < 1e-6 && Math.abs(p[1] - q[1]) < 1e-6;
+// Does this kind of object drop whoever is on it? The same 3-line test as `falls` in packages/rules/src/map.js (not exported there): a `fall` number anywhere in its triggers or use.
+const falls = (def) => { let yes = false; const walk = (v) => { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') { if (Number.isInteger(v.fall)) yes = true; Object.values(v).forEach(walk); } }; walk(def.triggers); walk(def.use); return yes; };
+const DEPTHS = Array.from({ length: 20 }, (_, i) => (i + 1) * 10);
+const WATER_DEPTHS = Array.from({ length: (WATER_DEPTH.max - WATER_DEPTH.min) / WATER_DEPTH.step + 1 }, (_, i) => WATER_DEPTH.min + i * WATER_DEPTH.step);   // 5 to 200 in 5s
+const depthOptions = (sel) => WATER_DEPTHS.map((n) => `<option value="${n}"${n === sel ? ' selected' : ''}>${n} ft</option>`).join('');
 const sameSeg = (w, [a, b]) => (same(w.a, a) && same(w.b, b)) || (same(w.a, b) && same(w.b, a));
 
 export class Editor {
@@ -52,7 +57,7 @@ export class Editor {
     const tell = ctx.toast;
     this.toast = (m, quiet) => tell(this.say(m), quiet);
     this.on = false;
-    this.tool = 'paint'; this.terrain = 'stone'; this.brush = 0; this.kind = 'wall';
+    this.tool = 'paint'; this.terrain = 'stone'; this.wdepth = WATER_DEPTH.default; this.wtile = null; this.brush = 0; this.kind = 'wall';
     this.def = Object.keys(CONTENT.objects)[0]; this.region = ''; this.levelId = null; this.showAll = false;
     this.pending = null;          // the first hex of a two-tap edit: { q, r, level }
     this.armed = null;            // a button that needs a second tap
@@ -134,6 +139,10 @@ export class Editor {
     $('ed-grid').textContent = kind === 'square' ? 'Grid: squares' : 'Grid: hexes';
     $('ed-gridnote').textContent = `This map is on ${kind === 'square' ? 'squares' : 'hexes'}, and the editor keeps it so. For the other grid, start a new map.`;
     for (const p of $('ed-opts').children) p.hidden = !p.dataset.for.split(' ').includes(this.tool);
+    $('ed-wdepth').hidden = this.tool !== 'paint' || this.terrain !== 'water';
+    $('ed-wdepthnote').textContent = `Depth ${this.wdepth} ft (to the bed)`;
+    if ($('ed-wdepthsel').value !== String(this.wdepth)) $('ed-wdepthsel').value = String(this.wdepth);
+    this.#syncWaterTile();
     $('ed-notes').hidden = this.tool !== 'file' || !this.uvtt;
     const d = CONTENT.objects[this.def];
     const hint = this.tool === 'object' ? (d.kind === 'door' ? 'door' : d.connects ? 'ladder' : 'thing') : this.tool;
@@ -149,12 +158,17 @@ export class Editor {
     if (!this.S) return;
     if (this.scaling && this.tool === 'level') return this.#scaleTap(px, py);
     if (this.tool === 'trace') return this.#traceTap(px, py);
-    const l = this.level(), h = this.R.planeHex(px, py, l.z);
+    const l = this.level(), h = this.R.tileHex(px, py, l);
     if (!h) return;
     const k = Gr.col(h), tile = l.tiles[k], map = this.S.map, area = this.areaOver ?? this.G.range(h, this.brush);
     switch (this.tool) {
       case 'paint': {
-        const ops = area.filter((x) => l.tiles[Gr.col(x)]?.t !== this.terrain).map((at) => ({ op: 'tile', level: l.id, at, tile: { ...(l.tiles[Gr.col(at)] ?? {}), t: this.terrain } }));
+        const water = this.terrain === 'water', was = (x) => l.tiles[Gr.col(x)];
+        const ops = area.filter((x) => was(x)?.t !== this.terrain || (water && was(x).depth !== this.wdepth)).map((at) => {
+          const tile = { ...(was(at) ?? {}), t: this.terrain };
+          if (water) tile.depth = this.wdepth; else delete tile.depth;      // only water has a depth (the engine drops it too)
+          return { op: 'tile', level: l.id, at, tile };
+        });
         return ops.length && this.edit(ops);
       }
       case 'erase': {
@@ -254,7 +268,7 @@ export class Editor {
   }
   #drag() {
     const add = (x, y) => {
-      const h = this.R.planeHex(x, y, this.level().z);
+      const h = this.R.tileHex(x, y, this.level());
       if (!h || this.stroke.hexes.has(Gr.col(h))) return false;
       this.stroke.hexes.set(Gr.col(h), h); return true;
     };
@@ -367,16 +381,34 @@ export class Editor {
       if (!o) return this.toast('Tap another door or thing to link to.');
       this.#readForm(); P.target = o.id; P.pick = null; return this.#renderForm();
     }
-    if (!found.length) return this.toast('There is no door or thing on that hex.', true);
+    if (!found.length) {
+      const t = l.tiles[Gr.col(h)];
+      if (t?.t === 'water') { this.props = null; $('ed-form').innerHTML = ''; this.wtile = { level: l.id, q: h.q, r: h.r }; return this.refresh(); }     // a water tile has a Depth of its own to change
+      return this.toast('There is no door or thing on that hex.', true);
+    }
+    this.wtile = null;
     const o = found.find((x) => x.id === P?.id) ? found[(found.findIndex((x) => x.id === P.id) + 1) % found.length] : found[0];   // tapping again on a crowded hex steps through what is there
     this.props = { id: o.id, draft: structuredClone(o), pick: null, target: null };
     this.#renderForm();
+  }
+  // The panel of a water tile picked with the Properties tool: its Depth, changed with a `tile` op that carries the tile with its new depth.
+  #syncWaterTile() {
+    const box = $('ed-wtile'), w = this.wtile, l = w && this.S.map.levels.find((x) => x.id === w.level), t = l?.tiles[Gr.col(w)];
+    if (this.tool !== 'props' || t?.t !== 'water') { this.wtile = null; box.hidden = true; box.dataset.sig = ''; box.textContent = ''; return; }
+    box.hidden = false;
+    const sig = `${w.level}|${w.q},${w.r}|${t.depth ?? WATER_DEPTH.default}`;
+    if (box.dataset.sig === sig) return;
+    box.dataset.sig = sig;
+    const d = t.depth ?? WATER_DEPTH.default;
+    box.innerHTML = `<strong>Water at ${w.q},${w.r}</strong><label>Depth <select id="ed-wtiledepth" aria-label="Depth of this water">${depthOptions(d)}</select></label><span class="ed-note">Depth ${d} ft (to the bed)</span>`;
+    $('ed-wtiledepth').onchange = (ev) => this.edit([{ op: 'tile', level: w.level, at: { q: w.q, r: w.r }, tile: { ...t, depth: +ev.target.value } }]);
   }
   #readForm() {
     const P = this.props, f = $('ed-form');
     if (!P || !f.elements.state) return;
     const d = P.draft, v = (n) => f.elements[n]?.value.trim() ?? '';
     d.state = f.elements.state.value; d.name = v('name'); d.key = v('key');
+    if (f.elements.depth) { const n = Number(f.elements.depth.value); if (n > 10) d.fall = n; else delete d.fall; }     // 10 ft is the old behaviour: no key
     d.dc = {};
     for (const el of f.querySelectorAll('[data-dc]')) if (el.value.trim() !== '') d.dc[el.dataset.dc] = Number(el.value);
     P.when = f.elements.when?.value; P.sets = f.elements.sets?.value;
@@ -408,6 +440,7 @@ export class Editor {
       <label>Name <input name="name" maxlength="40" value="${esc(d.name ?? '')}" placeholder="shown to the DM" autocomplete="off"></label>
       ${usesKey ? `<label>Key <input name="key" maxlength="40" value="${esc(d.key ?? '')}" placeholder="name of the item that fits" autocomplete="off"></label>` : ''}
       ${dcs.length ? `<div class="ed-dcs">${dcs.map(([k, t, dflt]) => `<label>${esc(t)} <input type="number" inputmode="numeric" min="1" max="40" step="1" data-dc="${esc(k)}" value="${d.dc?.[k] ?? ''}" placeholder="${dflt ?? ''}"></label>`).join('')}</div>` : ''}
+      ${falls(def) ? `<label>Depth <select name="depth">${DEPTHS.map((n) => `<option value="${n}"${n === (d.fall ?? 10) ? ' selected' : ''}>${n === 10 ? '10 ft (same level)' : `${n} ft`}</option>`).join('')}</select></label>${P.depthNote ? `<p class="ed-note" id="ed-depthnote" role="alert">${esc(P.depthNote)}</p>` : ''}` : ''}
       ${def.connects ? `<div class="ed-line"><span>Leads to ${d.to ? `${d.to.q},${d.to.r} at ${d.to.z} ft` : 'nowhere yet'}</span><button type="button" id="ed-pickto"${P.pick === 'to' ? ' class="sel"' : ''}>${P.pick === 'to' ? 'Tap a tile now' : 'Pick the place'}</button></div>` : ''}
       <div class="ed-links"><span>Links</span><ul>${links || '<li class="none">None. Linking makes another object change when this one does.</li>'}</ul>
         <div class="ed-line"><span>${target ? esc(label(target)) : 'Nothing picked'}</span><button type="button" id="ed-picklink"${P.pick === 'link' ? ' class="sel"' : ''}>${P.pick === 'link' ? 'Tap an object now' : 'Pick an object'}</button></div>
@@ -438,6 +471,19 @@ export class Editor {
     for (const k of ['name', 'key']) if (!o[k]) delete o[k];
     if (!Object.keys(o.dc ?? {}).length) delete o.dc;
     if (!o.links?.length) delete o.links;
+    P.depthNote = '';
+    if (falls(CONTENT.objects[o.def])) {       // the linter's own words about a pit with no floor that deep below it; a refused depth goes back to the saved one
+      const trial = structuredClone(this.S.map), at = trial.objects.findIndex((x) => x.id === o.id);
+      if (at >= 0) trial.objects[at] = o;
+      let why = [];
+      try { why = lintMap(trial).filter((m) => m.includes(`"${o.id}"`) && /fall|deep/.test(m)); } catch { why = []; }
+      if (why.length) {
+        const saved = this.S.map.objects.find((x) => x.id === o.id);
+        if (saved?.fall) d.fall = saved.fall; else delete d.fall;
+        P.depthNote = why[0];
+        return this.#renderForm();
+      }
+    }
     this.edit([{ op: 'object', object: o }]);
   }
 
@@ -1041,6 +1087,8 @@ export class Editor {
       <div class="ed-row" id="ed-tools">${Object.entries(TOOLS).map(([k, t]) => `<button type="button" data-tool="${k}">${t}</button>`).join('')}</div>
       <div id="ed-opts">
         <div class="ed-row" data-for="paint" id="ed-terrain">${Object.keys(TILES).map((t) => `<button type="button" data-t="${t}"><i class="sw sw-${t}"></i>${t[0].toUpperCase()}${t.slice(1)}</button>`).join('')}</div>
+        <div class="ed-row" data-for="paint" id="ed-wdepth"><label>Depth <select id="ed-wdepthsel" aria-label="Depth of the water painted">${depthOptions(this.wdepth)}</select></label><span class="ed-note" id="ed-wdepthnote"></span></div>
+        <div class="ed-row" data-for="props" id="ed-wtile" hidden></div>
         <div class="ed-row" data-for="paint erase region" id="ed-brush"><button type="button" data-b="0">1 hex</button><button type="button" data-b="1">7 hexes</button></div>
         <div class="ed-row" data-for="wall trace" data-tm="wall" id="ed-kinds">${Object.keys(WALL_KINDS).map((k) => `<button type="button" data-k="${k}">${k[0].toUpperCase()}${k.slice(1)}</button>`).join('')}</div>
         <div class="ed-row" data-for="wall"><button type="button" id="ed-outline">Wall around this level</button></div>
@@ -1067,6 +1115,7 @@ export class Editor {
     $('ed-level').onchange = (ev) => { this.levelId = ev.target.value; this.scaling = null; this.traceLine = []; this.sel = null; again(); };     // a ladder's second tap may be on another level
     $('ed-tools').onclick = (ev) => { const b = ev.target.closest('[data-tool]'); if (b) { this.tool = b.dataset.tool; this.pending = null; this.scaling = null; this.traceLine = []; this.sel = null; if (this.tool === 'level') this.#listPictures(); again(); } };
     $('ed-terrain').onclick = (ev) => { const b = ev.target.closest('[data-t]'); if (b) { this.terrain = b.dataset.t; again(); } };
+    $('ed-wdepthsel').onchange = (ev) => { this.wdepth = +ev.target.value; again(); };
     $('ed-brush').onclick = (ev) => { const b = ev.target.closest('[data-b]'); if (b) { this.brush = +b.dataset.b; again(); } };
     $('ed-kinds').onclick = (ev) => { const b = ev.target.closest('[data-k]'); if (b) { this.kind = b.dataset.k; again(); } };
     $('ed-outline').onclick = () => this.#wallAround(new Set(Object.keys(this.level().tiles)));

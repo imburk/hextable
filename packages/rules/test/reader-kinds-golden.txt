@@ -5,9 +5,9 @@ Armor Class 13: one fixed number. Modifiers from its traits and from effects on 
 Hit Points 30: one fixed number. The entry holds no Hit Dice, so the engine never rolls its Hit Points.
 Proficiency Bonus +2. The saves and skills below carry their own bonuses, so the engine uses this one only where a rule asks for it.
 Speed: walk 40 feet, climb 20 feet, swim 30 feet and burrow 10 feet.
-The engine does not move a creature by a swim speed: it stays on the sheet, and the DM lets it swim by hand.
 The engine does not move a creature by a burrow speed: it stays on the sheet, and the DM lets it burrow by hand.
 It climbs by its climb speed only where the table allows climbing.
+It swims by its swim speed, 5 feet of it for each 5 feet through water, between the bed and the surface of water that has a depth.
 Ability scores: Strength 15 (+2), Dexterity 14 (+2), Constitution 13 (+1), Intelligence 3 (-4), Wisdom 12 (+1), Charisma 6 (-2).
 Initiative +3: the entry's own number, used in place of its Dexterity modifier.
 Saving throws: Constitution +4 and Wisdom +2. The engine uses each as the whole bonus for that save, in place of the ability modifier; every other save is the plain modifier.
@@ -35,6 +35,7 @@ Trait "Keen Nose": the engine runs this.
 Trait "Ember Memory": text only. The engine does nothing with it; the DM runs it.
 Trait "Strong Grip": the engine runs this.
   Moving a creature it is grappling costs it no extra movement: the engine adds no extra feet when it drags what it holds.
+  It provokes no Opportunity Attack when it moves out of an enemy's reach: the engine offers none, whether it walks or flies.
 Action "Multiattack": an action. In a fight it spends the creature's action.
   It is made only in a fight. It gives the attacks below, made one at a time, each at a target chosen when it is made; attacks not made by the end of the turn are lost. Each is a use of the action it names and costs no further action.
   1 attack with "Bite".
@@ -87,6 +88,13 @@ Action "Smoke Step": a Bonus Action. In a fight it spends the creature's Bonus A
   It affects the creature itself.
   The creature gets +10 feet to its Speed.
     It ends at the start of its next turn, or when the fight ends.
+  It gets to keep 1 Hit Point the first time damage would take it to 0 Hit Points, however large the damage (and a `kill` step does nothing to it instead).
+    That one time uses it up: this part of the effect ends, and the whole effect with it if nothing else is left of it.
+    It ends at the start of its next turn, or when the fight ends.
+  It gets immunity to the Frightened condition: it cannot be given the condition, and one it has has no effect while this lasts (it is not taken off).
+    It ends at the start of its next turn, or when the fight ends.
+  Every ongoing spell on it ends if it was cast at level 3 or lower, or no higher than the slot this was cast with. For each higher one the creature makes an ability check with its spellcasting ability against DC 10 plus the level of that spell, and on a success that spell ends.
+    Each spell ends whole, on every creature it is on. It is on the creature if it put a condition, a changed number, a light, Temporary Hit Points or a form on it, or made it, or if it was aimed at the creature and is one the DM applies. What is no spell (a feature, a creature's own action) is left, and so are spells on no creature (a zone, changed ground): the DM ends those. Where the engine does not know the spellcasting ability of the one dispelling, it hands that check to the DM.
   It gets Disadvantage on attack rolls made against it.
     It holds only when it is a ranged attack.
     It ends when it takes damage. Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.
@@ -95,9 +103,9 @@ Tier: assist. The engine runs what is listed above as run by the engine; the DM 
 Why: 1 trait only the DM runs; 3 things the DM does by hand, listed below.
 The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
 Not checked against any rulebook.
-DM: Moving it by its swim speed.
 DM: Moving it by its burrow speed.
 DM: The trait "Ember Memory": text only.
+DM: Step actions.5.effects.3: ending spells on an object, a zone or changed ground, and magic that is no spell cast through the engine.
 DM: Whatever the description says beyond the lines above.
 
 == monster hb-rk-gloomwing
@@ -160,6 +168,8 @@ Trait "Warding Light": the engine runs this.
 Trait "Borrowed Craft": the engine runs this.
   +1 to its spell save DC.
   +1 to its spell attack rolls.
+  Movement unaffected by Difficult Terrain: a step into it costs what it would on open ground.
+  Sight that sees creatures and objects with the Invisible condition as if they were visible.
 Trait "Legendary Actions": text only. The engine does nothing with it; the DM runs it.
   The engine has no legendary, lair or mythic actions. Whatever this trait describes, the DM runs.
 Action "Multiattack": an action. In a fight it spends the creature's action.
@@ -376,7 +386,7 @@ Tier: auto. The engine runs every trait and action of this creature as listed ab
 Not checked against any rulebook.
 
 == monster hb-rk-flawed
-REFUSED: this entry breaks the rules a table checks (5 problems, listed apart from this reading), so a table would not load it and it cannot be approved. What follows is how the engine would read it if it were loaded.
+REFUSED: this entry breaks the rules a table checks (9 problems, listed apart from this reading), so a table would not load it and it cannot be approved. What follows is how the engine would read it if it were loaded.
 "Flawed Reaver" (Medium, fiend, challenge rating 3, 700 XP when defeated).
 The engine uses the challenge rating only to match a summoning spell that names an exact rating; it does not set any number from it.
 Armor Class 14: one fixed number. Modifiers from its traits and from effects on it change it for an attack.
@@ -416,8 +426,24 @@ Action "Blind Grip": an action. In a fight it spends the creature's action.
       The engine applies part of what Grappled does; the DM applies the rest.
   Worked out from the dice, not a promise: the damage averages 18.5 when the save fails.
   The monster AI never picks this action by itself: the DM sends it.
+Action "Man Catcher": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 5 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  The target makes a Strength saving throw against DC 13.
+  On a failure:
+    It has the Grappled condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
+      Nothing in the engine ends it: the DM removes it.
+      The engine applies part of what Grappled does; the DM applies the rest.
+  The monster AI uses this action on its own turns, but only when it has no weapon attack that reaches a foe: then it aims it at the nearest foe it can reach.
+Action "Grave Robber": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 5 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  The target makes a Strength saving throw against DC 13.
+  On a failure:
+    It has the Grappled condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
+      Nothing in the engine ends it: the DM removes it.
+      The engine applies part of what Grappled does; the DM applies the rest.
+  The monster AI uses this action on its own turns, but only when it has no weapon attack that reaches a foe: then it aims it at the nearest foe it can reach.
 Tier: assist. The engine runs what is listed above as run by the engine; the DM runs the rest.
-Why: 5 things the DM does by hand, listed below.
+Why: 7 things the DM does by hand, listed below.
 The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
 Not checked against any rulebook.
 DM: The attack of step actions.0.effects.0: it is a spell attack, which has no bonus in a creature's action: rolling it and saying whether it hits.
@@ -425,11 +451,15 @@ DM: The healing of step actions.1.effects.0: it adds a modifier the engine does 
 DM: The healing of step actions.1.effects.1: it adds a modifier the engine does not have: applying the amount.
 DM: The action at actions.2: it has neither a reach nor a range.
 DM: Removing the Grappled condition that step actions.2.effects.0.onFail.1 puts on.
+DM: Removing the Grappled condition that step actions.3.effects.0.onFail.0 puts on.
+DM: Removing the Grappled condition that step actions.4.effects.0.onFail.0 puts on.
 DM: Whatever the description says beyond the lines above.
 PROBLEM: Step actions.0.effects.0: a creature's action has no spell attack bonus for the engine to use.
 PROBLEM: Step actions.1.effects.0: a creature's action has no spellcasting modifier, so `addMod` gives an amount that is not a number.
 PROBLEM: Step actions.1.effects.1: a creature's action has no spellcasting modifier, so `addMod` gives an amount that is not a number.
 PROBLEM: actions.2: a creature target has neither `reach` nor `range`, which the engine needs to aim it.
+PROBLEM: actions.3: `types` on a creature target is for a spell; the engine does not apply it to a creature's action, which works on a creature of any type.
+PROBLEM: actions.4: `dead` on a creature target is for a spell; the engine does not aim a creature's action at a dead creature.
 
 == monster warhorse
 "Warhorse" (Large, beast, challenge rating 1/2, 100 XP when defeated).

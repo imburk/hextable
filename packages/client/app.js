@@ -4,9 +4,13 @@
 import { key as cellKey, col as cellCol, gridOf } from './shared/grid.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
+import { objectsFor, objectAt, objectOptions, objectWords, isObjectAim } from './objectaim.js';
+import { wallsFor, wallAt, wallOptions, stoneWords, wallArg, isWallAim, wallNeeded } from './wallpick.js';
+import { wallTap, wallToward, towardArg, wallWords, isWall, rollMode, rollWords, rollAct, rollers, isWard, wardKinds, wardToggle, wardArg, wardWords, wardOptions, reverseOptions } from './wallaim.js';
+import { leapState } from './leapui.js';
 import { moveOptions, acShown, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
 import { actionProfile, rangeAt, targetCount } from './shared/effects.js';
-import { armed as imbued, fitting } from './shared/imbue.js';
+import { armed as imbued, fitting, weaponsFor } from './shared/imbue.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
 import { tapAttack, rearm, hintOf as flurryHint, spentWords } from './flurry.js';
@@ -26,6 +30,7 @@ import { createTracker, shownName, screenTurnLine } from './tracker.js';
 import { symbol } from './symbols.js';
 import { mountDot } from './linkdot.js';
 import { seenState } from './linkquality.js';
+import { spellAttrs } from './spellcard.js';          // the sheet's spell table opens the spell card (#787)
 import { initActionPanel } from './actionpanel.js';
 import { initCompanions, isSummon, orderText, pocketHtml } from './companions.js';
 import { initFormation, formationWhy, leads, whyNoFormation, followersOf } from './formation.js';
@@ -38,8 +43,9 @@ import { localTransport, serverTransport, savedSession, lastSession, hasSoloGame
 import { claimWriter } from './solowriter.js';
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
+import { initWater } from './water.js';
 import { initHandouts } from './handouts.js';
-import { initTodo } from './todo.js';
+import { initTodo, waitingWords } from './todo.js';
 import { initPacks } from './packmanager.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
@@ -52,27 +58,141 @@ import { refreshReport, refreshNote } from './refresh.js';
 import { classTitle, missingText } from './buildsheet.js';
 import { dmLine, tableRule } from './shared/scores.js';
 import { initTableControls, importLine, gridWords, aimedWords } from './tablecontrols.js';
-import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY } from './mycharacters.js';
+import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY, readSheet, classNames } from './mycharacters.js';
+import { levelOf } from './shared/derive.js';
+import { breathView } from './breath.js';
+import { SETTINGS, SETTING_TEXT } from './shared/engine.js';
 import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from './startflow.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
-import { levelUpHtml } from './levelup.js';
-import { ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
+import { levelUpHtml, levelReady, levelNext } from './levelup.js';
+import { heightsOf, livePick, makePick, rowOf, stepRow, cellAt, inRow, columnHl, planeHl, stateLine, cellWords, flyState, pickStamp, waysLeft, band, blockAtPoint, blockNearest, pitchFor, frameNudge, fallWarning, pickedWords, placeList } from './heights.js';
+import { HEIGHT_ACTIONS, ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
 import { initFeedback } from './feedback.js';
 import { mountNewVersion } from './newversion.js';
 import { wire as wireUndo, nameOf } from './undobar.js';
 import { createHold, HOLD_MS } from './hold.js';
 import { createPings, cellAtPoint, pingColor } from './ping.js';
+import { isPair, targetNote, slotOptions, pickOptions, weaponOptions } from './confirm.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const MOVE = { kind: 'move' };
+// #750: the d20 confirms. `waitFor` is what waits for a confirm right now ({ name, most, n }: most and n only when targets are being chosen), set by refresh() and read by the die
+// (tokenState), the note at the top and the Enter key. `confirming` is when a confirm was sent (its answer is the next update, or an error); `aimRefusal` is the engine's reason for a refusal.
+// `lastTap` is the last tap on a creature while its targets are chosen, for the double-tap that takes one off.
+let waitFor = null, confirming = 0, aimRefusal = null, lastTap = null;
 const OWED = { kind: 'owed' };     // the Move button of an Opportunity Attack's movement was pressed (allowance.js): the next tap on a shaded place is the move
-// How high above the floor each flyer's next move will end, in feet. Chosen with the Higher and Lower buttons.
-const flyAlt = {};
-const heightOf = (pos) => { const sf = under(S.map, pos); return sf ? Math.floor((pos.z - sf.z) / FT) * FT : 0; };
-const altOf = (e) => flyAlt[e.id] ?? heightOf(e.pos);
+// The height picked for a flyer's next move (heights.js, docs/specs/fly-swim-control.md C1): one pick, kept only while nothing has changed under it. A move, a fall,
+// a landing, a turn change or the loss of the flight makes it stale, and the move then goes to the height the creature is at.
+let flyPick = null, flyMemo = null;
+// The heights `e` can end a move at now, from the engine's own search (looked up once a refresh).
+const flyH = (e) => { if (flyMemo?.id !== e.id || flyMemo.S !== S) flyMemo = { id: e.id, S, H: heightsOf(S, e, { reach: moveOptions(previewState(S, e), e) }) }; return flyMemo.H; };
+// The block its next move goes to: the live pick's, else the one it is at. null for a creature that cannot fly now.
+// ---------- the column of heights and the plane of places (fly-swim-control.md, C2) ----------
+// The mode `{ kind: 'fly', id, stamp, hover, point }`: the column is open on the creature's own cell and the plane hangs at the picked height. `hover` is the block the
+// pointer is over (its plane previews), `point` the key of the place pointed at (a line runs down from it). Nothing of it is sent: only the ordinary `move` is.
+const flyCan = (e) => !!e && mine(e) && up(e) && flyState(S, e).can && flyH(e).can;
+function flyOpen(e, armed = false, list = false) {
+  if (armed || (mode.kind === 'fly' && !list)) return setMode(MOVE);
+  if (mode.kind === 'fly') return $('hint-fly').focus();
+  const st = flyState(S, e, shownName(S, e));
+  if (!st.has) return;
+  if (!st.can) return toast(st.why);
+  if (!flyH(e).can) return toast(`${shownName(S, e)} has no movement left.`);
+  R.focus(e.id, reducedMotion());                // the column stands on the creature's own cell: the view goes to it (its turn of the map is left alone)
+  setMode({ kind: 'fly', id: e.id, stamp: pickStamp(S, e), hover: null, point: null, marked: false });
+  if (list) $('hint-fly').focus();
+}
+// Pick a block: by its height (a tap on it), or one step up or down, or the ground or the top.
+function flyPickZ(e, z) { if (flyH(e).heights.some((r) => r.z === z && r.cells.length)) { flyPick = makePick(S, e, z); if (mode.kind === 'fly') { mode.point = null; mode.hover = null; mode.marked = false; } refresh(); } }
+function flyStep(e, how) {
+  const H = flyH(e), row = flyRow(e), live = H.heights.filter((r) => r.cells.length);
+  const next = how === 'ground' ? live[0] : how === 'top' ? live.at(-1) : row ? stepRow(H, row, how) : null;
+  if (next) flyPickZ(e, next.z);
+}
+function flyGo() { const e = S.entities[selId], c = e && mode.point ? flyRow(e)?.cells.find((x) => x.key === mode.point) : null; if (c && !skipping()) flySend(e, c); }
+function flySend(e, cell) { lastMove = { hex: cell.h, at: Date.now() }; act({ type: 'move', actor: e.id, to: cell.h }); }
+function flyTap(e, hit) {
+  const row = flyRow(e);
+  if (hit.block !== undefined) return flyPickZ(e, hit.block);
+  const cell = !row ? null : hit.plane ? row.cells.find((c) => c.key === cellKey(hit.hex)) ?? null : cellAt(row, hit.hex);
+  if (cell) {
+    // On touch a place in the air takes two taps (the plane hangs above the ground, so the first tap marks: the line down, the cost, Go); a mouse click, and a tap on the ground, send at once.
+    const touch = hit.pointer === 'touch' || hit.pointer === 'pen';
+    if (!touch || row.ground || (mode.marked && mode.point === cell.key)) return flySend(e, cell);
+    mode.point = cell.key; mode.marked = true; flySay(cellWords(flyH(e), cell));
+    return refresh();
+  }
+  if (hit.id && hit.id !== e.id) { select(hit.id); return refresh(); }
+  toast(row && !row.ground ? `${shownName(S, e)} can't reach that at ${row.ft} ft up.` : `${shownName(S, e)} can't get there.`);
+}
+// What a screen reader is told when the pick or the marked place changes (the aria-live line).
+function flySay(text) { const el = $('fly-live'); if (el.textContent !== text) el.textContent = text; }
+// Where the blocks of the column are on the screen now: [{ z, x, top, bottom }] in pixels (heights.js picks among them).
+const FOOT = Math.sqrt(3) / 5;            // drawing units a foot (three-build.js UNIT)
+function flyBlocksPx(e) {
+  const w = gridOf(S.map).toWorld(e.pos), x = w.x / FOOT, y = w.z / FOOT;
+  return flyH(e).heights.map((r) => { const a = R.screenPoint(x, y, r.z), b = R.screenPoint(x, y, r.z + 4.8); return a && b ? { z: r.z, x: a.x, top: b.y, bottom: a.y, live: r.cells.length > 0 } : null; }).filter(Boolean);
+}
+// A press on a block picks it, and a drag along the column moves the pick one block at a time under the finger, with the height lifted clear of the finger and a short
+// tick at each block where the device has one. A press anywhere else is not the column's: the map pans and taps as it always does.
+const FLY_DRAG = (() => {
+  let on = false, last = null;
+  const tip = (x, y, z) => { const el = $('fly-tip'), e = S?.entities[selId], row = e && flyH(e).heights.find((r) => r.z === z); el.hidden = !row; if (row) { el.textContent = row.ground ? 'Ground' : `${row.ft} ft`; el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y - 56)}px) translate(-50%, -100%)`; } };
+  const pick = (z, x, y) => { if (z === null || z === last) return; last = z; const e = S.entities[selId]; flyPickZ(e, z); tip(x, y, z); try { navigator.vibrate?.(8); } catch { /* no haptics */ } };
+  return {
+    down(x, y) { const e = S?.entities[selId]; if (mode.kind !== 'fly' || !e || skipping()) return false; const z = blockAtPoint(flyBlocksPx(e), y, x); if (z === null) return false; on = true; last = null; pick(z, x, y); tip(x, y, z); return true; },
+    move(x, y) { const e = S?.entities[selId]; if (!on || mode.kind !== 'fly' || !e) return; pick(blockNearest(flyBlocksPx(e).filter((b) => b.live), y), x, y); if (last !== null) tip(x, y, last); },
+    end() { on = false; $('fly-tip').hidden = true; }, cancel() { on = false; $('fly-tip').hidden = true; },
+  };
+})();
+// The camera when the column opens and closes (fly-swim-control.md, "Camera"): a view steeper than 1.05 rad eases to 0.9 over 0.5 s (at once with reduced motion) and goes
+// back when the column closes, unless the player turned or tilted the view meanwhile; and the picture is slid down so the top block is under the aim bar, not off the screen.
+let flyWas = false, flyTilt = null, flyNudge = 0;
+function easeTilt(d, done) {
+  if (!d) return done?.();
+  if (reducedMotion() || TL.pace === 'instant') { R.tilt(d); return done?.(); }
+  const t0 = performance.now(); let gone = 0;
+  const step = (t) => { const k = Math.min(1, (t - t0) / 500), want = d * k * k * (3 - 2 * k); R.tilt(want - gone); gone = want; if (k < 1) requestAnimationFrame(step); else done?.(); };
+  requestAnimationFrame(step);
+}
+function flyFrame() {
+  flyNudge = 0; sizeDock();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const e = S?.entities[selId]; if (mode.kind !== 'fly' || !e) return;
+    const px = flyBlocksPx(e); if (!px.length) return;
+    flyNudge = frameNudge({ top: px.at(-1).top, margin: $('hint').getBoundingClientRect().bottom + 10, foot: px[0].bottom, floor: ($('btn-menu').getBoundingClientRect().top || innerHeight) - 24 });
+    sizeDock();
+  }));
+}
+function flyCamera(open) {
+  if (!ED.on) R.onDrag = open ? FLY_DRAG : null;
+  if (!open) { $('fly-tip').hidden = true; flySay(''); flyNudge = 0; const t = flyTilt; flyTilt = null; if (t && t.turns !== null && R.cameraAngles().turns === t.turns) easeTilt(t.back - R.cameraAngles().pitch); return; }
+  const a = R.cameraAngles(), to = pitchFor(a.pitch);
+  if (to === null) return flyFrame();
+  const own = (flyTilt = { back: a.pitch, turns: null });
+  easeTilt(to - a.pitch, () => { own.turns = R.cameraAngles().turns; if (flyTilt === own) flyFrame(); });
+}
+// The aim bar while the column is open: the stepper (the sure way on a phone), the list of places in words, and Go once a place is marked.
+let flyListSig = '';
+function flyBar(e) {
+  const open = mode.kind === 'fly' && !!e, step = $('hint-step'), list = $('hint-fly');
+  step.hidden = list.hidden = !open;
+  if (!open) { flyListSig = ''; return; }
+  const H = flyH(e), row = flyRow(e);
+  $('hint-ft').textContent = row.ground ? 'Ground' : `${row.ft} ft`;
+  $('hint-up').disabled = !stepRow(H, row, 1); $('hint-down').disabled = !stepRow(H, row, -1);
+  const places = placeList(gridOf(S.map), e, H, row), sig = `${e.id}|${row.z}|${places.length}|${places[0]?.text ?? ''}|${places.at(-1)?.text ?? ''}`;
+  if (sig !== flyListSig) {
+    flyListSig = sig;
+    list.replaceChildren(Object.assign(document.createElement('option'), { value: '', textContent: `Fly to\u2026 (${places.length})` }), ...places.map((pl) => Object.assign(document.createElement('option'), { value: pl.key, textContent: pl.text })));
+  }
+  list.value = mode.marked && mode.point ? mode.point : '';
+  flySay(mode.marked && mode.point ? `Marked: ${places.find((pl) => pl.key === mode.point)?.text ?? ''}` : pickedWords(H, row));
+}
+const flyRow = (e) => { if (!aloft(S, e)) return null; const H = flyH(e), live = livePick(flyPick, S, e, H); if (flyPick?.id === e.id && !live) flyPick = null; return rowOf(H, live); };
 
 const SCORE_EVENTS = ['scoresRolled', 'scoreRerolled'];
 let T = null, S = null, selId = null, mode = MOVE, aiTimer = null, toastTimer = null, aiSent = null;
@@ -129,6 +249,7 @@ const known = new Map();
 // whose shown name differs is copied; the rest of the state is the same object.
 function shownState(st) {
   if (!st) return st;
+  st = { ...st, barRule: barRuleNow(st) };      // what the health bars over creatures show (three-build.js barFor): the renderer reads it from here
   let ents = null;
   for (const e of Object.values(st.entities ?? {})) {
     if (!e.bond) continue;
@@ -137,6 +258,9 @@ function shownState(st) {
   }
   return ents ? { ...st, entities: ents } : st;
 }
+// The health bars (docs/specs/one-token-menu.md, Decision 7a): this device's preference, the table's rule for foes, and whether this is the DM.
+const BAR_PREFS = ['always', 'fight', 'never'];
+const barRuleNow = (st) => ({ dm: isDM(), pref: BAR_PREFS.includes(prefs.get('hextable.bars')) ? prefs.get('hextable.bars') : 'always', foeHealth: st?.settings?.foeHealth === 'hidden' ? 'hidden' : 'rough' });
 // What a summoned creature is: its name without its master's ("Giant Wasp"), else its template's.
 const summonedName = (st, e) => {
   const m = st.entities[e?.bond?.to];
@@ -152,7 +276,7 @@ function toast(msg, info = false, ms = info ? 1600 : 3200) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), ms);
 }
 let foldMenu = () => {};      // set once the menu exists: an armed action is aimed on the map, so the menu folds away (one overlay at a time)
-function setMode(m) { mode = m; if (m !== MOVE) foldMenu(); refresh(); }
+function setMode(m) { mode = m; if (m !== MOVE && !choicesFor()) foldMenu(); refresh(); }      // #750 part 2: an action that waits to be told something keeps the menu open: its choices are on the sheet
 R.assetUrl = (id) => (T?.assets ? T.assets.url(id) : Promise.reject(new Error('Not at a table.')));      // level pictures come through the table's file store
 R.onPicture = () => { if (ED.on) refresh(); };
 const DICE = createDice($('dice'), prefs, () => R.cameraAngles());
@@ -199,6 +323,7 @@ let refreshAsk = null;   // set when the DM taps Refresh from sheet or Refresh t
 let acted = 0;           // actions sent or armed, so a key's step can tell whether its tap sent one
 function act(action, byAI = false) {
   if (skipping()) return;
+  if (isOffline()) { if (!byAI) toast(OFFLINE_WHY); return; }      // M6: said, not sent; the table has the last word when the link is back
   acted++;
   action = CLS.decorate(action);
   if (!toThrow(action, byAI)) return T.send(action);
@@ -353,6 +478,7 @@ function words(ev) {
     case 'cond': return [ev.cond === 'prone' ? `${n(ev.id)} is knocked Prone.` : `${n(ev.id)} ${conditionPhrase(ev.cond)}${ev.level ? ` (level ${ev.level})` : ''}.`];
     case 'condEnd': return [ev.cond === 'grappled' ? heldEndText(ev, n) : `${n(ev.id)} no longer ${conditionPhrase(ev.cond)}.`];
     case 'manual': return [`${ev.name}: ${ev.text}`, 'head'];
+    case 'zoneMoved': return [`${n(ev.by)} moves ${ev.name}${ev.met ? ` into ${n(ev.met)}` : ''}.`];
     case 'effectStart': return [`${ev.name} takes hold${ev.conc ? ` (${n(ev.source)} is concentrating)` : ''}: ${ev.lasts}.`];
     case 'effectEnd': return [`${ev.name} ends: ${ev.why}.`];
     case 'concentration': return [`${n(ev.id)} rolls to keep Concentration on ${ev.name}: ${ev.total} vs DC ${ev.dc}. ${ev.success ? 'Held.' : 'Lost.'}`];
@@ -516,8 +642,10 @@ function onUpdate(state, events, fresh) {
     const own = Object.values(S.entities).find((e) => e.kind === 'pc' && (isDM() ? true : e.owner === T.you.userId));
     selId = own?.id ?? null;
   }
+  if (confirming) { confirming = 0; mode = MOVE; }       // #750: the table took the confirm
   if (mode !== MOVE && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;
   if (mode.kind === 'owed' && !offerOf(S, S.entities[selId])) mode = MOVE;
+  if (mode.kind === 'leap' && (!S.entities[selId] || leapState(S, S.entities[selId]).why || (mode.spell && !leapState(S, S.entities[selId]).spellFree))) mode = MOVE;      // #818: the leap is put down when it can't be made now
   // A player is shown the movement an Opportunity Attack gave as soon as it comes: their creature is selected and looked at (the DM keeps their own choice; solo is both).
   if (!isDM() || T.solo) { const o = offers(S).find((x) => !hadOffer.has(x.id) && mine(S.entities[x.id])); if (o) { select(o.id); R.focus(o.id); } }
   if (mode.kind === 'attack' || mode.kind === 'famAttack' || mode.kind === 'feature' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
@@ -605,21 +733,23 @@ function startSpell(e, id, armed) {
   const sp = SPELLS[id];
   if (isSummon(id)) { if (armed) return setMode(MOVE); foldMenu(); return CP.openChooser(e, id); }       // a summon asks for its picks first (companions.js)
   if (sp.aim === 'self' || sp.aim === 'none') { if (armed) setMode(MOVE); else selfCast(e, id); }
-  else setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] });
+  else setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [], ...(isWard(sp) ? { wards: [], reverse: false } : {}) });
 }
 // A choice made in casting (Guidance's skill, Resistance's damage type): a menu beside the hint.
 const choiceLabel = (of, v) => (of === 'ability' ? v.toUpperCase() : v.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()));
 // A spell that changes a weapon (Shillelagh, Magic Weapon; imbue.js) asks which weapon when more than one fits, and uses the only one otherwise.
 const imbueOf = (sp) => (sp?.def.effects ?? []).find((st) => st.imbue)?.imbue ?? null;
 // `holder`: the creature whose weapon it changes: the caster for a spell on itself, else the creature tapped (`mode.holder`), whose weapons are listed, not the caster's.
-const weaponsOf = (e, sp) => { const spec = imbueOf(sp); return e && spec ? fitting(S, e, spec, ({ fx }) => fx.source === selId && fx.spell === sp.id) : []; };
+const weaponsOf = (e, sp) => { const spec = imbueOf(sp); return e && spec ? fitting(S, e, spec, skipOf(sp)) : []; };
 const holderOf = (sp) => (sp.aim === 'self' || sp.aim === 'none' ? selId : mode.holder ?? null);
 const choicesOf = (sp) => {
   if (imbueOf(sp)) { const h = holderOf(sp), list = h ? weaponsOf(S.entities[h], sp) : []; return list.length > 1 ? list.map((a) => a.id) : null; }
+  if (isWard(sp)) return null;       // Magic Circle's kinds are a list kept in `mode.wards`, not one pick (wallaim.js)
   return sp?.def.choice ? sp.def.choice.from ?? CHOICES[sp.def.choice.of] : null;
 };
 const weaponName = (id) => S.entities[holderOf(SPELLS[mode.id]) ?? selId]?.attacks?.find((a) => a.id === id)?.name ?? id;
 function chosen(sp, holder = null) {
+  if (isWard(sp)) return wardArg(sp, mode);
   if (imbueOf(sp)) {
     const list = weaponsOf(S.entities[holder ?? selId], sp).map((a) => a.id);
     if (list.length < 2) return {};
@@ -631,26 +761,47 @@ function chosen(sp, holder = null) {
   if (!list.includes(mode.choice)) mode.choice = list[0];
   return { choice: mode.choice };
 }
-function showPick() {
-  const sel = $('hint-pick'), sp = mode.kind === 'spell' ? SPELLS[mode.id] : null, list = choicesOf(sp);
-  sel.hidden = !list || $('hint').hidden;
-  if (sel.hidden) return;
-  const key = `${sp.id}|${list.join()}`;
-  if (sel.dataset.key !== key) { sel.dataset.key = key; sel.innerHTML = list.map((v) => `<option value="${v}">${esc(imbueOf(sp) ? weaponName(v) : choiceLabel(sp.def.choice.of, v))}</option>`).join(''); }
-  if (!list.includes(mode.choice)) mode.choice = list[0];
-  sel.value = mode.choice;
+// #750 part 2 (docs/specs/one-token-menu.md "Build notes: the d20 confirms, part 2"): what an armed spell waits to be told is shown on the character's sheet, no longer in a menu in the hint bar.
+// `choicesFor()` is { key, name, groups: [{ id: 'slot' | 'pick', label, options }] } (confirm.js says what an option is), or null. actionpanel.js draws it at the top of the open section.
+// A tap on an option comes back as `choose(group, value)`; one that cannot be used says why (a toast) and changes nothing.
+const skipOf = (sp) => ({ fx }) => fx.source === selId && fx.spell === sp.id;
+const pickLabel = (sp) => (imbueOf(sp) ? `Which weapon does ${sp.name} change?` : `Which ${(sp.def.choice?.of ?? 'one').replace(/([A-Z])/g, ' $1').toLowerCase()} for ${sp.name}?`);
+function choicesFor() {
+  if (!S || mode.kind !== 'spell') return null;
+  const e = S.entities[selId], sp = SPELLS[mode.id];
+  if (!e || !sp) return null;
+  const groups = [], menu = !mode.item ? slotMenu(e, sp) : null;
+  if (menu) groups.push({ id: 'slot', label: `Cast ${sp.name} at which level?`, options: slotOptions(e.slots, sp.level, menu, slotOf(e, sp)) });
+  if (isObjectAim(sp)) { const offers = objectsFor(S, e, sp); if (offers.length) groups.push({ id: 'object', label: `Which object does ${sp.name} work on?`, options: objectOptions(offers, mode.object ?? null) }); }
+  if (isWard(sp)) {
+    groups.push({ id: 'ward', multi: true, label: `Which kinds of creature does ${sp.name} work against? (one or more)`, options: wardOptions(wardKinds(sp), mode.wards ?? []) });
+    groups.push({ id: 'reverse', multi: true, label: 'Which way round?', options: reverseOptions(mode.reverse) });
+  }
+  const list = choicesOf(sp);
+  if (list) {
+    const now = list.includes(mode.choice) ? mode.choice : list[0];
+    groups.push({ id: 'pick', label: pickLabel(sp), options: imbueOf(sp) ? weaponOptions(weaponsFor(S, S.entities[holderOf(sp)], imbueOf(sp), skipOf(sp)), now) : pickOptions(list, now, (v) => choiceLabel(sp.def.choice.of, v)) });
+    if (wallNeeded(sp, now)) { const offers = wallsFor(S, e, sp); if (offers.length) groups.push({ id: 'wall', label: `Which wall does ${sp.name} cut?`, options: wallOptions(offers, mode.wall?.id ?? null) }); }
+  }
+  return groups.length ? { key: `${selId}|${mode.id}|${mode.holder ?? ''}`, name: sp.name, groups } : null;
 }
-$('hint-pick').onchange = (ev) => { mode.choice = ev.target.value; if (imbueOf(mode.kind === 'spell' ? SPELLS[mode.id] : null)) refresh(); };      // the hint names the weapon a second tap casts with
-// The slot to cast a levelled spell with (issue #604): shown while it is armed when the caster has more than one level to pay with and a higher one adds something.
-function showSlot() {
-  const sel = $('hint-slot'), e = S.entities[selId], sp = mode.kind === 'spell' && !mode.item ? SPELLS[mode.id] : null, menu = sp && e ? slotMenu(e, sp) : null;
-  sel.hidden = !menu || $('hint').hidden;
-  if (sel.hidden) return;
-  const key = `${sp.id}|${menu.levels.map((r) => r.label).join('|')}`;
-  if (sel.dataset.key !== key) { sel.dataset.key = key; sel.innerHTML = menu.levels.map((r) => `<option value="${r.level}">${esc(r.label)}</option>`).join(''); }
-  sel.value = String(slotOf(e, sp));
+let choicesNow = null, choicesKey = '', menuCloses = 0, showSheet = () => {};      // `showSheet` is set once the menu exists (like foldMenu)
+// New choices to make (an action just armed, or a weapon's owner just tapped) and the menu is not on the sheet: it opens there, at the choices. The menu already open on the sheet is left as it is.
+function openChoices() {
+  const k = choicesNow?.key ?? '';
+  if (k && k !== choicesKey) { const c = menuCloses; setTimeout(() => { if (c === menuCloses) showSheet(); }, 350); }      // a person who shuts the menu in that moment is not met with it opening again; not at once: a tap on the map that brought the choices (a weapon's owner) is followed by the browser's own click, which would land on the new menu's dimmed map and close it
+  choicesKey = k;
 }
-$('hint-slot').onchange = (ev) => { mode.slot = +ev.target.value; refresh(); };
+function chooseOption(group, value) {
+  if (group === 'slot') mode.slot = +value;
+  else if (group === 'pick') mode.choice = value;
+  else if (group === 'ward') { aimRefusal = null; mode.wards = wardToggle(mode.wards ?? [], value); }
+  else if (group === 'reverse') { aimRefusal = null; mode.reverse = !mode.reverse; }
+  else if (group === 'object') { aimRefusal = null; mode.object = String(value); }
+  else if (group === 'wall') { const o = wallsFor(S, S.entities[selId], SPELLS[mode.id]).find((x) => x.id === String(value)); if (!o) return; aimRefusal = null; mode.wall = { id: o.id, point: o.near }; }
+  else return;
+  refresh();
+}
 
 // What to tap to aim an area. Cones, Lines and Self cubes are aimed by direction; the rest at a spot in range.
 function aimHow(area, range) {
@@ -683,53 +834,214 @@ function actionAim(e, hl) {
   return { hint: aimed ? `${def.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${def.name}: ${how}`, go: aimed && hl.area.length > 0 };
 }
 
+// The column and the plane as highlights, and the one line of words under them (the aim bar's text).
+function flyAim(e, hl) {
+  const H = flyH(e), row = flyRow(e), over = mode.hover != null ? H.heights.find((r) => r.z === mode.hover && r.cells.length) ?? null : null, shown = over && over !== row ? over : row;
+  if (mode.point && !row.cells.some((c) => c.key === mode.point)) mode.point = null;
+  hl.column = columnHl(e, H, row, { hover: mode.hover, color: e.look?.color ?? null });
+  hl.plane = planeHl(S.map, H, shown, { faint: shown !== row, point: shown === row ? mode.point : null });
+  hl.move = [];                                   // the ground reach is not drawn under a plane: two layers would fight
+  const cell = mode.point ? row.cells.find((c) => c.key === mode.point) : null, pt = hl.plane.point;
+  if (cell) return `${cellWords(H, cell)}${row.ground ? '' : ` \u00b7 ${row.ft} ft up`}${pt && pt.drop ? ` \u00b7 ${pt.drop} ft above the floor` : ''}${pt?.bad ? ` \u00b7 ${pt.bad}` : ''}${pt?.drop ? ((w) => (w ? `. ${w}` : ''))(fallWarning(S, e, pt.drop)) : ''}${mode.marked ? '. Tap again or tap the die' : ''}`;
+  return stateLine(H, shown);
+}
 // The hint bar's two buttons, put to the words of the movement an Opportunity Attack gave (and back to the aiming ones, 'Cast' and 'Cancel', when it is not that).
 // 44 px high, the size of a thumb: the bar's own are smaller.
 function hintWords(offer, waits) {
-  const go = $('hint-go'), cancel = $('hint-cancel'), big = owedUi ? '44px' : '';
+  const go = $('hint-go'), cancel = $('hint-cancel'), big = owedUi || mode.kind === 'fly' ? '44px' : '';      // a thumb's size too while a flyer's column is open: Go sends a move
   go.style.minHeight = cancel.style.minHeight = big;
   cancel.hidden = owedUi === 'wait';
   cancel.textContent = owedUi === 'offer' ? forgoLabel : 'Cancel';
-  go.textContent = owedUi === 'offer' ? moveLabel(offer) : owedUi === 'wait' ? giveUpLabel(waits) : 'Cast';
+  go.textContent = owedUi === 'offer' ? moveLabel(offer) : owedUi === 'wait' ? giveUpLabel(waits) : '';
   if (owedUi === 'offer') go.hidden = mode.kind === 'owed';       // pressed: the next tap on a shaded place is the move
   else if (owedUi === 'wait') go.hidden = false;
 }
 // The turn line (tracker.js `screenTurnLine`): one line above the token in a fight, with End turn on the viewer's own turn.
 function showTurnLine() {
-  const plays = (e) => mine(e) && (!isDM() || e.side === 'party'), tl = screenTurnLine(S, plays), box = $('turnline');      // the DM's foes are not "yours" in the words, though the DM may end their turns
+  const tl = screenTurnLine(S, plays), box = $('turnline');      // the DM's foes are not "yours" in the words, though the DM may end their turns
   box.hidden = !tl;
   if (!tl) return;
   if ($('turn-text').textContent !== tl.text) $('turn-text').textContent = tl.text;
-  box.classList.toggle('mine', tl.mine);
+  box.classList.toggle('mine', tl.mine); box.classList.toggle('down', !!tl.down);
   const now = S.entities[current(S)];
   $('btn-end').hidden = !(now && mine(now) && !T.readOnly);
 }
-function sizeDock() { const t = $('btn-menu').getBoundingClientRect(); R.inset = t.height ? Math.max(0, innerHeight - t.top + 12) * 0.85 : 0; }      // the dock is gone (M4): the map keeps clear of the token's strip, as it did of the empty dock
+// ---------- M6: the states of Decision 7 (docs/specs/one-token-menu.md) ----------
+// Offline: the link to the table is lost (linkquality.js). A bar across the top, the token greyed and crossed, the rows greyed with the sentence, and nothing is sent.
+const OFFLINE_WHY = 'Nothing you do is sent until the table is back.';
+const isOffline = () => !!T && !T.solo && !!T.link?.known && T.link.state === 'lost';
+let wasOffline = false;
+function showOffline() {
+  const off = isOffline();
+  document.body.classList.toggle('offline', off);
+  $('offline-bar').hidden = !off; $('offline-why').hidden = !off;
+  if (wasOffline && !off && S) toast('Back at the table.', true);
+  wasOffline = off;
+}
+// The creatures this person plays for the words "your turn": their own; for the DM (and in solo) the party, not the foes.
+const plays = (e) => mine(e) && (!isDM() || e.side === 'party');
+// The banner: "Your turn, Wren" for 1.6 s when a turn of mine starts, once a turn. It takes no tap. Joining a table in the middle of my turn shows nothing: it is not news.
+let bannerKey, bannerTimer = null;
+function turnStarts() {
+  const enc = S.encounter, now = enc ? S.entities[current(S)] : null, key = enc ? `${enc.id ?? ''}/${enc.round}/${enc.turn}/${now?.id ?? ''}` : null;
+  if (key === bannerKey) return;
+  const first = bannerKey === undefined;
+  bannerKey = key;
+  if (first || !now || !plays(now) || !up(now)) return;
+  const b = $('turn-banner');
+  b.textContent = `Your turn, ${shownName(S, now)}`; b.hidden = false; b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { b.hidden = true; }, 1600);
+  // A player looking at a character's page is moved to the character whose turn it is; the arc, Turns and every other screen are left alone (someone watching the
+  // order keeps it), and a closed menu stays closed (question 3).
+  if (!isDM() && D.isOpen && D.path.join('/') === 'sheet') { if (selId !== now.id) select(now.id); D.open('sheet', null, true); }
+}
+// What the token shows of the selected character (drawer.js draws it): the health arc, the lit ring on a turn of mine, the flat bar when down, grey when dead or offline; and its spoken name.
+let hpSeen = null, hpTimer = null;
+function tokenState() {
+  if (!S) return null;
+  const e = S.entities[selId], known = !!e?.abil && typeof e.maxHp === 'number' && (mine(e) || e.side === 'party');
+  const now = S.encounter ? S.entities[current(S)] : null, turn = !!now && plays(now) && up(now);
+  const frac = known ? Math.max(0, Math.min(1, e.hp / Math.max(1, e.maxHp))) : null;
+  const n = Number($('menu-waiting').dataset.count) || 0;
+  const words = [turn ? 'Your turn' : '', known ? (e.dead ? `${shownName(S, e)} has died` : `${shownName(S, e)}, ${e.hp} of ${e.maxHp} Hit Points`) : '', n ? `${n} waiting for you` : '', waitFor ? (waitFor.most && !waitFor.n ? 'No target yet: tap one, then the die' : 'Tap to confirm') : '', isOffline() ? 'The link to the table is lost' : ''].filter(Boolean);
+  return { wait: waitFor?.name ?? null, hp: frac, low: known && e.hp <= e.maxHp / 2, down: known && !e.dead && e.hp <= 0, dead: known && !!e.dead, turn, offline: isOffline(), says: words.length ? `${words.join('. ')}.` : '' };
+}
+// The health label: "Wren 3 / 8 HP" beside the token for 3 s whenever the selected character's Hit Points change.
+function hpNote() {
+  const e = S.entities[selId], known = !!e?.abil && typeof e.maxHp === 'number' && (mine(e) || e.side === 'party');
+  const was = hpSeen; hpSeen = known ? { id: e.id, hp: e.hp } : null;
+  if (!known || !was || was.id !== e.id || was.hp === e.hp) return;
+  const n = $('hp-note'); n.textContent = `${shownName(S, e)} ${e.hp} / ${e.maxHp} HP`; n.hidden = false; n.classList.toggle('bad', e.hp < was.hp);
+  clearTimeout(hpTimer); hpTimer = setTimeout(() => { n.hidden = true; }, 3000);
+}
+// Waiting for you: what the token's badge counts, in words, at the top of the first level, each with its way in. A player's: handouts not opened yet, a level their
+// character can take (the DM's to give). The DM's: players waiting to join, rewards not settled, and under them the cards of the to-do tray (todo.js draws those).
+function waitItems() {
+  const items = [];
+  if (isDM()) {
+    for (const p of (T.lobby?.pending ?? [])) items.push({ text: `${p.name} is waiting to join`, short: `${p.name} asks to join`, label: 'Let in', act: `in:${p.id}` });
+    if (S.conclusion && S.conclusion.published === false) items.push({ text: 'A fight is over and its rewards are not settled', short: 'rewards to settle', label: 'Settle', act: 'rewards' });
+  } else {
+    for (const h of HO.unseen()) items.push({ text: `New handout: ${h.title || 'untitled'}`, short: `a new handout (${h.title || 'untitled'})`, label: 'Open', act: `ho:${h.id}` });
+    for (const e of Object.values(S.entities)) if (e.kind === 'pc' && e.owner === T.you.userId && levelReady(e)) items.push({ text: `${shownName(S, e)} can reach level ${levelNext(e)}. Your DM levels them up.`, short: `${shownName(S, e)} can reach level ${levelNext(e)}`, label: 'Open', act: `sheet:${e.id}` });
+  }
+  return items;
+}
+// The words of what the badges count, from the same sources as the count (#844): the title and aria-label of both badges, and the DM tools' first row.
+function badgeWords(items = waitItems()) {
+  const w = waitingWords(items.map((i) => i.short), TD.cards());
+  for (const id of ['menu-badge', 'dm-badge']) { const b = $(id); if (b.title !== w.text) { b.title = w.text; b.setAttribute('aria-label', w.text); } }
+  const row = $('dm-waiting-li'); if (row) { row.hidden = !w.n || !isDM(); $('dm-waiting-n').textContent = w.n; $('dm-waiting-says').textContent = w.text.replace(/^\d+ waiting: /, ''); }
+  return w;
+}
+function renderWaiting() {
+  const items = waitItems();
+  const n = items.length + TD.count(), box = $('menu-waiting');
+  box.dataset.count = String(n); box.hidden = !n; badgeWords(items);
+  const html = items.map((i) => `<li><span>${esc(i.text)}</span><button type="button" data-wait="${esc(i.act)}">${esc(i.label)}</button></li>`).join('');
+  if ($('waiting-list').dataset.sig !== html) { $('waiting-list').dataset.sig = html; $('waiting-list').innerHTML = html; }
+  $('waiting-list').hidden = !items.length;
+}
+// Pick who you play (#756): at a hosted table a player with no character is shown the characters nobody plays, each with "Play as <name>" (a second tap
+// claims it: the engine's own claim, no approval). The menu opens on it when they join and again when they lose their character or one becomes free, not
+// again after they close it until one of those happens. `pickSeen` is the free characters they have been shown since they last had none.
+const pickSeen = new Set();
+function renderPick() {
+  const box = $('menu-pick'), me = T?.you?.userId;
+  const hasChar = !!S && Object.values(S.entities).some((x) => x.owner === me);
+  const free = !S || T.solo || isDM() || hasChar ? [] : Object.values(S.entities).filter((x) => x.kind === 'pc' && !x.owner && !x.dead);
+  const bring = !!S && !T.solo && !isDM() && !hasChar && (S.settings.characters ?? 'own-trusted') !== 'new';      // #757: a table that takes characters people bring
+  if (hasChar || !S) offerForget();
+  box.hidden = !free.length && !bring;
+  bringHtml(bring);
+  const html = free.map((x) => `<li><span><b>${esc(shownName(S, x))}</b><small>Level ${esc(x.level)} ${esc(classTitle(x))}</small></span><button type="button" data-pick="${esc(x.id)}">Play as ${esc(shownName(S, x))}</button></li>`).join('');
+  if ($('pick-list').dataset.sig !== html) { $('pick-list').dataset.sig = html; $('pick-list').innerHTML = html; }
+  if (!free.length) { if (hasChar || !S) pickSeen.clear(); return; }
+  if (!$('lobby').hidden) return;
+  const fresh = free.filter((x) => !pickSeen.has(x.id));
+  pickSeen.clear(); for (const x of free) pickSeen.add(x.id);
+  if (fresh.length && !D.isOpen) D.open();
+}
+// Bring a character (#757): "Bring a character" opens My characters (or the build sheet) to choose or make a sheet, which is sent as `offer`. The player is not told
+// when the DM declines (the engine tells only the DM: DEBT D-bring), so what they see is "Waiting for the DM" until the DM admits it (they then have a character, and
+// this goes) or they offer another. A refusal of the offer itself (a level, a table that takes none) is the toast, and the waiting goes.
+let offerSent = null;
+const offerKey = () => `hextable.offered.${T?.you?.code ?? ''}.${T?.you?.userId}`;
+function offerWaiting() {
+  if (!T?.you) return null;
+  if (offerSent?.key === offerKey()) return offerSent;
+  try { const w = JSON.parse(sessionStorage.getItem(offerKey())); return w && typeof w.name === 'string' ? w : null; } catch { return null; }
+}
+function offerForget() { const k = T?.you ? offerKey() : null; offerSent = null; if (k) try { sessionStorage.removeItem(k); } catch { /* storage unavailable */ } }
+function bringOffer(sheet) {
+  offerSent = { key: offerKey(), name: String(sheet.name ?? ''), level: levelOf(sheet), cls: classNames(sheet), at: Date.now() };
+  try { sessionStorage.setItem(offerKey(), JSON.stringify(offerSent)); } catch { /* storage unavailable */ }
+  act({ type: 'offer', sheet });
+  renderPick(); D.open();
+}
+function bringHtml(on) {
+  const box = $('pick-bring'), w = on ? offerWaiting() : null, r = on ? S.settings.level : null;
+  box.hidden = !on;
+  const range = r && Number.isInteger(r.min) && Number.isInteger(r.max) ? (r.min === r.max ? `level ${r.min}` : `levels ${r.min} to ${r.max}`) : '';
+  const html = !on ? '' : w
+    ? `<p class="bring-text" id="bring-wait" role="status"><b>Waiting for the DM</b> to read ${esc(w.name)}, level ${esc(w.level)} ${esc(w.cls)}.</p><button type="button" id="bring-again" data-bring>Offer a different character</button>`
+    : `<button type="button" id="bring-open" data-bring>Bring a character</button><p class="bring-text">From My characters on this device, or built now. The DM reads it and lets it in or not.${range ? ` This adventure is for ${esc(range)}.` : ''}</p>`;
+  if (box.dataset.sig !== html) { box.dataset.sig = html; box.innerHTML = html; }
+}
+// Dead: the character's page says so, with the way to what happened.
+function deadLine(e) {
+  const d = $('dead-line'), on = !!e && e.kind === 'pc' && !!e.dead && mine(e);
+  d.hidden = !on;
+  const html = on ? `${esc(shownName(S, e))} has died. ${isDM() ? 'You decide what happens next.' : 'Your DM decides what happens next.'} <button type="button" class="link" data-menu-open="log">Open the log</button>` : '';
+  if (d.dataset.sig !== html) { d.dataset.sig = html; d.innerHTML = html; }
+}
+// Breath under water (breath.js, DEBT T110 (1)): a line under the character's Hit Points, "Holding breath: 2 rounds left" or "Out of breath". It is made here, beside the
+// status pills, and is empty for a creature not under the surface, one that needs no air, or one whose breath we were not sent.
+function breathLine(e) {
+  let p = $('c-breath');
+  if (!p) { p = document.createElement('p'); p.id = 'c-breath'; p.setAttribute('role', 'status'); p.hidden = true; $('c-hp').after(p); }
+  const v = e ? breathView(S, e) : null;
+  p.hidden = !v; p.classList.toggle('warn', !!v?.warn);
+  if (p.textContent !== (v?.words ?? '')) p.textContent = v?.words ?? '';
+}
+// #717: the quick actions of the turn line. On a turn of mine, for the selected creature when the turn is its own: up to three rows that need the map next, so a fight
+// action is the quick action and then the target. They are the action panel's own rows (AP.quick), and a tap is a tap on the row.
+function showQuick() {
+  const box = $('turn-quick'), now = S.encounter ? S.entities[current(S)] : null;
+  const rows = now && now.id === selId && plays(now) && up(now) && !T.readOnly && prefs.get('hextable.quickRows') !== false && !$('turnline').hidden ? AP.quick() : [];
+  box.hidden = !rows.length;
+  const html = rows.map((r) => `<button type="button" class="tq${r.armed ? ' armed' : ''}" data-quick="${esc(r.id)}" aria-pressed="${r.armed}" aria-label="${esc(r.label)}${r.sub ? `, ${esc(r.sub)}` : ''}"><span>${esc(r.label)}</span></button>`).join('');
+  if (box.dataset.sig !== html) { box.dataset.sig = html; box.innerHTML = html; }
+}
+function sizeDock() { const t = $('btn-menu').getBoundingClientRect(); R.inset = (t.height ? Math.max(0, innerHeight - t.top + 12) * 0.85 : 0) - 2 * flyNudge; }      // a flyer's column slides the picture down (an inset of 2 px moves it 1 px) so its top is on the screen      // the dock is gone (M4): the map keeps clear of the token's strip, as it did of the empty dock
 let joinNo = null;               // the fight whose "Bring the others in?" was put off
 // The party members a running fight has left outside, who could be brought in: alive, able, on their own feet (a rider goes with its mount).
 const outsiders = (st) => Object.values(st.entities).filter((x) => x.side === 'party' && !x.dead && up(x) && !x.riding && !x.hidden && !st.encounter.order.some((o) => o.id === x.id));
 function refresh() {
   if (!S) return;
+  flyMemo = null;
+  if (mode.kind === 'fly') { const fe = S.entities[selId]; if (!fe || fe.id !== mode.id || mode.stamp !== pickStamp(S, fe) || !flyCan(fe)) mode = MOVE; }      // the column closes after a move, a fall, a turn change, the loss of flight
   const enc = S.encounter, cur = current(S), e = S.entities[selId];
   document.body.classList.toggle('fight', !!enc);
   // A fight with party members outside it: the DM (in solo, the player) is asked once per fight whether to bring them in (`joinFight`, #671).
   const out = enc && isDM() && !T.readOnly && joinNo !== enc.id ? outsiders(S) : [];
   $('join').hidden = !out.length;
   if (out.length) $('join-text').textContent = `Bring the others in? ${out.map((x) => shownName(S, x)).join(', ')}`;
-  showTurnLine();
-  $('btn-leave').hidden = isDM() || !!T.solo;
-  $('menu-session').hidden = false; $('menu-new').hidden = !T.solo; $('menu-leave').hidden = !!T.solo;
+  showTurnLine(); turnStarts(); showOffline(); hpNote(); deadLine(e);
+  // Setup's last section: leaving this game for the starting screen (a solo game stays saved on this device; a new one starts from the lobby).
+  $('btn-leave').hidden = false; $('set-sec-leave').hidden = !!T.readOnly;
+  { const n = leaveNote(); if ($('set-leave-note').textContent !== n) $('set-leave-note').textContent = n; }
   showUndo();
 
-  // The characters (Decision 4b): one row for each creature this person controls, at the top of the first level. The selected one is first, then the others in turn order
-  // (in a fight) or in the party's order; a companion sits under its master. A tap opens that creature's Character screen and selects it. A player with one character sees one row.
+  // The characters (Decision 4b): one place for each creature this person controls, the first symbols of the strip and the arc (drawer.js draws both from these buttons), in turn order
+  // (in a fight) or in the party's order; a companion comes after its master. A tap opens that creature's Character screen and selects it. A player with one character sees one.
   {
     const party = $('party');
     const hasChar = Object.values(S.entities).some((x) => x.owner === T.you.userId);
     // A player's rows are their character and its companions ("Brenna's wolf"); the DM picks a companion on the map or in the tracker.
     const mineRows = Object.values(S.entities).filter((x) => (x.kind === 'pc' || (x.bond && !isDM() && !x.dead)) && (mine(x) || (x.kind === 'pc' && !isDM() && !hasChar && !x.owner)));
     const rank = (x) => (enc ? S.encounter.order.findIndex((o) => o.id === x.id) : 0);
-    const masters = mineRows.filter((x) => !x.bond).sort((p, q) => (p.id === selId ? -1 : q.id === selId ? 1 : (enc ? (rank(p) < 0 ? 99 : rank(p)) - (rank(q) < 0 ? 99 : rank(q)) : 0)));
+    const masters = mineRows.filter((x) => !x.bond).sort((p, q) => (enc ? (rank(p) < 0 ? 99 : rank(p)) - (rank(q) < 0 ? 99 : rank(q)) : 0));      // M8: a symbol keeps its place on the strip and the arc when another character is selected
     const list = [];
     const push = (x, under) => {
       list.push({ x, under });
@@ -737,7 +1049,6 @@ function refresh() {
     };
     for (const m of masters) push(m, false);
     for (const c of mineRows.filter((k) => k.bond && !list.some((l) => l.x === k))) list.push({ x: c, under: true });
-    if (selId) { const k = list.findIndex((l) => l.x.id === selId); if (k > 0 && !list[k].under) { const run = [list[k]]; let n = k + 1; while (list[n]?.under) run.push(list[n++]); list.splice(k, run.length); list.unshift(...run); } }
     const html = list.map(({ x, under }) => {
       const claimable = x.kind === 'pc' && !isDM() && !hasChar && !x.owner;
       const boss = x.bond ? S.entities[x.bond.to] : null;
@@ -751,8 +1062,11 @@ function refresh() {
 
   // selected creature card
   const hl = { selected: selId, turn: enc ? cur : null };
-  let hint = '', go = false;
+  let hint = '', go = false, multi = null;
+  choicesNow = e && mine(e) && !ED.on ? choicesFor() : null;
   AP.render(e, mode, { my: !!e && mine(e), full: !!e?.abil });
+  breathLine(e);
+  showQuick();
   if (e) {
     // full: we were sent this creature's whole record (a party member, or anything if we are the DM).
     const my = mine(e), full = !!e.abil;
@@ -761,7 +1075,12 @@ function refresh() {
     if (my && up(e)) {
       // highlights and hint for the armed action
       // A flyer's highlights are the places at the height it has chosen; everyone else's are on the ground.
-      if (mode.kind === 'move' && myTurn) hl.move = [...moveOptions(previewState(S, e), e)].filter(([, v]) => v.canStop && (!aloft(S, e) || heightOf(v.h) === altOf(e))).map(([k]) => k);
+      if (mode.kind === 'move' && myTurn) {
+        // The reach is shaded by cost (C3): the nearest third of what the creature has left, the middle third, the farthest. A flyer's is the places of its height.
+        const row = flyRow(e), left = waysLeft(S, e), most = Math.max(left.walk, left.climb, left.fly);
+        const stops = row ? row.cells.map((c) => [c.key, c.cost, c.floor ? most : left.fly]) : [...moveOptions(previewState(S, e), e)].filter(([, v]) => v.canStop).map(([k, v]) => [k, v.cost, most]);
+        hl.move = stops.map(([k]) => k); hl.moveBand = Object.fromEntries(stops.map(([k, cost, of]) => [k, band(cost, of)]));
+      }
       if (mode.kind === 'attack') {
         const a = e.attacks.find((x) => x.id === mode.id);
         hl.targets = targetsFor(S, e, { attack: mode.id }).filter((id) => hostile(S.entities[id], e));
@@ -773,21 +1092,45 @@ function refresh() {
       }
       if (mode.kind === 'attack' && mode.flurry && hl.targets.length) hint = flurryHint(S, e, mode) || hint;
       if (mode.kind === 'feature') hint = `${mode.name}: tap a creature`;
+      if (mode.kind === 'fly') hint = flyAim(e, hl);
+      if (mode.kind === 'leap') hint = gridWords(`Tap a hex to leap${mode.spell ? ' (Jump)' : ''}`, gridOf(S.map));
+      if (mode.kind === 'roll') hint = rollWords(mode.name, rollers(S, e).find((r) => r.id === mode.effect)?.feet ?? 30, !!mode.pack);
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
-        if (sp.aim === 'self' || sp.aim === 'none') { hint = `${sp.name}: choose the ${imbueOf(sp) ? 'weapon' : 'slot'}, then Cast`; go = true; }
+        if (sp.aim === 'self' || sp.aim === 'none') { hint = `${sp.name}: choose the ${imbueOf(sp) ? 'weapon' : 'slot'}, then tap the die`; go = true; }
+        else if (isObjectAim(sp)) {
+          const offers = objectsFor(S, e, sp);
+          if (!offers.some((o) => o.id === mode.object)) mode.object = null;       // it went out of reach, or out of view: the choice goes with it
+          hl.range = offers.filter((o) => o.id !== mode.object).flatMap((o) => o.hexes);
+          hl.area = offers.find((o) => o.id === mode.object)?.hexes ?? [];
+          hint = objectWords(sp.name, offers, mode.object);
+          go = !!mode.object;
+        }
+        else if (isWallAim(sp)) {
+          if (!wallNeeded(sp, mode.choice ?? choicesOf(sp)?.[0])) { mode.wall = null; hint = `${sp.name}: another shape names no wall. Tap the die, the DM applies it`; go = true; }
+          else {
+            const offers = wallsFor(S, e, sp);
+            if (!offers.some((o) => o.id === mode.wall?.id)) mode.wall = null;       // it went out of reach, or out of view: the choice goes with it
+            const on = mode.wall?.id ?? (mode.hoverWall && offers.some((o) => o.id === mode.hoverWall) ? mode.hoverWall : null);
+            hl.range = offers.filter((o) => o.id !== on).flatMap((o) => o.hexes);
+            hl.area = offers.find((o) => o.id === on)?.hexes ?? [];
+            hint = stoneWords(sp.name, offers, mode.wall?.id);
+            go = !!mode.wall;
+          }
+        }
         else if (sp.area) {
           const aimed = !!mode.aim || sp.area.shape === 'emanation';       // an emanation surrounds the caster: nothing to aim
-          const hexes = aimed ? areaHexes(S, e, sp, mode.aim) : [];
+          const wall = isWall(sp) && !!mode.aim, hexes = aimed ? areaHexes(S, e, sp, mode.aim, wall ? wallToward(mode) : undefined) : [];
           hl.area = hexes.map(cellKey);
           const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(cellCol(x.pos)));
           const how = aimHow(sp.area, sp.range);
           // An area whose caster picks among those caught (Slow, Mass Cure Wounds): foes for a harmful one, friends for a kind one.
           if (sp.area.choose && aimed) mode.picked = caught.filter((x) => hostile(x, e) === sp.harmful).slice(0, spellMost(e, sp)).map((x) => x.id);
           const named = sp.area.choose ? (mode.picked ?? []).map(name) : caught.map((x) => x.name);
-          hint = aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${sp.name}: ${how}`;
+          hint = wall ? wallWords(sp.name, mode, named) : aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${sp.name}: ${how}`;
           go = aimed && hexes.length > 0;
+          { const ask = isWard(sp) && aimed ? wardWords(sp, mode) : null; if (ask) { hint = ask; go = false; } }       // Magic Circle: at least one kind before the die confirms
           const far = reachAim(e, hl, sp.name, sp.area, sp.range);
           if (far) { hint = far; go = false; }
         } else {
@@ -796,11 +1139,10 @@ function refresh() {
           else hl.targets = ids.filter((id) => hostile(S.entities[id], e));
           // Several targets (Magic Missile's darts, Bless): each tap adds one until there are enough, or Cast.
           const most = spellMost(e, sp), picked = mode.picked ?? [];
-          if (most > 1 && picked.length) {
-            hint = `${sp.name}: ${picked.length} of ${most}${sp.repeat ? '' : ' creatures'} · ${picked.map(name).join(', ')}. Tap ${sp.repeat ? 'a target' : 'another'} or Cast`;
-            go = true;
-          } else if (imbueOf(sp) && mode.holder) { hint = `${sp.name} on ${name(mode.holder)}: choose the weapon, then Cast (or tap ${name(mode.holder)} again to cast with ${weaponName(mode.choice ?? choicesOf(sp)?.[0])})`; go = true; }
-          else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}` : 'a target'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
+          if (picked.length || (hl.allies || hl.targets).length) multi = { most, n: picked.length };
+          if (imbueOf(sp) && mode.holder) { hint = `${sp.name} on ${name(mode.holder)}: choose the weapon, then tap the die`; go = true; }
+          else if (picked.length) hint = `${sp.name}: ${picked.map(name).join(', ')}. ${sp.repeat ? 'Tap a target again for another dart' : most > 1 ? 'Tap another, double-tap one to take it off' : 'Tap another to swap it'}, then tap the die`;
+          else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}, then the die` : 'a target, then the die'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
         }
       }
     }
@@ -811,20 +1153,32 @@ function refresh() {
   owedUi = null;
   if (offer) {
     owedUi = 'offer'; hint = offerWords(offer, { armed: mode.kind === 'owed', waiting: waits.some((w) => w.id === offer.id) });
-    hl.move = reachOf(S, e, (v) => !aloft(S, e) || heightOf(v.h) === altOf(e));
+    { const row = flyRow(e); hl.move = reachOf(S, e, (v) => inRow(S.map, row, v.h)); }
   } else if (!hint && mode === MOVE && waits.length) { owedUi = 'wait'; owedWho = waits.map((w) => w.id); hint = waitWords(waits); }
   if (hint && mode.kind === 'spell' && S.entities[selId]) hint += CLS.hint(S.entities[selId], mode.id);
+  if (WT.picking() && isDM()) hint = WT.hint();
   if (mode.kind === 'spawn') hint = gridWords(`Tap a hex to add a ${MONSTERS[mode.monster].name}`, gridOf(S.map));
   if (mode.kind === 'place') hint = gridWords(`Tap a hex to place ${name(selId)}`, gridOf(S.map));
   if (mode.kind === 'encounter') hint = gridWords('Tap the hex where the fight breaks out', gridOf(S.map));
   if (mode.kind === 'follow') hint = `Tap the party member ${name(selId)} should follow`;
   if (mode.kind === 'recall' || mode.kind === 'famAttack') hint = CP.hintFor(mode);
   { const h = CP.render(); if (h) { hl.area = h.area; hl.targets = h.targets; hl.allies = h.allies; } }
-  $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
+  if (mode.kind === 'fly') go = !!(mode.marked && mode.point);
+  // #750: what waits for the die. Not the movement an Opportunity Attack gave: that keeps its own two buttons.
+  waitFor = hint && !owedUi && (go || multi) ? { name: mode.kind === 'fly' ? 'move' : mode.kind === 'action' ? e.actions.find((x) => x.id === mode.id)?.name ?? 'action' : mode.kind === 'spell' ? SPELLS[mode.id].name : mode.name ?? 'action', ...(multi ?? {}) } : null;
+  if (!waitFor) { confirming = 0; aimRefusal = null; }
+  { const note = targetNote(waitFor?.most, waitFor?.n, aimRefusal), n = $('aim-note');
+    n.hidden = !note; if (n.textContent !== note) n.textContent = note; }
+  $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = true;
+  flyBar(S.entities[selId]);
+  if ((mode.kind === 'fly') !== flyWas) { flyWas = mode.kind === 'fly'; flyCamera(flyWas); }
   hintWords(offer, waits);
-  showPick(); showSlot();
+  { const fe = S.entities[selId], st = fe && mine(fe) && !ED.on ? flyState(S, fe) : null, b = $('cam-fly'); b.hidden = !st?.has; b.setAttribute('aria-pressed', String(mode.kind === 'fly')); b.classList.toggle('off', !!st && !st.can); }
+  openChoices();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   if (FM.isOpen()) hl.move = [...(hl.move ?? []), ...FM.ghosts()];     // the places being chosen, as faint cells on the map
+  { const w = ED.on ? [] : WT.marks(); if (w.length) hl.area = [...(hl.area ?? []), ...w]; }      // the cells the DM chose for the water
+  if (!ED.on && mode.kind !== 'fly') { if (WT.picking()) R.onDrag = WT.drag; else if (R.onDrag === WT.drag) R.onDrag = null; }
   R.setHighlights(ED.on ? ED.marks() : hl);
   sizeDock();
   ED.sync();
@@ -838,6 +1192,7 @@ function refresh() {
   if (isDM()) renderDM();
   TD.sync(); TD.waiting();
   HO.refresh();
+  renderWaiting(); renderPick();
   SC.refresh();
   RP.refresh();
   CLS.sync(mode);
@@ -854,43 +1209,62 @@ const LV = initLogView({
   line: (e, inFight) => `<li class="lg-line ${esc(e.cls)}" data-kind="${inFight && (e.kind === 'explore' || e.kind === 'combat') ? 'combat' : e.kind}">${esc(e.text)}${e.dice ? glyphs(e.dice) : ''}</li>`,
   ask: (fight) => T.history({ fight }),
 });
-function renderLog() { LV.render(); }
+function renderLog() { const c = $('log-clock'), t = S && Number.isFinite(S.clock) ? `It is ${clockText(S.clock)}.` : ''; c.hidden = !t; if (c.textContent !== t) c.textContent = t; LV.render(); }      // the clock heads Log and chat, as it heads Turns (M5)
 
 // What is lent to the creature for a time (a feature of a subclass: DEBT T96): the skills and tools, and what lent them. The sheet itself is not changed.
 const lentLine = (e) => { const l = lentList(S, e); return l.length ? `<p class="note" id="sheet-lent">Proficiency lent for a time: ${l.map((x) => `${esc(niceId(x.skill ?? x.tool))} (${esc(x.name)}${x.lasts ? `, ${esc(x.lasts)}` : ''})`).join('; ')}.</p>` : ''; };
 
 // The Armor Class that applies, and what changed it ("15 (Mage Armor)").
 function acLine(e) { const a = acShown(S, e, isDM()); return a.why.length ? `${a.ac} (${a.why.join(', ')})` : `${a.ac}`; }
+// What is known of a character's story: the choices its sheet records.
+function storyHtml(e) {
+  const sh = e.sheet, facts = [];
+  const sp = sh?.species?.id ? CONTENT.species?.[sh.species.id] : null;
+  const lin = sp?.lineage?.options?.find?.((o) => o.id === sh.species.lineage)?.name;
+  if (sp) facts.push(`Species: ${sp.name}${lin ? ` (${lin})` : ''}`);
+  if (typeof sh?.background === 'string' && sh.background) facts.push(`Background: ${niceId(sh.background)}`);
+  if (e.kind === 'pc') facts.push(`Level ${e.level} ${classTitle(e)}`);
+  if (e.ownerName) facts.push(`Played by ${e.ownerName}`);
+  return facts.length ? `<div class="facts">${facts.map((f) => `<span>${esc(f)}</span>`).join('')}</div>` : '';
+}
 function renderSheet() {
   const e = S.entities[selId]; if (!e) return;
   const st = e.castAbil ? spellStats(e, S) : null;
   const abil = Object.entries(e.abil).map(([k, v]) => `<div><small>${k}</small><b>${signed(mod(v))}</b><small>${v}</small></div>`).join('');
   const saves = Object.keys(e.abil).map((k) => `${k.toUpperCase()} ${signed(e.saveBonus?.[k] ?? mod(e.abil[k]) + (e.saveProf.includes(k) ? e.prof : 0))}`).join(' · ');
+  // The sheet in four parts (docs/specs/one-token-menu.md, Decision 4 and M5), each under a small heading. M10: the sheet is one section of the character's page
+  // (actionpanel.js puts `#sheet-body` in it), so its parts no longer open and shut by themselves (R21: one accordion, no folds in place). What a notice says (a level
+  // to take, a form, a missing pack) is above them. The name and the class are the status block's; the heading is kept for a screen reader.
+  const sec = (id, title, body) => (body.trim() ? `<section class="sh-sec" data-sh="${id}" aria-label="${title}"><h3 class="sh-h">${title}</h3><div class="sh-in">${body}</div></section>` : '');
+  const story = storyHtml(e);
   $('sheet-body').innerHTML = `
-    <h2>${esc(e.name)}</h2>
+    <h2 class="sr-only">${esc(e.name)}</h2>
     ${isDM() ? importLine(T.solo ? recall(S, { types: ['chronicle'] }) : chron, e) : ''}
-    <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(classTitle(e))}` : esc(MONSTERS[e.tpl]?.name ?? (typeof CONTENT.summons[e.tpl]?.name === 'string' ? CONTENT.summons[e.tpl].name : e.name ?? 'Creature'))}${formOf(e) ? ` · in the form of a ${esc(formName(e))}` : ''}</p>
     ${levelUpHtml(S, e, { dm: isDM(), tag: 'sheet' })}
     ${isDM() && missingText(e) ? `<p class="note" id="sheet-subclass-missing">${esc(missingText(e))}</p>` : ''}
     ${CLS.sheetBanner(e)}
+    ${sec('abilities', 'Abilities and skills', `
     <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span id="sheet-ac">AC ${acLine(e)}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span>${xpFact(e)}</div>
     <div class="stats">${abil}</div>
     ${isDM() && e.sheet && dmLine(e.sheet, tableRule(S.settings)) ? `<p class="note" id="sheet-scores-line">${esc(dmLine(e.sheet, tableRule(S.settings)))}</p>` : ''}
     <p class="note">Saving throws: ${saves}</p>
+    <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}${isLent(S, e, k) ? ' prof lent' : ''}" data-skill="${k}"${isLent(S, e, k) ? ' data-lent="1"' : ''}>${k.replace(/-/g, ' ')} ${signed(skillBonus(S, e, k))}${isLent(S, e, k) ? ' · lent' : ''}</button>`).join('')}</div>${lentLine(e)}<p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
+    ${e.vuln.length || e.immune.length || e.resist.length ? `<section><h3>Defenses</h3><div class="facts">${e.vuln.map((v) => `<span>Vulnerable: ${v}</span>`).join('')}${e.resist.map((v) => `<span>Resistant: ${v}</span>`).join('')}${e.immune.map((v) => `<span>Immune: ${v}</span>`).join('')}</div></section>` : ''}
     ${e.actions ? `<section><h3>Actions</h3><table><tr><th>Name</th><th>Roll</th><th>Effect</th><th>Reach</th></tr>
       ${e.actions.map(actionProfile).map((p) => `<tr><td>${esc(p.name)}</td><td>${p.bonus !== undefined ? signed(p.bonus) : p.dc ? `${p.save.toUpperCase()} DC ${p.dc}` : ''}</td><td>${esc(p.long)}${p.recharge ? ` · recharge ${p.recharge[0]}–6` : ''}${p.uses ? ` · ${p.uses.n}/day` : ''}</td><td>${p.far ? `${p.far} ft` : p.area ? `${p.area.size} ft ${p.area.shape}` : ''}</td></tr>`).join('')}</table></section>` : `<section><h3>Attacks</h3><table><tr><th>Name</th><th>To hit</th><th>Damage</th><th>Range</th></tr>
-      ${e.attacks.map((a0) => { const a = imbued(S, e, a0); return `<tr><td>${esc(a.name)}${a.imbued?.length ? ` <small>(${esc(a.imbued.join(', '))})</small>` : ''}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${[a.dtype, ...(a.alt ?? [])].join(' or ')}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`; }).join('')}</table></section>`}
+      ${e.attacks.map((a0) => { const a = imbued(S, e, a0); return `<tr><td>${esc(a.name)}${a.imbued?.length ? ` <small>(${esc(a.imbued.join(', '))})</small>` : ''}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${[a.dtype, ...(a.alt ?? [])].join(' or ')}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`; }).join('')}</table></section>`}`)}
+    ${sec('features', 'Features and traits', `
+    ${featuresHtml(e, mine(e))}
+    ${Object.keys(e.features).length && !e.feats?.length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
+    ${mine(e) ? pocketHtml(e) : ''}
+    ${mine(e) ? reactionsHtml(S, e) : ''}`)}
+    ${sec('spells', 'Spells known', `
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
-      ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : rangeAt(sp.def, e.level) === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${rangeAt(sp.def, e.level)} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
-    ${isDM() && e.kind === 'pc' && e.side === 'party' ? `<section id="sheet-refresh-box"><h3>Sheet</h3><div class="row"><button type="button" id="sheet-refresh">Refresh from sheet</button></div><p class="note" id="sheet-refresh-note">${esc(refreshNote(dry({ type: 'refresh', actor: e.id })))}</p></section>` : ''}
-    ${featuresHtml(e, mine(e))}
-    ${mine(e) ? pocketHtml(e) : ''}
-    ${mine(e) ? reactionsHtml(S, e) : ''}
-    ${Object.keys(e.features).length && !e.feats?.length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
-    ${e.vuln.length || e.immune.length || e.resist.length ? `<section><h3>Defenses</h3><div class="facts">${e.vuln.map((v) => `<span>Vulnerable: ${v}</span>`).join('')}${e.resist.map((v) => `<span>Resistant: ${v}</span>`).join('')}${e.immune.map((v) => `<span>Immune: ${v}</span>`).join('')}</div></section>` : ''}
-    <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}${isLent(S, e, k) ? ' prof lent' : ''}" data-skill="${k}"${isLent(S, e, k) ? ' data-lent="1"' : ''}>${k.replace(/-/g, ' ')} ${signed(skillBonus(S, e, k))}${isLent(S, e, k) ? ' · lent' : ''}</button>`).join('')}</div>${lentLine(e)}<p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
-    ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;
+      ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr${spellAttrs(id)} tabindex="0"><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : rangeAt(sp.def, e.level) === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${rangeAt(sp.def, e.level)} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}`)}
+    ${sec('story', 'Story', `${story}
+    ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}
+    ${isDM() && e.kind === 'pc' && e.side === 'party' ? `<section id="sheet-refresh-box"><h3>Sheet</h3><div class="row"><button type="button" id="sheet-refresh">Refresh from sheet</button></div><p class="note" id="sheet-refresh-note">${esc(refreshNote(dry({ type: 'refresh', actor: e.id })))}</p></section>` : ''}`)}`;
   bindReactions($('sheet-body'), e, act); CLS.bindSheet($('sheet-body'), e);
   for (const b of $('sheet-body').querySelectorAll('[data-levelup]')) b.onclick = () => { QE.levelUp(b.dataset.levelup); };
   if ($('sheet-refresh')) $('sheet-refresh').onclick = () => { refreshAsk = { party: false, at: Date.now() }; act({ type: 'refresh', actor: e.id }); };
@@ -905,6 +1279,7 @@ function renderDM() {
   renderMarch();
   $('dm-sight').value = S.settings.sight ?? 'rooms';
   $('dm-unseen-turns').value = S.settings.unseenTurns ?? 'say';
+  $('dm-foe-health').value = S.settings.foeHealth ?? 'rough';
   $('dm-dice-throw').value = S.settings.diceThrow ?? 'auto';
   const lvl = dmLevel(); $('dm-ambient').value = lvl?.light ?? 'bright'; $('dm-ambient-level').textContent = lvl ? lvl.name : '';
   const lit = S.entities[selId]?.light; $('dm-torch').disabled = !S.entities[selId]; $('dm-torch').textContent = lit ? 'Put out selected\'s light' : 'Give selected a torch';
@@ -915,11 +1290,11 @@ function renderDM() {
   $('dm-size').disabled = !picked; if (picked) $('dm-size').value = picked.size ?? 'medium';
   $('dm-fly').disabled = !picked; $('dm-fly').textContent = picked?.speeds?.fly ? 'Take flight from selected' : 'Give selected flight';
   syncBond(picked);
-  QE.sync(S, selId);
+  QE.sync(S, selId); WT.sync(S);
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
   const owed = lb.pending.length + (S.conclusion && S.conclusion.published === false ? 1 : 0) + TD.count();       // players waiting to be let in, and rewards waiting to be settled
-  $('dm-badge').hidden = !owed; $('dm-badge').textContent = owed;
+  $('dm-badge').hidden = !owed; $('dm-badge').textContent = owed; badgeWords();
   table.textContent = '';
   if (!T.solo) {
     table.innerHTML = `<p class="note">Table code</p><code>${esc(T.you.code)}</code><p class="note">At the table: ${lb.members.map((m) => `${esc(m.name)}${m.online ? '' : ' (away)'}`).join(', ')}</p>`;
@@ -931,6 +1306,15 @@ function renderDM() {
       yes.onclick = () => T.approve(p.id, true); no.onclick = () => T.approve(p.id, false);
       row.lastChild.append(yes, no); table.append(row);
     }
+    // Players at the table with no character (#756): a line each, and a way to the list that gives one.
+    for (const m of lb.members.filter((m) => m.role === 'player' && !Object.values(S.entities).some((x) => x.owner === m.id))) {
+      const row = document.createElement('div'); row.className = 'req nochar';
+      row.innerHTML = `<span><b>${esc(m.name)}</b> has no character</span><span class="row"></span>`;
+      const give = document.createElement('button'); give.type = 'button'; give.textContent = 'Give a character';
+      give.onclick = () => D.open('dm/creatures');
+      row.lastChild.append(give); table.append(row);
+    }
+    offerRows(table, lb);
   }
   // Places: the map's regions, and whether the players have been shown each.
   const places = $('dm-places'); places.textContent = '';
@@ -945,6 +1329,7 @@ function renderDM() {
   // Who plays whom: the DM can hand any character to any player, or take it back.
   const players = lb.members.filter((m) => m.role === 'player');
   $('dm-chars-box').hidden = T.solo; $('dm-leave-box').hidden = T.solo;
+  bringSetup();
   const chars = $('dm-chars'); chars.textContent = '';
   if (!T.solo) for (const x of Object.values(S.entities).filter((x) => x.kind === 'pc')) {
     const row = document.createElement('label'); row.className = 'assign';
@@ -959,6 +1344,68 @@ function renderDM() {
     row.append(document.createTextNode(x.name), sel); chars.append(row);
   }
   $('chron-list').innerHTML = (T.solo ? recall(S, { types: ['chronicle'] }) : chron).slice().reverse().map((c) => `<li><time>${clockText(c.t)}</time>${esc(c.title)}</li>`).join('');
+}
+
+// Characters people bring (#757). The offers wait in `S.offers` (the DM's alone). Each is a row under the player's "has no character" line: who offered what, a way to
+// read the sheet, the tick for a history nobody vouches for (under `own-trusted`, the default), a note, and Admit or Decline. What the DM has typed or ticked is kept in
+// `offerUi` so the next update of the table does not take it away.
+const offerUi = new Map();
+const LEVEL_RANGE = (S0) => { const r = S0?.settings?.level; return r && Number.isInteger(r.min) && Number.isInteger(r.max) ? r : null; };
+const NAMES_RULE = { 'own-trusted': 'bring a character; I tick that I looked at its history', own: 'bring a character; no tick', new: 'not bring one: I make them or give them out' };
+// The level range: two levels and Set. Used under an offer when none is set, and in Setup.
+function levelControl(id) {
+  const ui = offerUi.get(id) ?? {}, r = LEVEL_RANGE(S), mn = ui.min ?? r?.min ?? 1, mx = ui.max ?? r?.max ?? 20;
+  const wrap = document.createElement('div'); wrap.className = 'row levelset';
+  const opts = Array.from({ length: 20 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
+  wrap.innerHTML = `<label>From level <select data-end="min" aria-label="Lowest level">${opts}</select></label><label>to <select data-end="max" aria-label="Highest level">${opts}</select></label><button type="button" data-set-level>Set the levels</button>`;
+  const [a, b] = wrap.querySelectorAll('select'); a.value = String(mn); b.value = String(mx);
+  const keep = () => offerUi.set(id, { ...(offerUi.get(id) ?? {}), min: +a.value, max: +b.value });
+  a.onchange = b.onchange = keep;
+  wrap.querySelector('button').onclick = () => { keep(); act({ type: 'setting', key: 'level', value: { min: +a.value, max: +b.value } }); };
+  return wrap;
+}
+function offerRows(table, lb) {
+  const rule = S.settings.characters ?? 'own-trusted', range = LEVEL_RANGE(S), offers = Array.isArray(S.offers) ? S.offers : [];
+  for (const k of [...offerUi.keys()]) if (k !== 'setup' && !offers.some((o) => o.user === k)) offerUi.delete(k);
+  for (const o of offers) {
+    const who = lb.members.find((m) => m.id === o.user), name = who?.name ?? 'Someone who left', ui = offerUi.get(o.user) ?? {};
+    const level = levelOf(o.sheet), row = document.createElement('div'); row.className = 'req offer'; row.dataset.user = o.user;
+    const need = rule === 'own-trusted';
+    row.innerHTML = `<span class="offer-head"><b>${esc(name)}</b> offered <b>${esc(o.sheet.name)}</b>, level ${esc(level)} ${esc(classNames(o.sheet))}</span>
+      <details class="offer-sheet"${ui.open ? ' open' : ''}><summary>Read the sheet</summary><dl>${readSheet(o.sheet).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>
+      ${range ? `<p class="note">This adventure is for ${range.min === range.max ? `level ${range.min}` : `levels ${range.min} to ${range.max}`}.${level < range.min ? ' This one is below it.' : ''}${level > range.max ? ' This one is above it and will not be let in.' : ''}</p>` : `<p class="note offer-held">Set a level range before admitting characters.</p>`}
+      ${need ? `<label class="check"><input type="checkbox" data-tick${ui.tick ? ' checked' : ''}> I've looked at its history</label>` : ''}
+      <label class="assign">Note <input type="text" maxlength="80" data-note placeholder="Optional, a few words" value="${esc(ui.note ?? '')}"></label>
+      <span class="row"><button type="button" data-admit>Admit</button><button type="button" data-decline>Decline</button></span>`;
+    const admit = row.querySelector('[data-admit]'), tick = row.querySelector('[data-tick]');
+    const gate = () => { const why = !range ? 'Set a level range first.' : need && !tick.checked ? 'Tick that you have looked at its history first.' : ''; admit.disabled = !!why; admit.title = why; };
+    row.querySelector('details').ontoggle = (ev) => offerUi.set(o.user, { ...(offerUi.get(o.user) ?? {}), open: ev.target.open });
+    if (tick) tick.onchange = () => { offerUi.set(o.user, { ...(offerUi.get(o.user) ?? {}), tick: tick.checked }); gate(); };
+    row.querySelector('[data-note]').oninput = (ev) => offerUi.set(o.user, { ...(offerUi.get(o.user) ?? {}), note: ev.target.value });
+    gate();
+    admit.onclick = () => act({ type: 'admit', user: o.user, ...(who ? { userName: who.name } : {}), ...(need ? { ack: tick.checked } : {}) });
+    row.querySelector('[data-decline]').onclick = () => { const note = row.querySelector('[data-note]').value.trim(); act({ type: 'decline', user: o.user, ...(note ? { note } : {}) }); };
+    if (!range) row.insertBefore(levelControl(o.user), row.querySelector('.assign'));
+    table.append(row);
+  }
+}
+// Setup: whether players may bring characters, and the adventure's levels.
+const ruleSel = $('dm-characters');
+ruleSel.innerHTML = SETTINGS.characters.map((v) => `<option value="${esc(v)}">${esc(NAMES_RULE[v] ?? v)}</option>`).join('');
+ruleSel.onchange = (ev) => act({ type: 'setting', key: 'characters', value: ev.target.value });
+function bringSetup() {
+  $('dm-bring-box').hidden = T.solo;
+  if (T.solo) return;
+  const v = S.settings.characters ?? SETTINGS.characters[0];
+  if (document.activeElement !== ruleSel) ruleSel.value = v;
+  $('dm-characters-text').textContent = SETTING_TEXT.characters[v] ?? '';
+  const r = LEVEL_RANGE(S), sig = r ? `${r.min}-${r.max}` : '-', box = $('dm-level-set');
+  if (box.dataset.sig !== sig || !box.firstChild) {
+    if (!box.contains(document.activeElement)) {
+      box.dataset.sig = sig; offerUi.delete('setup');
+      box.replaceChildren(Object.assign(document.createElement('p'), { className: 'note', id: 'dm-level-text', textContent: r ? `The adventure's levels: ${r.min === r.max ? r.min : `${r.min} to ${r.max}`}. A character above it is not let in; one below it is, and you are told.` : 'No level range is set. A character cannot be admitted until it is.' }), levelControl('setup'));
+    }
+  }
 }
 
 // The marching order as a list, first to last, with buttons to move someone up or down.
@@ -1026,17 +1473,50 @@ let lastMove = null;
 // A spot out of reach is shown but never cast (the hint says how far it is, and Cast is hidden). A second tap straight after the first is a double tap and waits.
 let pinnedAt = 0;
 function aimTap(hex) {
+  if (mode.kind === 'spell' && isWall(SPELLS[mode.id])) {
+    const next = wallTap(mode.pinned ? mode : { aim: null }, hex);       // a mouse's hover has set `aim` before the tap: only a tapped spot counts
+    if (next.cast && Date.now() - pinnedAt > 400 && waitFor) return confirmDie();
+    if (next.cast) return;       // a double tap straight after the last waits
+    pinnedAt = Date.now(); mode.aim = next.aim; mode.toward = next.toward; mode.hoverTo = null; mode.pinned = true;
+    return refresh();
+  }
   const same = mode.pinned && mode.aim && cellKey(mode.aim) === cellKey(hex);
-  if (same && Date.now() - pinnedAt > 400 && !$('hint-go').hidden) return castAimed();
+  if (same && Date.now() - pinnedAt > 400 && waitFor) return confirmDie();
   if (!same) pinnedAt = Date.now();
   mode.aim = hex; mode.pinned = true;
   refresh();
 }
-R.onTap = ({ hex, id }) => {
+// A tap while aiming a spell at an object (Knock): a lit object is chosen (another tap swaps it; a second tap on the chosen one confirms, as an area's does); a tap elsewhere says so and changes nothing.
+function objectTap(e, sp, hex) {
+  const id = objectAt(S, objectsFor(S, e, sp), hex);
+  if (!id) return toast(`${sp.name} needs one of the lit objects.`, true);
+  aimRefusal = null;
+  const same = mode.object === id;
+  if (same && Date.now() - pinnedAt > 400 && waitFor) return confirmDie();
+  if (!same) pinnedAt = Date.now();
+  mode.object = id;
+  refresh();
+}
+// A tap while aiming a spell at a wall (Stone Shape): the nearest lit wall to the tap is chosen with the point of it nearest the tap (another tap swaps it; a second tap on the chosen one confirms);
+// a tap away from every lit wall says so and changes nothing. The engine judges the rest.
+function stoneTap(e, sp, hex) {
+  if (!wallNeeded(sp, mode.choice ?? choicesOf(sp)?.[0])) return;
+  const G = gridOf(S.map), got = wallAt(S, wallsFor(S, e, sp), hex, rangeAt(sp.def, e.level), G.center(e.pos));
+  if (!got) return toast(`${sp.name} needs one of the lit walls.`, true);
+  aimRefusal = null;
+  const same = mode.wall?.id === got.id;
+  if (same && Date.now() - pinnedAt > 400 && waitFor) { mode.wall = got; return confirmDie(); }
+  if (!same) pinnedAt = Date.now();
+  mode.wall = got;
+  refresh();
+}
+R.onTap = (hit) => {
+  const { hex, id } = hit;
   if (!S || !T || skipping()) return;
-  const e = S.entities[selId], tapped = id ? S.entities[id] : null;
+  const e = S.entities[selId], seen = id ? S.entities[id] : null, tapped = seen?.melded && mode.kind !== 'move' ? null : seen;       // a creature merged with stone (Meld into Stone) is no target: a tap on its marker only selects it
   const inZone = [...new Set(R.zonesAt(hex))];
   if (inZone.length && mode.kind === 'move') toast(inZone.join(', '), true);      // a lasting zone's name, for a tap (hover shows it on a mouse)
+  if (WT.tap(hex)) return;
   if (CP.tap(mode, hex, id)) return;
   if (mode.kind === 'spawn') { FIND.note(mode.monster); return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked }); }
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
@@ -1046,6 +1526,9 @@ R.onTap = ({ hex, id }) => {
     if (tapped && tapped.id !== selId && tapped.side === 'party') return act({ type: 'follow', actor: selId, leader: tapped.id });
     return tapped ? toast('Only another member of the party can be followed.') : undefined;
   }
+  if (mode.kind === 'fly' && e) return flyTap(e, hit);
+  if (mode.kind === 'leap' && e) { const m = mode; setMode(MOVE); return hex ? act({ type: 'leap', actor: selId, to: hex, ...(m.spell ? { spell: true } : {}) }) : undefined; }      // #818
+  if (mode.kind === 'roll') { const m = mode; setMode(MOVE); return e && hex ? act(rollAct(selId, m, hex)) : undefined; }
   if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id, ...(mode.extra ?? {}) }) : setMode(MOVE);
   if (mode.kind === 'feature') { const f = mode.id, mode0 = mode; setMode(MOVE); return tapped ? act({ type: 'feature', actor: selId, feature: f, target: id, ...(mode0.extra ?? {}) }) : undefined; }
   if (mode.kind === 'action') {
@@ -1055,22 +1538,35 @@ R.onTap = ({ hex, id }) => {
   if (mode.kind === 'spell') {
     const sp = SPELLS[mode.id];
     if (sp.aim === 'self' || sp.aim === 'none') return;       // armed only to choose the slot: Cast or Cancel in the hint bar
+    if (isObjectAim(sp)) return objectTap(e, sp, hex);
+    if (isWallAim(sp)) return stoneTap(e, sp, hex);
     if (sp.area) return aimTap(hex);
     if (!tapped) return setMode(MOVE);
     if (!mode.deliver && !targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
     const most = spellMost(e, sp);
     // A spell that changes a weapon, aimed at a creature with more than one it could change: the menu lists that creature's weapons, and Cast follows the choice.
     if (imbueOf(sp) && most <= 1 && mode.holder !== id && weaponsOf(S.entities[id], sp).length > 1) { mode.holder = id; mode.choice = null; mode.picked = [id]; return refresh(); }
-    if (most <= 1) return act(castAct({ target: id, ...chosen(sp, id) }));
-    const picked = mode.picked ?? (mode.picked = []);
-    if (!sp.repeat && picked.includes(id)) picked.splice(picked.indexOf(id), 1);       // tap again to take it back
-    else picked.push(id);
-    if (picked.length >= most) return act(castAct({ targets: picked, ...chosen(sp, picked[0]) }));
+    if (most <= 1) { aimRefusal = null; lastTap = null; mode.picked = [id]; return refresh(); }       // one target: the tap chooses it (another tap swaps it) and the die casts
+    // Several targets (#750): each tap on the map chooses one and nothing is sent until the die is tapped. A double-tap (two taps within DOUBLE_MS and DOUBLE_PX on the same
+    // creature) takes a target that was chosen before the pair off (not for darts: each tap on one is another dart, so a quick second tap is not a pair); on one that was not chosen it chooses it once (the pair's second tap does nothing more).
+    const picked = mode.picked ?? (mode.picked = []), now = Date.now(), at = hit.at ?? null;
+    const pair = !sp.repeat && isPair(lastTap, { id, at: now, xy: at });      // darts (Magic Missile) are tapped fast at one target: each tap is a dart, no pair
+    aimRefusal = null;
+    if (pair) {
+      const was = lastTap.was; lastTap = null;
+      if (was) mode.picked = picked.filter((x) => x !== id);
+      return refresh();
+    }
+    lastTap = { id, at: now, xy: at, was: picked.includes(id) };
+    if (!picked.includes(id) || sp.repeat) {
+      if (picked.length >= most) return toast(sp.repeat ? `${most} chosen. Tap the die.` : `${most} chosen. Double-tap one to take it off, or tap the die.`, true);
+      picked.push(id);
+    }
     return refresh();
   }
   if (tapped) {
     const myTurn = e && mine(e) && S.encounter && current(S) === e.id;
-    if (myTurn && tapped.id !== e.id && hostile(tapped, e) && !tapped.dead && !e.bond?.noAttack) {         // tap an enemy on your turn: attack with whatever reaches
+    if (myTurn && tapped.id !== e.id && hostile(tapped, e) && !tapped.dead && !tapped.melded && !e.bond?.noAttack) {         // tap an enemy on your turn: attack with whatever reaches
       const d = gap(S, e.pos, tapped.pos) * FT;
       if (e.actions) {             // a monster: the first of its attacks that reaches, from what a Multiattack left if it did
         const b = S.encounter.budget;
@@ -1088,40 +1584,86 @@ R.onTap = ({ hex, id }) => {
     // Movement an Opportunity Attack gave is spent only once the Move button was pressed (allowance.js), so that a tap that meant something else does not spend it.
     if (offerOf(S, e) && mode.kind !== 'owed') return toast(`Press Move up to ${offerOf(S, e).feet} ft first, or Don't move.`);
     // A flyer goes to the tapped hex at its chosen height; if it cannot stop there, say so.
-    if (aloft(S, e) && altOf(e) > 0) {
-      const spot = [...moveOptions(previewState(S, e), e).values()].find((v) => v.canStop && v.h.q === hex.q && v.h.r === hex.r && heightOf(v.h) === altOf(e));
-      return spot ? act({ type: 'move', actor: e.id, to: spot.h }) : toast(`${e.name} can't reach that at ${altOf(e)} ft up.`);
-    }
+    { const row = flyRow(e);
+      if (row && !row.ground) {
+        const spot = cellAt(row, hex);
+        return spot ? act({ type: 'move', actor: e.id, to: spot.h }) : toast(`${e.name} can't reach that at ${row.ft} ft up.`);
+      } }
     lastMove = { hex, at: Date.now() };       // if the arena refuses it, the edge nearest this hex flashes (T.on.error)
     act({ type: 'move', actor: e.id, to: hex });
   }
 };
-R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (mode.kind === 'action' && mode.area)) && hex && !mode.pinned && cellKey(hex) !== (mode.aim && cellKey(mode.aim))) { mode.aim = hex; refresh(); } };
+R.onHover = (hex, hit) => {
+  if (mode.kind === 'spell' && isWallAim(SPELLS[mode.id]) && S?.entities[selId]) {       // a mouse over a lit wall lights that wall alone
+    const sp = SPELLS[mode.id], e = S.entities[selId], over = wallAt(S, wallsFor(S, e, sp), hex)?.id ?? null;
+    if (over !== (mode.hoverWall ?? null)) { mode.hoverWall = over; refresh(); }
+    return;
+  }
+  if (mode.kind === 'fly') {       // a mouse over the column lights a block and previews its plane; over the plane it points at a place
+    const e = S?.entities[selId], row = e ? flyRow(e) : null, over = hit?.block ?? null;
+    const cell = !row || over !== null || !hit ? null : hit.plane ? row.cells.find((c) => c.key === cellKey(hit.hex)) ?? null : cellAt(row, hit.hex), point = cell?.key ?? null;
+    if (over !== mode.hover || point !== mode.point) { mode.hover = over; mode.point = point; mode.marked = false; refresh(); }
+    return;
+  }
+  if (mode.kind === 'spell' && isWall(SPELLS[mode.id]) && mode.pinned && mode.aim && !mode.toward && hex && (!mode.hoverTo || cellKey(mode.hoverTo) !== cellKey(hex))) { mode.hoverTo = hex; refresh(); return; }
+  if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (mode.kind === 'action' && mode.area)) && hex && !mode.pinned && cellKey(hex) !== (mode.aim && cellKey(mode.aim))) { mode.aim = hex; refresh(); } };
 
 // ---------- controls ----------
 const endTurn = (id) => { if (CLS.askCure(S.entities[id])) return; act({ type: 'endTurn', actor: id }); };       // Self-Restoration with a choice asks first
 $('btn-end').onclick = () => endTurn(current(S));          // the turn line's End turn is for whoever's turn it is, when it is the viewer's
 $('c-end').onclick = () => endTurn(selId);       // Self-Restoration with a choice asks first
+// The join question sits above the turn line, whatever its height (one row, or two with the quick actions on a phone): the line's measured height is `--turn-h`.
+new ResizeObserver(() => document.documentElement.style.setProperty('--turn-h', `${$('turnline').offsetHeight}px`)).observe($('turnline'));
 $('join-yes').onclick = () => { const id = S?.encounter?.id; joinNo = id ?? null; act({ type: 'joinFight' }); refresh(); };
 $('join-no').onclick = () => { joinNo = S?.encounter?.id ?? null; refresh(); };
-$('hint-cancel').onclick = () => (owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
-$('hint-go').onclick = () => {
+$('hint-cancel').onclick = () => (WT.picking() ? (WT.stop(), refresh()) : owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
+$('hint-go').onclick = () => {      // only the movement an Opportunity Attack gave (Move up to, Give it up): every other confirm is the die's (#750)
   if (owedUi === 'offer') return setMode(OWED);
   if (owedUi === 'wait') return owedWho.forEach((id) => act({ type: 'forgoMove', actor: id }));      // the DM gives it up for them; the engine lets the DM
-  castAimed();
 };
 function castAimed() {
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
   else if (SPELLS[mode.id].aim === 'self' || SPELLS[mode.id].aim === 'none') act(castAct({ ...chosen(SPELLS[mode.id]) }));
+  else if (isObjectAim(SPELLS[mode.id])) act(castAct({ object: mode.object, ...chosen(SPELLS[mode.id]) }));
+  else if (isWallAim(SPELLS[mode.id])) {
+    const sp = SPELLS[mode.id], pick = chosen(sp), o = wallNeeded(sp, pick.choice) && mode.wall ? wallsFor(S, S.entities[selId], sp).find((x) => x.id === mode.wall.id) : null;
+    act(castAct({ ...(o ? wallArg(o, mode.wall.point) : {}), ...pick }));
+  }
   else if (SPELLS[mode.id].area) {
     const sp = SPELLS[mode.id], me = S.entities[selId];
     // A zone that spares whom the caster names (Spirit Guardians) spares the caster's side.
     const spare = sp.def.zone?.spare ? Object.values(S.entities).filter((x) => !x.dead && x.id !== selId && !hostile(x, me)).map((x) => x.id) : null;
-    act(castAct({ hex: mode.aim ?? undefined, ...(sp.area.choose ? { targets: mode.picked ?? [] } : {}), ...(spare ? { spare } : {}), ...chosen(sp) }));
+    act(castAct({ hex: mode.aim ?? undefined, ...(isWall(sp) ? towardArg(mode) : {}), ...(sp.area.choose ? { targets: mode.picked ?? [] } : {}), ...(spare ? { spare } : {}), ...chosen(sp) }));
   }
-  else act(castAct({ targets: mode.picked ?? [], ...chosen(SPELLS[mode.id], mode.picked?.[0] ?? null) }));
-  mode = MOVE;
+  else { const sp = SPELLS[mode.id], one = spellMost(S.entities[selId], sp) <= 1 && !imbueOf(sp); act(castAct({ ...(one ? { target: mode.picked?.[0] } : { targets: mode.picked ?? [] }), ...chosen(sp, mode.picked?.[0] ?? null) })); }
 }
+// The die (or Enter, or the second tap on an aimed spot) confirms what waits (#750). Nothing is sent before this. The action is the one the Cast button sent. The aim stays up until
+// the table has answered: a refusal leaves the choices where they were, with the reason in the note (T.on.error); an update ends it. Returns whether the tap was the confirm's.
+function confirmDie() {
+  if (!waitFor || !S || !T || skipping()) return false;
+  if (confirming && Date.now() - confirming < 8000) return true;       // sent, and the answer has not come
+  if (waitFor.most && !waitFor.n) { aimRefusal = null; refresh(); return true; }       // none chosen: the die does nothing, the note says so
+  if (isOffline()) { toast(OFFLINE_WHY); return true; }
+  aimRefusal = null;
+  if (mode.kind === 'fly') { flyGo(); return true; }
+  confirming = Date.now();
+  castAimed();
+  if (armed) { confirming = 0; mode = MOVE; refresh(); }       // a throw waits in the dice tray: the aim is done, the tray sends it
+  return true;
+}
+// Alt (or Ctrl, where Alt is taken) and the wheel step the pick by one block while the column is open; the wheel alone still zooms. This listener is on the canvas before
+// the renderer's own, so it can keep the step from zooming as well.
+$('gl').addEventListener('wheel', (ev) => {
+  if (mode.kind !== 'fly' || !(ev.altKey || ev.ctrlKey) || !S?.entities[selId]) return;
+  ev.preventDefault(); ev.stopImmediatePropagation();
+  flyStep(S.entities[selId], ev.deltaY < 0 ? 1 : -1);
+}, { passive: false });
+$('hint-up').onclick = () => { const e = S?.entities[selId]; if (e && mode.kind === 'fly') flyStep(e, 1); };
+$('hint-down').onclick = () => { const e = S?.entities[selId]; if (e && mode.kind === 'fly') flyStep(e, -1); };
+$('hint-fly').onchange = (ev) => { if (mode.kind !== 'fly') return; mode.point = ev.target.value || null; mode.marked = !!mode.point; refresh(); };
+// A tap on a creature's height tag (the renderer says which): its own opens the column, another's selects it as a tap on the token does.
+addEventListener('hextable-height-tag', (ev) => { const e = S?.entities[ev.detail?.id]; if (!e || skipping()) return; if (e.id !== selId) { select(e.id); refresh(); } if (mine(e) && mode.kind !== 'fly') flyOpen(e); });
+$('cam-fly').onclick = () => { const e = S?.entities[selId]; if (e && !skipping()) flyOpen(e); };
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
 // The connection dot (linkdot.js, issue #246): the top bar's own at a table, and the DM's view of each player's in the tracker.
@@ -1142,24 +1684,60 @@ const NV = mountNewVersion({ fetchBuild: () => fetch('./build.json', { cache: 'n
 NV.check(); NV.solo(() => !T || T.solo);
 const FB = initFeedback({ onBuild: () => renderAbout(), look: () => ({ S, T, selId, themeId, mine, renderer: rendererKind(location.search, prefs.get('hextable.renderer')) }) });
 
-const D = initDrawer({ prefs, state: () => S, isDM, selected: () => (S && selId ? S.entities[selId] ?? null : null), change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
-const openPanel = (id) => D.open(id);
-foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
-$('party').addEventListener('click', (ev) => {
-  const b = ev.target.closest('button[data-id]'), x = b && S?.entities[b.dataset.id]; if (!x) return;
+// A character's symbol, on the arc or on the strip, opens that creature's Character screen and selects it (the one already selected keeps what it has armed).
+function pickChar(id) {
+  const x = S?.entities[id]; if (!x) return;
   if (x.kind === 'pc' && !isDM() && !x.owner && !Object.values(S.entities).some((y) => y.owner === T.you.userId)) act({ type: 'claim', entity: x.id, user: T.you.userId, userName: T.you.name });
   if (x.id !== selId) select(x.id);
-  R.focus(x.id);      // a row opens that creature's Character screen and selects it (the one already selected keeps what it has armed)
+  R.focus(x.id);
   D.open('sheet'); refresh();
-});
+}
+const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), confirm: () => confirmDie(), selected: () => (S && selId ? S.entities[selId] ?? null : null), charName: () => (S && selId && S.entities[selId] ? shownName(S, S.entities[selId]) : null), pickChar,
+  passTap: () => !!choicesNow && D.tab === 'sheet', tapMap: (x, y, type) => R.tapAt(x, y, type),
+  change: (why) => { if (why === 'close') menuCloses++; refresh(); if (!$('about').hidden) renderAbout(); } });
+const openPanel = (id) => D.open(id);
+foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
+showSheet = () => { if (choicesNow && !(D.isOpen && D.tab === 'sheet')) D.open('sheet'); };
+$('party').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-id]'); if (b) pickChar(b.dataset.id); });
 // Help and feedback is a row of the menu; its panel is its own overlay, so the menu folds away first (one overlay at a time).
 $('fb-btn').addEventListener('click', () => { if (D.isOpen) D.close(false); }, true);
+$('pick-list').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-pick]'); if (!b || !S) return;
+  const x = S.entities[b.dataset.pick]; if (!x) return;
+  twoTap(b, `Tap again to play ${shownName(S, x)}`, '', () => { if (!x.owner) act({ type: 'claim', entity: x.id, user: T.you.userId, userName: T.you.name }); });
+});
+$('pick-bring').addEventListener('click', (ev) => {
+  if (!ev.target.closest('[data-bring]') || !S) return;
+  if (D.isOpen) D.close(false);
+  MC.bring(bringOffer);
+});
+// A long press on a badge says in a toast what it counts (a phone has no hover for the title): the same words, and the press that said it does not open the menu.
+for (const id of ['menu-badge', 'dm-badge']) {
+  let timer = null, said = false;
+  const b = $(id), stop = () => { clearTimeout(timer); timer = null; };
+  b.addEventListener('pointerdown', (ev) => { said = false; stop(); if (ev.pointerType === 'mouse') return; timer = setTimeout(() => { timer = null; said = true; if (b.title) toast(b.title, true, 4000); }, 500); });
+  for (const t of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(t, stop);
+  b.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  b.addEventListener('click', (ev) => { if (said) { said = false; ev.stopPropagation(); ev.preventDefault(); } }, true);
+}
+$('dm-waiting').onclick = () => D.open([]);       // the DM tools' first row: the d20 menu's first level, where "Waiting for you" and the to-do cards are (one-token-menu.md, Decision 4)
+$('waiting-list').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-wait]'); if (!b || !S) return;
+  const [kind, id] = [b.dataset.wait.split(':')[0], b.dataset.wait.split(':').slice(1).join(':')];
+  if (kind === 'in') T.approve?.(id, true);
+  else if (kind === 'rewards') { foldMenu(); $('dm-rewards-open').click(); }
+  else if (kind === 'ho') { foldMenu(); HO.open(id); }
+  else if (kind === 'sheet') { select(id); D.open('sheet'); refresh(); }
+});
+$('turn-quick').addEventListener('click', (ev) => { const b = ev.target.closest('[data-quick]'); if (b) AP.runQuick(b.dataset.quick); });
+$('set-quick').checked = prefs.get('hextable.quickRows') !== false;
+$('set-quick').onchange = (ev) => { prefs.set('hextable.quickRows', ev.target.checked); refresh(); };
 $('turn-text').onclick = () => D.open('turns');       // the turn line opens Turns
 $('lobby-about').onclick = (ev) => D.open('about', ev.currentTarget);
 $('splash-about').onclick = (ev) => D.open('about', ev.currentTarget);
 const renderAbout = () => { const html = aboutHTML({ stateVersion: VERSION, tableVersion: S?.version, buildLine: FB.buildLine() }); if ($('about').dataset.sig !== html) { $('about').dataset.sig = html; $('about').innerHTML = html; } };
 const setTheme = (id) => { if (!THEMES[id]) return; themeId = id; prefs.set('hextable.theme', themeId); applyTheme(); R.setTheme(THEMES[themeId]); };
-const ST = initSettings({ prefs, themeId: () => themeId, setTheme, look: (k, v) => { if (setLook(k, v)) R.setTheme(THEMES[themeId]); }, dice: DICE, repace: () => { TL.setPace(pace()); syncPlaying(); }, drawer: D, isDM });
+const ST = initSettings({ prefs, themeId: () => themeId, setTheme, look: (k, v) => { if (setLook(k, v)) R.setTheme(THEMES[themeId]); }, dice: DICE, repace: () => { TL.setPace(pace()); syncPlaying(); }, drawer: D, isDM, bars: () => { const st = TL.shown(); if (st) R.setState(shownState(st), []); } });
 // Where the drawer covers the map, a DM tool that asks for a tap on the map closes it first.
 const closeDM = () => { if (!D.pinnedOpen()) D.close(); };
 $('dm-edit').addEventListener('click', closeDM);
@@ -1222,6 +1800,7 @@ $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', va
 function dmLevel() { const e = S?.entities[selId]; return (e && under(S.map, e.pos)?.level) || S?.map.levels[0] || null; }
 $('dm-sight').onchange = (ev) => act({ type: 'setting', key: 'sight', value: ev.target.value });
 $('dm-unseen-turns').onchange = (ev) => act({ type: 'setting', key: 'unseenTurns', value: ev.target.value });
+$('dm-foe-health').onchange = (ev) => act({ type: 'setting', key: 'foeHealth', value: ev.target.value });
 $('dm-dice-throw').onchange = (ev) => act({ type: 'setting', key: 'diceThrow', value: ev.target.value });
 $('dm-ambient').onchange = (ev) => { const l = dmLevel(); if (l) act({ type: 'mapEdit', ops: [{ op: 'level', level: { id: l.id, light: ev.target.value === 'bright' ? null : ev.target.value } }] }); };
 $('dm-torch').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setLight', actor: e.id, item: e.light ? null : 'torch' }); };
@@ -1238,8 +1817,6 @@ function twoTap(btn, armed, note, go) {
   if (!btn.classList.contains('sure')) {
     btn.dataset.label = btn.textContent;
     btn.classList.add('sure'); btn.textContent = armed;
-    const n = btn.id.startsWith('menu-') ? $('menu-note') : null;
-    if (n) { n.textContent = note; n.hidden = false; }
     clearTimeout(armTimers.get(btn)); armTimers.set(btn, setTimeout(() => disarm(btn), 3000));
     return;
   }
@@ -1248,25 +1825,23 @@ function twoTap(btn, armed, note, go) {
 function disarm(btn) {
   if (!btn.classList.contains('sure')) return;
   btn.classList.remove('sure'); btn.textContent = btn.dataset.label;
-  if (btn.id.startsWith('menu-')) $('menu-note').hidden = true;
 }
+const SOLO_LEAVE_NOTE = 'Your game stays saved on this device. Start a new one from the starting screen.';
 const LEAVE_NOTE = 'Leaving forgets this table on this device.';
-const leaveNote = () => (isDM() ? `${LEAVE_NOTE} Your players stay, but nobody can let new players in.` : LEAVE_NOTE);
+const leaveNote = () => (T?.solo ? SOLO_LEAVE_NOTE : isDM() ? `${LEAVE_NOTE} Your players stay, but nobody can let new players in.` : LEAVE_NOTE);
 function leaveTable(btn) { twoTap(btn, 'Tap again to leave', leaveNote(), reallyLeave); }
 function reallyLeave() {
   TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
-  $('btn-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true; $('menu-session').hidden = true;
+  $('btn-leave').hidden = $('set-sec-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true;
   D.sync(null);
   lobbyBusy(false); showLobby('You left the table.');
 }
 $('btn-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 $('dm-leave').onclick = (ev) => leaveTable(ev.currentTarget);
-$('menu-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.({ grid: TC.valleyGrid(), party: MC.party().party ?? undefined }); });
 $('dm-new').onclick = newWorld;
-$('menu-new').onclick = newWorld;
 // The DM's "Add a monster" buttons: the monsters the page knows now. Built again when the table's packs change (DEBT T34), so a homebrew monster can be added.
 // A player's page is never given one, and the DM's drawer is not theirs.
 // A search box, a CR filter and a "recent" row sit above the buttons (spawnfind.js, #673); the recent list is kept per table on this device.
@@ -1283,8 +1858,13 @@ addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && !armed) setMode(MOVE);
   if (!S || !$('lobby').hidden) return;
   if (ev.key === 'Shift') { KB.shift(true); return; }
+  // #750: Enter confirms what waits (the die's job), unless a control has the focus or a dice tray is open.
+  if (ev.key === 'Enter' && waitFor && mode.kind !== 'fly' && !closeTray && !ev.repeat && !leaveAlone(ev, document) && !ev.target.closest?.('button, a[href], summary, [role="button"]')) { ev.preventDefault(); confirmDie(); return; }
+  // While the column is open Enter and Space go to the marked place.
+  if (mode.kind === 'fly' && (ev.key === 'Enter' || ev.code === 'Space') && !leaveAlone(ev, document)) { ev.preventDefault(); flyGo(); return; }
   const a = actionOf(ev, keyMap());
-  if (!a || leaveAlone(ev, document) || (a === 'recentre' && closeTray)) return;      // the dice tray keeps Space
+  if (!a || leaveAlone(ev, document) || (a === 'recentre' && closeTray)) return;
+  if (HEIGHT_ACTIONS.includes(a) && !flyKeys()) return;      // the dice tray keeps Space
   ev.preventDefault();
   KB.shift(ev.shiftKey);
   if (ACTIONS[a].kind === 'press') PRESS[a](); else KB.down(a, ev.repeat);
@@ -1319,10 +1899,15 @@ const KB = createWalker({
     if (b && current(S) === id) toast(`${name(id)}: Move ${Math.floor(b.move)} ft left`, true);
   },
 });
+function flyKey(how) { const e = S.entities[selId]; if (mode.kind !== 'fly') return flyOpen(e); flyStep(e, how); }
+// The height keys are a flyer's; for anyone else they stay the browser's (Page Up scrolls).
+const flyKeys = () => { const e = S?.entities[selId]; return !!e && mine(e) && (mode.kind === 'fly' || (mode.kind === 'move' && flyState(S, e).has)) && !S.prompt && !S.pending; };
 const PRESS = {
   rotateLeft: () => R.rotate(-Math.PI / 12), rotateRight: () => R.rotate(Math.PI / 12),
   zoomIn: () => R.zoom(0.9), zoomOut: () => R.zoom(1.1),
   sheet: () => D.open('sheet'),
+  // A flyer's height: the first press opens the column, each press after moves the pick one block; Home the ground, End the top.
+  heightUp: () => flyKey(1), heightDown: () => flyKey(-1), heightGround: () => flyKey('ground'), heightTop: () => flyKey('top'),
   recentre() { if (!S?.entities[selId]) return; const rm = reducedMotion(); R.focus(selId, rm); if (lastDir[selId] !== undefined) R.face(lastDir[selId], rm); KB.resume(); },
 };
 addEventListener('keyup', (ev) => { if (ev.key === 'Shift') KB.shift(false); const a = actionOf({ code: ev.code }, keyMap()); if (a) KB.up(a); });
@@ -1330,6 +1915,7 @@ addEventListener('blur', () => KB.release());
 document.addEventListener('visibilitychange', () => { if (document.hidden) KB.release(); });
 setInterval(() => KB.tick(), 30);
 
+const WT = initWater({ act, toast: (m) => toast(m), getState: () => S, closeMenu: () => closeDM(), refresh: () => refresh(), tileHex: (x, y, l) => R.tileHex(x, y, l), dmLevel: () => dmLevel() });      // the DM's water and tides (water.js)
 const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId, me: () => T?.you?.userId });
 // Homebrew packs (packmanager.js): kept installed while a table is open. When they change, what names a pack's entry is dropped or drawn again.
 const PK = initPacks({ transport: () => T, isDM, toast, changed: () => {
@@ -1346,6 +1932,14 @@ const RP = initReactionPrompt({ act, state: () => shownState(S), isDM });
 // The cards that come after a fight: the party has fallen (defeat.js). Drawn from the state once the beats that led to it have played.
 const DF = initDefeat({ state: () => S, isDM, solo: () => !!T?.solo, info: () => T?.undoInfo ?? {}, rewind: (to) => T.rewind?.(to) });
 const CC = initConclusion({ act, state: () => S, isDM, solo: () => !!T?.solo, code: () => T?.you?.code ?? 'solo', prefs, levelUp: (id) => QE.levelUp(id) });
+// Decision 2 (one overlay at a time): a card (rewards, defeat) folds the menu as a prompt does, once, as it comes, and the menu does not come back by itself.
+// The cards show and hide themselves (a chip, a button of the DM's tools, a sync), so what is watched is the page: the class each puts on the body.
+{ let up = false;
+  new MutationObserver(() => {
+    const now = document.body.classList.contains('df-open') || document.body.classList.contains('cc-open');
+    if (now && !up) D.fold();
+    up = now;
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'] }); }
 function syncCards() {
   const calm = !TL.busy();
   DF.sync(S, { calm }); CC.sync(S, { calm });
@@ -1359,12 +1953,13 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 $('c-level').addEventListener('click', (ev) => { const b = ev.target.closest('[data-levelup]'); if (b && !b.disabled) QE.levelUp(b.dataset.levelup); });
-const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
-  castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
+const AP = initActionPanel({ comp: CP, dry, prefs, choices: () => choicesNow, choose: chooseOption, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
+  castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm/creatures'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
-  openFeature: (e, id) => { foldMenu(); CLS.openFeature(e, id); }, openAttack: (e, id) => { foldMenu(); CLS.openAttack(e, id); }, metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
+  openFeature: (e, id) => { foldMenu(); CLS.openFeature(e, id); }, openAttack: (e, id) => { foldMenu(); CLS.openAttack(e, id); }, metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => { const st = flyState(S, e, shownName(S, e)); if (!st.has) return null; const row = flyRow(e); if (!aloft(S, e)) return { has: true, why: st.why, aloft: false }; const H = flyH(e); return { has: true, why: st.why || (H.can ? '' : 'No movement left.'), words: row ? stateLine(H, H.heights.find((r) => r.here) ?? row) : '', aloft: true, alt: row?.ft ?? H.here, up: row ? stepRow(H, row, 1)?.ft ?? null : null, down: row ? stepRow(H, row, -1)?.ft ?? null : null }; },
   armItem: (e, r, level, armed) => { const sp = SPELLS[r.spell]; setMode(armed ? MOVE : { kind: 'spell', id: r.spell, item: { key: r.send.item, which: r.send.which, base: r.level, ...(level ? { level } : {}) }, aim: null, keep: !!sp.area, picked: [] }); },
-  fly: (e, delta) => { flyAlt[e.id] = altOf(e) + delta; refresh(); } });
+  fly: (e, delta) => { const row = flyRow(e), next = row ? stepRow(flyH(e), row, Math.sign(delta)) : null; if (next) flyPick = makePick(S, e, next.z); refresh(); },
+  flyOpen: (e, armed, list) => flyOpen(e, armed, list) });
 // The formation popup (formation.js): Lead sends `partyFollow`, and the popup opens once the table says someone follows (`pendingLead`).
 let pendingLead = null;
 const FM = initFormation({ state: () => S, act, isDM, mine, refresh: () => refresh() });
@@ -1387,6 +1982,7 @@ const lobbyBusy = (on) => { $('lobby-host').disabled = $('lobby-join').disabled 
 let pendingMap = null;
 function start(transport, map = null) {
   pendingMap = map;
+  bannerKey = undefined; hpSeen = null; $('turn-banner').hidden = true; $('hp-note').hidden = true;      // a new table: its first turn seen is not news
   TL.skip();                    // what is still playing belongs to the old table
   T?.close?.();                 // only ever one connection to a table
   ED.stop();
@@ -1403,8 +1999,10 @@ function start(transport, map = null) {
   T.on.error = (msg, expired) => {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
     flick = null; refreshAsk = null;
+    if (confirming) { confirming = 0; aimRefusal = String(msg).replace(/\.?$/, '.'); if (S) refresh(); }       // #750: a refused confirm changes nothing: the choices stay, with the reason
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
-    KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
+    if (offerSent && Date.now() - offerSent.at < 5000) { offerForget(); if (S) renderPick(); }      // the offer itself was refused: nothing is waiting
+    WT.refused(msg); KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { if (rejoinedLast) forgetLastSession(); rejoinedLast = false; TL.skip(); S = null; PK.clear(); lobbyBusy(false); showLobby(msg); }
     else if (/arena is locked/i.test(msg)) {       // the fight's rule, said in words, and the edge nearest the tap lights up (three-build.js, arenaFlashCells)
       toast(`${msg} Nobody leaves the lit area of the fight before then.`);
@@ -1412,7 +2010,7 @@ function start(transport, map = null) {
     } else toast(msg);
     pendingLead = null; lastMove = null; };
   T.on.lobby = () => S && refresh();
-  T.on.link = () => DOT.render();
+  T.on.link = () => { DOT.render(); if (S) { showOffline(); D.paint(); } };
   T.on.links = () => { if (S) { tracker.render(); DOT.render(); } };
   DOT.render();
   T.on.undoable = () => { if (S) { showUndo(); syncCards(); } };

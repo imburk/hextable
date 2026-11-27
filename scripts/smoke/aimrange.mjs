@@ -12,7 +12,7 @@ async function aim(browser, url, label, opts) {
       const page = await ctx.newPage();
       run.watch(page);
       const hl = () => page.evaluate(() => { const R = window.hextable.R, h = (R.inner ?? R).hl; return { range: h.range?.length ?? 0, area: h.area?.length ?? 0, bad: !!h.areaBad }; });
-      const view = () => page.evaluate(() => ({ hint: document.getElementById('hint-text')?.textContent, go: !document.getElementById('hint-go').hidden, aim: window.hextable.mode.aim, pinned: !!window.hextable.mode.pinned, kind: window.hextable.mode.kind }));
+      const view = () => page.evaluate(() => ({ hint: document.getElementById('hint-text')?.textContent, go: document.getElementById('btn-menu').classList.contains('waiting'), aim: window.hextable.mode.aim, pinned: !!window.hextable.mode.pinned, kind: window.hextable.mode.kind }));
       const shot = async (n) => { if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${touch ? 'phone' : 'desktop'}-range-${n}.png` }); };
       const tapHex = async (h) => {
         await page.evaluate(async (t) => {

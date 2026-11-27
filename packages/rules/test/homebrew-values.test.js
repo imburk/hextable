@@ -215,8 +215,8 @@ test("M2: no wrong type or absurd value is accepted in any field of any shape (n
 test("M2: a value of the wrong kind of type, by the type table, is refused in every field", () => {
   let combos = 0; const accepted = [];
   for (const [k, [kind, e, path, shape, key]] of nodes) {
-    const spec = HOMEBREW_TYPES[shape]?.[key] ?? HOMEBREW_TYPES[shape]?.["*"] ?? (shape.startsWith("step.") && key === "when" ? "s[]" : undefined);
-    if (!spec) { assert.ok(shape === "open" || shape === "grants" || key === "when", `${k} has no type`); continue; }
+    const spec = HOMEBREW_TYPES[shape]?.[key] ?? HOMEBREW_TYPES[shape]?.["*"] ?? (shape.startsWith("step.") && (key === "when" || key === "ifChoice") ? "s[]" : undefined);
+    if (!spec) { assert.ok(shape === "open" || shape === "grants" || key === "when" || key === "ifChoice", `${k} has no type`); continue; }
     if (spec === "?" || SRD_WONT_CONVERT.has(e.id)) continue;
     const t = spec.split("|"), tries = [];
     if (!t.some((x) => ["s", "d", "id"].includes(x))) tries.push("zz");
@@ -365,7 +365,7 @@ test("L5: strict mode refuses the SRD pack id without being told it", () => {
 const SRD_WORK = (() => { let w = 0, a = 0; for (const [kind, e] of entries) { const r = workOf(kind, e); w = Math.max(w, r.work); a = Math.max(a, r.attacks); } return { work: w, attacks: a }; })();
 
 test("round 2: the attack ceiling is about twice what the SRD needs; the steps ceiling is measured (see the heaviest-cast and heaviest-turn tests), with the SRD maxima as printed in the PR", () => {
-  assert.equal(SRD_WORK.work, 120);
+  assert.equal(SRD_WORK.work, 150); // 120 until Guardian of Faith (#786) became data: a zone that goes off for each of the table's 30 creatures
   assert.equal(SRD_WORK.attacks, 7);
   assert.equal(HOMEBREW_WORK.steps, 600);
   assert.ok(HOMEBREW_WORK.steps >= SRD_WORK.work, "every SRD entry fits");
@@ -522,8 +522,8 @@ test("round 3: a spell's growth is counted at the top (slot 9, level 20): the re
   refused(strict("spells", cantrip), /can run 660 steps/);
   // The slot's growth is only to the spell's own level up to 9: a 9th-level spell does not grow.
   assert.equal(workOf("spells", cast({ level: 9, higher: { slot: { targets: 20 } } })).work, 20 * 11);
-  // The SRD still passes with room: its largest is 120 (see the first test), below half the ceiling.
-  assert.equal(SRD_WORK.work, 120);
+  // The SRD still passes with room: its largest is 150 (see the first test), a quarter of the ceiling.
+  assert.equal(SRD_WORK.work, 150); // 120 until Guardian of Faith (#786) became data: a zone that goes off for each of the table's 30 creatures
 });
 
 test("round 3: in text and dmNotes the only blank is U+0020 (and the line break); every other space or blank-looking character is refused", () => {
@@ -542,4 +542,21 @@ test("#430: an area's creature types are a list with a ceiling (every type once,
   assert.deepEqual(strict("spells", types([...CREATURE_TYPES])), [], "all of the creature types are accepted");
   assert.equal(HOMEBREW_LENGTHS["area.types"], CREATURE_TYPES.length, "the ceiling is the number of creature types");
   refused(strict("spells", types([...CREATURE_TYPES, "undead"])), /a list of \d+; the most is 14/);
+});
+
+test("B1: a modifier on senses (Darkvision's 150) may go to 240, and to no more", () => {
+  const dv = CONTENT.spells.find ? CONTENT.spells.find((s) => s.id === "darkvision") : CONTENT.spells.darkvision;
+  assert.deepEqual(strict("spells", homebrew("spells", dv)), [], "the SRD's Darkvision, as homebrew");
+  const at = (value) => { const e = homebrew("spells", dv); e.effects[0] = { modifier: { on: "senses", op: "set", value, scope: { sense: "darkvision" } } }; return strict("spells", e); };
+  assert.deepEqual(at(240), []);
+  assert.ok(at(245).length);
+});
+
+test("B1: a modifier on a speed (Fly's Fly Speed of 60) may go to 120; a modifier on any other hook stays within 40", () => {
+  const fly = CONTENT.spells.find ? CONTENT.spells.find((s) => s.id === "fly") : CONTENT.spells.fly;
+  assert.deepEqual(strict("spells", homebrew("spells", fly)), [], "the SRD's Fly, as homebrew");
+  const at = (on, value) => { const e = homebrew("spells", fly); e.effects[0] = { modifier: { on, op: on.startsWith("speed") ? "set" : "add", value } }; return strict("spells", e); };
+  assert.deepEqual(at("speed.fly", 120), []);
+  assert.ok(at("speed.fly", 121).some((x) => /121 is not allowed/.test(x)));
+  assert.ok(at("attack", 41).some((x) => /41 is not allowed/.test(x)), "an attack bonus is still held to 40");
 });

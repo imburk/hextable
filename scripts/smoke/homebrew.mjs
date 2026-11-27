@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, spotsFor, seeded, playSolo, ROOT, chip, chipPick, openMenu } from './lib.mjs';
+import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, spotsFor, seeded, playSolo, ROOT, chip, chipPick, openMenu, tapDie } from './lib.mjs';
 
 // ---------- homebrew packs, the client side (issue #404, docs/specs/homebrew.md, row B7) ----------
 // A DM hosts and a player joins on a second screen. The DM reads the sample pack in the pack manager and adds it, a bad file is refused locally and
@@ -233,11 +233,11 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
       await run.do('the sample pack is read back: a reading and a tier for each entry, counts, the licence', async () => {
         await choose('sample-pack.json', SAMPLE);
         const n = await host.$$eval('#pm-review .pm-entry[data-entry]', (l) => l.length);
-        if (n !== 17) throw new Error(`${n} entries`);
+        if (n !== 22) throw new Error(`${n} entries`);
         const empty = await host.$$eval('#pm-review .pm-entry[data-entry]', (l) => l.filter((d) => d.querySelectorAll('.pm-line').length < 3 || !d.querySelector('.pm-tier')).length);
         if (empty) throw new Error(`${empty} entries without a reading`);
         const t = await host.textContent('#pm-review');
-        if (!/16 auto, 0 assist, 1 manual/.test(t) || !/Licence: CC0, by the author/.test(t) || !/Attribution: Written for the Hextable tests/.test(t)) throw new Error(t.slice(0, 400));
+        if (!/17 auto, 4 assist, 1 manual/.test(t) || !/Licence: CC0, by the author/.test(t) || !/Attribution: Written for the Hextable tests/.test(t)) throw new Error(t.slice(0, 400));
         if (!/Add to this table/.test(await host.textContent('#pm-go'))) throw new Error('no Add');
         const vh = await host.evaluate(() => innerHeight), gb = await (await host.$('#pm-go')).boundingBox();
         if (gb.y + gb.height > vh) { await host.evaluate(() => document.querySelector('#pm-review').scrollIntoView()); }
@@ -255,7 +255,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await waitShown(host, '.pm-pack[data-pack="sample"]');
         await wait(player, () => window.hextable.packs.built.includes('sample'));
         const l = await host.textContent('.pm-pack[data-pack="sample"]');
-        if (!/17 spells/.test(l)) throw new Error(l);
+        if (!/22 spells/.test(l)) throw new Error(l);
         await shot(host, `homebrew-manager-${tag}`);
       });
       await run.do('the same file again says the table has it; a lower version is no update', async () => {
@@ -283,7 +283,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await calm(player);
       });
       await run.do('on the sheet the spell shows with its pack, and its reading opens', async () => {
-        await player.evaluate(() => window.hextable.drawer.open('sheet'));
+        await openTab(player, 'sheet');       // the sheet is the last section of the character's page (M10): the helper opens it
         await waitShown(player, '#sheet-body');
         const row = await player.textContent('#sheet-body tr:has(.hb-read)');
         if (!/Ember Dart/.test(row) || !/homebrew: Sample Pack/.test(row)) throw new Error(row);
@@ -303,7 +303,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         if (!inject) throw new Error('the player\'s socket is not routed');
         const lastPacks = [...got].reverse().find((f) => /"t":"packs"/.test(f));
         if (!lastPacks) throw new Error('the player was sent no packs message');
-        await player.evaluate(() => window.hextable.drawer.open('sheet'));
+        await openTab(player, 'sheet');       // the sheet is the last section of the character's page (M10): the helper opens it
         await waitShown(player, '#sheet-body');
         inject(JSON.stringify({ t: 'packs', packs: [] }));
         await wait(player, () => !!document.querySelector('#sheet-body .hb-missing'));
@@ -345,6 +345,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await player.click(rowOf('spells', 'Ember Dart'));
         await wait(player, () => window.hextable.mode.kind === 'spell').catch(async () => { throw new Error(`no spell mode: ${await where()}`); });
         await tapHex(target.pos, foe);
+        await tapDie(player, false);
         await calm(player);
         await openTab(player, 'log');
         await wait(player, () => /Ember Dart/.test(document.querySelector('#log-list')?.textContent ?? ''), null, 10000).catch(async () => {
@@ -556,9 +557,9 @@ async function solo(browser, url, label0, opts, tag) {
         await shot(page, `homebrew-solo-monster-${tag}`);
         await choose('sample-pack.json', SAMPLE);
         const n = await page.$$eval('#pm-review .pm-entry[data-entry]', (l) => l.length);
-        if (n !== 17) throw new Error(`${n} entries`);
+        if (n !== 22) throw new Error(`${n} entries`);
         const t2 = await page.textContent('#pm-review');
-        if (!/16 auto, 0 assist, 1 manual/.test(t2) || !/Add to this game/.test(await page.textContent('#pm-go'))) throw new Error(t2.slice(0, 300));
+        if (!/17 auto, 4 assist, 1 manual/.test(t2) || !/Add to this game/.test(await page.textContent('#pm-go'))) throw new Error(t2.slice(0, 300));
         await page.evaluate(() => { const d = document.querySelector('#pm-review .pm-entry[data-entry]'); d.open = true; d.querySelector('.pm-try-btn').click(); });
         await wait(page, () => /damage|hit|missed|target/i.test(document.querySelector('#pm-review .pm-try')?.textContent ?? ''));
         await shot(page, `homebrew-solo-review-${tag}`);
@@ -578,7 +579,7 @@ async function solo(browser, url, label0, opts, tag) {
         await page.click('#pm-go');
         await waitShown(page, '.pm-pack[data-pack="sample"]');
         const l = await page.textContent('.pm-pack[data-pack="sample"]');
-        if (!/17 spells/.test(l)) throw new Error(l);
+        if (!/22 spells/.test(l)) throw new Error(l);
         const kept = JSON.parse(await stored());
         if (kept.length !== 1 || kept[0].id !== 'sample' || !kept[0].data?.spells) throw new Error('not kept');
         const st = await page.evaluate(() => ({ named: window.hextable.state.packs.map((p) => p.id), built: window.hextable.packs.built, installed: window.hextable.packs.installed }));
@@ -609,6 +610,7 @@ async function solo(browser, url, label0, opts, tag) {
         await page.click(rowOf('spells', 'Ember Dart'));
         await wait(page, () => window.hextable.mode.kind === 'spell').catch(async () => { throw new Error(`no spell mode: ${JSON.stringify(await page.evaluate(() => window.hextable.mode))}`); });
         await page.evaluate(([h, i]) => window.hextable.R.onTap({ hex: h, id: i }), [pos, foe]);
+        await tapDie(page, false);
         await calm(page);
         await openTab(page, 'log');
         await wait(page, () => /Ember Dart/.test(document.querySelector('#log-list')?.textContent ?? ''), null, 10000).catch(async () => {

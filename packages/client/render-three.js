@@ -9,14 +9,17 @@
 import * as THREE from './vendor/three/three.module.js';
 import { HEX, gridOf } from './shared/grid.js';
 import { footprint, ground, surfaces, under } from './shared/space.js';
+import { breathView } from './breath.js';
 import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
+import { tileAlongRay } from './tilepick.js';
 import { createGovernor, shadowLevels } from './governor.js';
 import { CONTENT } from './shared/content/index.js';
 import { Models, fit, makeBase, modelFor, modelsMode } from './models.js';
-import { Builder, UNIT, arenaFlashCells, buildEdge, buildOverlay, buildTerrain, buildWalls, cutSetFor, girth, hpFraction, lightAt, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig, zoneHexes } from './three-build.js';
+import { BLOCK, THUMB, growFor, blockBox, planeY, Builder, UNIT, arenaFlashCells, buildEdge, buildOverlay, barFor, buildTerrain, buildWalls, cutSetFor, girth, lightAt, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig, zoneHexes, zoneLabel } from './three-build.js';
 
 const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging', following: '↪ Following' };
 const FLASH = 0.45, SHAKE = 0.5, RETRY_MS = 8000, HOLD_MAX = 4, SLAB = 0.35;
+const MELD_SINK = 0.55, MELD_ALPHA = 0.38;       // how plain the marker of a creature merged with stone is drawn
 const SECS = { door: 0.5, portcullis: 0.8, region: 0.6, rise: 1.2, sink: 0.6, fall: 0.6, prone: 0.3, stand: 0.4, appear: 0.4, vanish: 0.3, placed: 0.3, drop: 0.6 };
 const smooth = (p) => p * p * (3 - 2 * p);
 const accel = (p) => p * p;
@@ -178,6 +181,8 @@ export class ThreeRenderer {
     const o = (order, extra) => ({ flat: true, lit: 0, blend: true, order, ...extra });
     this.terrain = new Piece(this, { recv: true }); this.wallMesh = new Piece(this, { cast: true }); this.doorMesh = new Piece(this, { cast: true });
     this.grid = new Piece(this, o(10, { offset: true })); this.shadows = new Piece(this, o(11, { offset: true })); this.overlay = new Piece(this, o(13));
+    this.overlayX = new Piece(this, o(13)); this.overlayX.mat.depthTest = false;       // the faint outlines of a flyer's plane and column, drawn through walls and floors (three-build.js, `through`)
+    this.colEls = [];
     this.edge = new Piece(this, o(14)); this.edgeId = null; this.edgeBase = 0; this.edgeFx = { phase: 'on', t0: 0 }; this.sinkFx = null; this.anim = 0;
     this.flash = new Piece(this, { flat: true, lit: 0, blend: true, order: 15 }); this.flashAt = null;       // a refused move lights the border cells nearest it (the page event `hextable-arena-flash`, from app.js)
     this.onFlash = (ev) => this.#flashEdge(ev.detail); window.addEventListener('hextable-arena-flash', this.onFlash);
@@ -187,7 +192,7 @@ export class ThreeRenderer {
     this.blobGeom = new Piece(this, o(12)); this.blobGeom.show(false); this.#makeBlob();
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null, yawGoal: null }; this.turns = 0;      // turns: manual turns of the view so far (keyboard.md: a manual turn suspends following)
-    this.hl = { move: [], area: [], range: [], areaBad: false, targets: [], allies: [], selected: null, turn: null };
+    this.hl = { move: [], area: [], range: [], areaBad: false, targets: [], allies: [], selected: null, turn: null, column: null, plane: null };
     this.G = HEX;                             // the grid the map is drawn on (gridOf(map) once there is one)
     this.state = null; this.terrainKey = ''; this.floaters = []; this.inset = 0;
     this.onTap = () => {}; this.onHover = () => {}; this.onPoint = null; this.onDrag = null;
@@ -214,6 +219,13 @@ export class ThreeRenderer {
   }
 
   // ---------- public ----------
+  // Where a creature's pawn is drawn: at its space, or, merged with stone (Meld into Stone, `melded`), sunk into the wall at the point it went into (feet on the map, as the engine keeps it).
+  #sunk(e, map) {
+    const m = e.melded, G = this.G;
+    const lv = map.levels.find((l) => l.id === m.level), c = G.cell(m.x, m.y), w = G.toWorld(c), n = G.toWorld({ q: c.q + 1, r: c.r }), cf = G.center(c), nf = G.center({ q: c.q + 1, r: c.r });
+    const k = Math.hypot(n.x - w.x, n.z - w.z) / (Math.hypot(nf[0] - cf[0], nf[1] - cf[1]) || 1);       // drawing units in a foot
+    return { x: w.x + (m.x - cf[0]) * k, y: stand(map, { q: c.q, r: c.r, z: lv?.z ?? e.pos.z }).y - MELD_SINK, z: w.z + (m.y - cf[1]) * k };
+  }
   setTheme(theme) { this.theme = theme; this.#dropModels(); this.#makeBlob(); this.terrainKey = ''; for (const a of this.actors.values()) a.key = ''; if (this.state) this.setState(this.state, []); }
 
   setState(state, events = [], opt = {}) {
@@ -241,16 +253,18 @@ export class ThreeRenderer {
     }
     for (const e of Object.values(state.entities)) {
       let a = this.actors.get(e.id);
-      const w = spot(state.map, e, e.pos), calm = snap || !!e.hidden;
+      const w = e.melded ? this.#sunk(e, state.map) : spot(state.map, e, e.pos), calm = snap || !!e.hidden;
       if (!a) {
         const el = document.createElement('div');
-        el.className = 'label'; el.innerHTML = '<span></span><div class="bar"><i></i></div><em class="marks"></em>';
+        el.className = 'label'; el.innerHTML = '<span></span><button type="button" class="alt" hidden></button><div class="bar"><i></i></div><div class="breath" hidden role="img"><i></i></div><em class="marks"></em>';
+        // The height tag of a creature off the ground (fly-swim-control.md): a tap on it asks the app for the column of heights. The renderer only says which tag (a page event, as the arena flash is).
+        el.querySelector('.alt').addEventListener('click', (ev) => { ev.stopPropagation(); window.dispatchEvent(new CustomEvent('hextable-height-tag', { detail: { id: e.id } })); });
         this.labels.append(el);
         a = { piece: new Piece(this, { order: 5, cast: true }), blob: new Piece(this, { flat: true, lit: 0, blend: true, order: 12, offset: true }).share(this.blobGeom), ...w, yaw: 0, way: [], el, key: '', fade: 1 };
         if (!calm) { a.fade = 0; a.hold = true; a.holdAt = now; }
         this.actors.set(e.id, a);
       }
-      a.unseen = !!e.hidden;
+      a.unseen = !!e.hidden; a.melded = !!e.melded;
       if (snap) a.lift = undefined;
       if (a.hold && (calm || appeared.has(e.id))) { a.hold = false; if (calm) a.fade = 1; else a.fadeTw = { from: 0, to: 1, t0: now, dur: SECS.appear }; }
       const mid = this.#modelOf(e);
@@ -268,11 +282,15 @@ export class ThreeRenderer {
         a.key = key; a.piece.set(a.pup ? makeBase(e, this.theme, this.G) : makePawn(e, this.theme, this.G));
       }
       a.wasDead = !!e.dead;
-      a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0); a.el.classList.toggle('unseen', !!e.hidden);
+      a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0 && !(state.barRule?.foeHealth === 'hidden' && !state.barRule.dm && e.side !== 'party')); a.el.classList.toggle('unseen', !!e.hidden); a.el.classList.toggle('melded', !!e.melded);      // the "(down)" word is health: not for a player under Hidden
       const sf = ground(state.map, e.pos) ? null : under(state.map, e.pos);
-      const shown = e.form?.name ? `${e.name} (${e.form.name})` : e.name;             // a druid in Wild Shape: 'Wren (Brown Bear)'
-      a.el.firstChild.textContent = sf ? `${shown} ↑${e.pos.z - sf.z} ft` : shown;
-      a.el.querySelector('i').style.width = `${hpFraction(e) * 100}%`;
+      const shown = (e.form?.name ? `${e.name} (${e.form.name})` : e.name) + (e.melded ? ' (in the stone)' : '');             // a druid in Wild Shape: 'Wren (Brown Bear)'
+      a.el.firstChild.textContent = shown;
+      { const tag = a.el.querySelector('.alt'), up = sf && !e.dead ? e.pos.z - sf.z : 0; tag.hidden = !(up > 0); if (up > 0) { tag.textContent = `\u2191${up} ft`; tag.setAttribute('aria-label', `${shown}: ${up} ft up. Choose a height`); } }
+      { const bar = barFor(e, { ...state.barRule, fight: !!state.encounter }), el = a.el.querySelector('.bar');
+        el.hidden = !bar.show; el.classList.toggle('notch', bar.notch); a.el.querySelector('i').style.width = `${bar.frac * 100}%`; }
+      { const air = e.dead ? null : breathView(state, e), el = a.el.querySelector('.breath');       // under the surface and holding breath (breath.js): a bar that empties, in the warning colour in the last two rounds
+        el.hidden = !air; if (air) { el.classList.toggle('warn', air.warn); el.firstChild.style.width = `${air.frac * 100}%`; el.setAttribute('aria-label', `${shown}: ${air.words}`); el.title = air.words; } }
       const marks = e.dead ? [] : [e.hp <= 0 && !e.cond.stable && 'dying', e.cond.prone && e.hp > 0 && 'prone', e.cond.dodging && 'dodging', e.follow && !state.encounter && 'following'].filter(Boolean);
       const mk = marks.join();
       if (mk !== a.marks) { a.marks = mk; a.el.lastChild.replaceChildren(...marks.map((m) => Object.assign(document.createElement('b'), { className: m, textContent: MARKS[m] }))); }
@@ -302,11 +320,11 @@ export class ThreeRenderer {
       if (ev.type === 'attack' && hurt && ev.hit && ev.crit) { hurt.shake = SHAKE; hurt.flash = FLASH; }
     }
     for (const e of Object.values(state.entities)) {
-      const a = this.actors.get(e.id), w = this.G.kind === 'hex' ? this.#stand(e.pos) : spot(state.map, e, e.pos);
+      const a = this.actors.get(e.id), w = e.melded ? this.#sunk(e, state.map) : this.G.kind === 'hex' ? this.#stand(e.pos) : spot(state.map, e, e.pos);
       if (e.riding && this.actors.has(e.riding.on) && !a.boarding) continue;       // a rider is where its mount is drawn (#ride); the frame sets it
       // on hexes a big creature is put at its own hex here, on squares at the middle of its squares
       if (!a.way.length && (Math.abs(a.x - w.x) > 0.01 || Math.abs(a.z - w.z) > 0.01)) Object.assign(a, w);
-      const yy = spot(state.map, e, e.pos).y;
+      const yy = e.melded ? w.y : spot(state.map, e, e.pos).y;
       if (!a.way.length && Math.abs(a.y - yy) > 0.01) {
         if (!snap && !a.unseen && this.fell.has(e.id) && yy < a.y) a.fall = { from: a.y, to: yy, t0: now, dur: SECS.drop, ease: accel };
         else if (!a.fall) { a.y = yy; }
@@ -425,13 +443,25 @@ export class ThreeRenderer {
   #dropGhost(g) { if (g.label) { g.el.remove(); g.src.piece.free(); } g.piece.free(); }
 
   setCeiling(z) { if (z !== this.ceiling) { this.ceiling = z; this.terrainKey = ''; if (this.state) this.setState(this.state, []); } }
-  setHighlights(hl) { this.hl = { move: [], area: [], range: [], areaBad: false, targets: [], allies: [], selected: null, turn: null, ...hl }; if (this.state) this.#buildOverlay(); }
+  setHighlights(hl) { this.hl = { move: [], area: [], range: [], areaBad: false, targets: [], allies: [], selected: null, turn: null, column: null, plane: null, ...hl }; if (this.state) this.#buildOverlay(); }
   focus(id, snap = false) {
     const a = this.actors.get(id); if (!a) return;
     const end = a.way.length ? a.way[a.way.length - 1] : a;
     if (snap) { this.cam.x = end.x; this.cam.z = end.z; this.cam.goal = null; } else this.cam.goal = { x: end.x, z: end.z };
   }
+  // A tap the menu's dimmed map took on the canvas's behalf (#793): x and y are the page's (client) coordinates; it goes where a tap on the canvas would.
+  tapAt(cx, cy, pointer = 'touch') {
+    const r = this.canvas.getBoundingClientRect(), p = [cx - r.left, cy - r.top];
+    if (this.onPoint) { this.onPoint(p[0], p[1]); return; }
+    const hit = this.#pick(...p); if (hit) this.onTap({ ...hit, pointer, at: p });
+  }
   planeHex(px, py, feet = 0) { const p = this.#plane(px, py, feet); return p && this.G.fromWorld(p[0], p[1]); }
+  // The cell of a level's tile that the ray through a pixel meets first, at the tile's drawn top (the map editor's tap, #738); the base plane's cell where it meets none.
+  tileHex(px, py, level) {
+    const C = this.C; if (!C || !level) return null;
+    const hit = tileAlongRay({ eye: C.eye, dir: this.#dir(C, px, py), level, G: this.G, topOf: (t) => surfY(level.z + (t.h ?? 0), t), planeAt: planeY(level.z) });
+    return hit?.hex ?? null;
+  }
   planePoint(px, py, feet = 0) { const p = this.#plane(px, py, feet); return p && [p[0] / UNIT, p[1] / UNIT]; }
   #plane(px, py, feet) {
     const C = this.C; if (!C) return null;
@@ -459,7 +489,7 @@ export class ThreeRenderer {
   }
   zonesAt(hex) {
     if (!hex || !this.state) return [];
-    return (this.state.effects ?? []).filter((fx) => { const zh = zoneHexes(this.state, fx); return zh?.hexes.some((h) => h.q === hex.q && h.r === hex.r); }).map((fx) => fx.name);
+    return (this.state.effects ?? []).filter((fx) => { const zh = zoneHexes(this.state, fx); return zh?.hexes.some((h) => h.q === hex.q && h.r === hex.r); }).map(zoneLabel);
   }
   screenOf(hex, up = 0) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y + up, w.z) : null; }       // `up`: drawing units above the floor (a rider's saddle)
   screenOfPawn(id, up = 0) { const a = this.actors.get(id); return a && this.C ? this.#project(this.C, a.x, a.y + up, a.z) : null; }       // where a pawn is drawn, `up` drawing units over its foot (the smoke script's, to tap a rider and a mount apart)
@@ -569,7 +599,51 @@ export class ThreeRenderer {
     this.doorInfo = doorInfo;
     this.wallMesh.set(b);
   }
-  #buildOverlay() { this.overlay.set(buildOverlay({ state: this.state, hl: this.hl, theme: this.theme, pins: this.pins, pinZ: this.pinZ, bars: this.bars, barZ: this.barZ })); }
+  #buildOverlay() {
+    const b = buildOverlay({ state: this.state, hl: this.hl, theme: this.theme, pins: this.pins, pinZ: this.pinZ, bars: this.bars, barZ: this.barZ });
+    this.overlay.set(b); this.overlayX.set(b.through);
+    this.#columnLabels();
+  }
+  // The height numbers on the side of a flyer's column: at every 10 ft, on the picked block and on the ground (fly-swim-control.md, "Cost on the column").
+  #columnLabels() {
+    const col = this.hl.column, want = col ? col.blocks.filter((k) => k.picked || k.ground || k.hover || Math.round(k.ft) % 10 === 0) : [];
+    while (this.colEls.length > want.length) this.colEls.pop().el.remove();
+    while (this.colEls.length < want.length) { const el = document.createElement('div'); el.className = 'label col-label'; this.labels.append(el); this.colEls.push({ el }); }
+    want.forEach((k, i) => {
+      const c = this.colEls[i], bx = blockBox(this.state.map, col.at, k.z);
+      Object.assign(c, { x: bx.x, y: (bx.y0 + bx.y1) / 2, z: bx.z });
+      c.el.textContent = k.ground ? 'Ground' : `${k.ft} ft`; c.el.classList.toggle('picked', !!k.picked); c.el.dataset.ft = String(k.ft);
+    });
+  }
+  // The block of the column, or the place of the plane, that the ray through a pixel meets first: { block: z } or { hex, plane: true }, with how far along the ray (t).
+  #pickFly(px, py) {
+    const C = this.C, col = this.hl.column, pl = this.hl.plane; if (!C || !this.state || (!col && !pl)) return null;
+    const d = this.#dir(C, px, py), e = C.eye;
+    let best = null;
+    if (col) {
+      const R = BLOCK.r * Math.hypot(...this.G.corners({ q: 0, r: 0 })[0]) * UNIT * 0.93;       // a cylinder just inside the prism
+      for (const k of col.blocks) {
+        const bx = blockBox(this.state.map, col.at, k.z), ox = e[0] - bx.x, oz = e[2] - bx.z;
+        // A block drawn smaller than a thumb is picked over an area 1.5 times as tall (heights.js, growFor); where two grown areas overlap, the block whose middle is nearer the point wins.
+        const p0 = this.#project(C, bx.x, bx.y0, bx.z), p1 = this.#project(C, bx.x, bx.y1, bx.z), tall = p0 && p1 ? Math.abs(p0.y - p1.y) : THUMB, g = (growFor(tall) - 1) * (bx.y1 - bx.y0) / 2;
+        bx.y0 -= g; bx.y1 += g;
+        const off = p0 && p1 ? Math.abs(py - (p0.y + p1.y) / 2) : 0;
+        const a = d[0] * d[0] + d[2] * d[2], b = 2 * (ox * d[0] + oz * d[2]), c = ox * ox + oz * oz - R * R, disc = b * b - 4 * a * c;
+        let t = null;
+        if (a > 1e-9 && disc >= 0) { const t1 = (-b - Math.sqrt(disc)) / (2 * a), y = e[1] + d[1] * t1; if (t1 > 0 && y >= bx.y0 && y <= bx.y1) t = t1; }
+        if (t === null && d[1] < 0) { const tc = (bx.y1 - e[1]) / d[1], x = e[0] + d[0] * tc - bx.x, z = e[2] + d[2] * tc - bx.z; if (tc > 0 && x * x + z * z <= R * R) t = tc; }
+        if (t !== null && (!best || off < best.off)) best = { t, off, block: k.z };
+      }
+    }
+    if (pl && !pl.ground && !pl.faint && d[1] < 0) {
+      const t = (planeY(pl.z) - e[1]) / d[1];
+      if (t > 0 && (!best || t < best.t)) {
+        const h = this.G.fromWorld(e[0] + d[0] * t, e[2] + d[2] * t), cell = pl.cells.find((x) => x.h.q === h.q && x.h.r === h.r);
+        if (cell) best = { t, hex: cell.h, plane: true, id: null };
+      }
+    }
+    return best;
+  }
 
   // ---------- shadows ----------
   // The governor's ladder for this device and setting: shadows are given up before any pixel ratio.
@@ -752,13 +826,13 @@ export class ThreeRenderer {
       a.piece.place(model(a.x, a.y + (a.lift ?? 0), a.z, a.yaw, 0)); a.piece.tint(1, 1, 1, alpha); a.piece.show(true);       // the token it stands on
     };
     for (const a of this.actors.values()) {
-      const fading = a.fade < 1;
-      if (a.pup) { puppet(a, fading ? a.fade : 1); a.dying?.piece.show(false); }
-      else { a.piece.show(!(a.dying && fading)); pawn(a, a.piece, fading ? a.fade : 1); }
+      const fading = a.fade < 1, ghostly = a.melded ? MELD_ALPHA * a.fade : fading ? a.fade : 1;       // merged with stone: a faint marker on the wall point
+      if (a.pup) { puppet(a, ghostly); a.dying?.piece.show(false); }
+      else { a.piece.show(!(a.dying && fading)); pawn(a, a.piece, ghostly); }
       if (a.dying && !a.pup) { a.dying.piece.show(true); pawn(a, a.dying.piece, 1 - Math.min(1, (this.now - a.dying.t0) / a.dying.dur)); }
       const k = a.k ?? 1, fade = 1 / (1 + a.air * 0.5);
-      a.blob.show(!this.sh.on && !a.rides);       // a rider's shadow is its mount's
-      a.blob.place(model(a.x - 0.14 * k, a.y - a.air + 0.016, a.z - 0.1 * k, 0, 0, 0.92 * k * (0.6 + 0.4 * fade))); a.blob.tint(1, 1, 1, fade * (a.fade ?? 1));
+      a.blob.show((!this.sh.on || a.melded) && !a.rides);       // a rider's shadow is its mount's
+      a.blob.place(model(a.x - 0.14 * k, a.y - a.air + 0.016 + (a.melded ? MELD_SINK : 0), a.z - 0.1 * k, 0, 0, 0.92 * k * (0.6 + 0.4 * fade))); if (a.melded) a.blob.tint(0.62, 0.64, 0.7, 0.85); else a.blob.tint(1, 1, 1, fade * (a.fade ?? 1));       // merged with stone: a stone-grey ring under the marker
     }
     for (const g of this.ghosts) { pawn(g, g.piece, 1 - Math.min(1, (this.now - g.t0) / g.dur)); }
     let swinging = false;
@@ -794,6 +868,7 @@ export class ThreeRenderer {
       a.el.style.display = p ? '' : 'none';
       if (p) a.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, ${a.carry ? '6px' : '-100%'})`;
     }
+    for (const c of this.colEls) { const p = this.#project(C, c.x, c.y, c.z); c.el.style.display = p ? '' : 'none'; if (p) c.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(34px, -50%)`; }
     this.floaters = this.floaters.filter((f) => {
       f.t += dt;
       if (f.t < 0) return true;
@@ -812,7 +887,7 @@ export class ThreeRenderer {
       else if (a.hold && now - a.holdAt > HOLD_MAX) { a.hold = false; a.fade = 1; }
       if (a.fall) { const r = tweenAt(a.fall, now); a.y = r.v; if (r.done) a.fall = null; }
       if (a.dying && now - a.dying.t0 >= a.dying.dur) { a.dying.piece.free(); a.dying = null; }
-      const op = a.fade < 1 ? a.fade.toFixed(2) : '';
+      const op = a.fade < 1 ? a.fade.toFixed(2) : a.melded ? '0.7' : '';
       if (op !== a.opa) { a.opa = op; a.el.style.opacity = op; }
     }
     if (this.ghosts.length) {
@@ -843,6 +918,8 @@ export class ThreeRenderer {
   // The hex-column march, as the old renderer had it (Decision 8); only the ray comes from Three.
   // A creature the ray meets as it is wins; only where it meets none, a finger's width is allowed (a widened cylinder in front must not steal a tap that is on another creature).
   #pick(px, py) {
+    const fly = this.#pickFly(px, py);
+    if (fly) return fly.block !== undefined ? { block: fly.block, hex: { ...this.hl.column.at, z: fly.block }, id: null } : fly;
     const exact = this.#march(px, py, false);
     if (exact?.id || !this.phone) return exact;
     const wide = this.#march(px, py, true);
@@ -868,7 +945,7 @@ export class ThreeRenderer {
         const top = surfY(column[i].z, column[i].tile);
         if (y > top || (i > 0 && y < top - SLAB)) continue;
         const hex = { q: h.q, r: h.r, z: column[i].z };
-        const here = Object.values(this.state.entities).filter((e) => !e.dead && e.pos.z === hex.z && footprint(e, e.pos, this.G).some((f) => f.q === hex.q && f.r === hex.r));
+        const here = Object.values(this.state.entities).filter((e) => !e.dead && !e.melded && e.pos.z === hex.z && footprint(e, e.pos, this.G).some((f) => f.q === hex.q && f.r === hex.r));
         const occ = here.find((e) => !e.riding) ?? here[0];       // on the ground of a ridden pair: the mount (the rider is on top of it)
         return { hex, id: occ?.id ?? null };
       }
@@ -890,7 +967,7 @@ export class ThreeRenderer {
     }, on);
     el.addEventListener('pointermove', (e) => {
       const p = xy(e), old = pts.get(e.pointerId);
-      if (!old) { if (e.pointerType === 'mouse') { const hit = this.#pick(...p); this.canvas.title = [...new Set(this.zonesAt(hit?.hex))].join(', '); this.onHover(hit?.hex ?? null); } return; }
+      if (!old) { if (e.pointerType === 'mouse') { const hit = this.#pick(...p); this.canvas.title = [...new Set(this.zonesAt(hit?.hex))].join(', '); this.onHover(hit?.hex ?? null, hit); } return; }
       pts.set(e.pointerId, p);
       if (stroke && pts.size === 1) { this.onDrag.move(...p); return; }
       const dx = p[0] - old[0], dy = p[1] - old[1];
@@ -914,7 +991,7 @@ export class ThreeRenderer {
       if (stroke) { stroke = false; if (e.type === 'pointerup') this.onDrag.end(); else this.onDrag.cancel(); return; }
       if (p && e.type === 'pointerup' && !pts.size && moved < 8 && performance.now() - downAt < 600 && e.button !== 2) {
         if (this.onPoint) { this.onPoint(p[0], p[1]); return; }
-        const hit = this.#pick(...p); if (hit) this.onTap(hit);
+        const hit = this.#pick(...p); if (hit) this.onTap({ ...hit, pointer: e.pointerType, at: p });
       }
     };
     el.addEventListener('pointerup', up, on); el.addEventListener('pointercancel', up, on);

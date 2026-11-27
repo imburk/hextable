@@ -334,8 +334,8 @@ test("an old table loads unchanged but for its version", () => {
   s.version = 22;
   const was = structuredClone(s);
   migrate(s);
-  assert.equal(VERSION, 30);
-  assert.equal(s.version, 30);
+  assert.equal(VERSION, 31);
+  assert.equal(s.version, 31);
   const { world, place, parked, journey, markets, shops, ...rest } = s;                    // version 26 (#579) adds the places of a world, empty
   assert.deepEqual({ world, place, parked, journey }, { world: null, place: null, parked: {}, journey: null });
   assert.deepEqual({ markets, shops }, { markets: [], shops: [] });                 // version 28 (#596) adds the markets and shops, empty
@@ -357,7 +357,7 @@ test("nothing in the rules reads `.owner` to decide control, but ownerOf", () =>
     "engine/dm.js": 6,           // claim and release: who sits at a player's character
     "engine/companions.js": 1,   // a creature with a player of its own is not made a companion
     "engine/sheets.js": 1,       // a character remade keeps its player
-    "engine/characters.js": 1,   // likewise
+    "engine/characters.js": 2,   // likewise; and admit gives the character to its player, as claim does
     "history.js": 1,             // a rewind keeps who holds which character
   };
   for (const f of files) {
@@ -526,7 +526,8 @@ test("the end of a lasting effect whose caster players do not know of names neit
   const { s, wolf } = table();
   ok(apply(s, { type: "reveal", actor: wolf, hidden: true }, DM));
   const ev = [{ type: "effectEnd", fx: "fx9", name: "Blindness", source: wolf, targets: ["fighter"], why: "Greyjaw went down", conc: true }];
-  assert.deepEqual(viewEvents(ev, s, U1), [{ type: "effectEnd", fx: "fx9", name: "Blindness", conc: true, targets: ["fighter"], why: "it ended" }]);
+  // No `fx` either (#843): the effect of a caster players do not know of goes to them under an id of its own (`z1`...), never the shared counter's.
+  assert.deepEqual(viewEvents(ev, s, U1), [{ type: "effectEnd", name: "Blindness", conc: true, targets: ["fighter"], why: "it ended" }]);
   // Words that name nobody are kept.
   assert.equal(viewEvents([{ ...ev[0], why: "its time ran out" }], s, U1)[0].why, "its time ran out");
   const mine = [{ ...ev[0], source: "cleric", why: "Odessa ended it" }];

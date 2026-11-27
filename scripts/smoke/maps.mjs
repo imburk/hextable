@@ -141,7 +141,7 @@ async function squareEditor(browser, url, label, opts) {
         await twice('#ed-new-square');
         await wait(page, () => window.hextable.state.map.grid === 'square');
         const m = await map(), n = Object.keys(m.levels[0].tiles).length;
-        if (m.format !== 2 || m.cellFeet !== 5 || n !== 49) throw new Error(`the new square map is format ${m.format}, ${m.cellFeet} ft, ${n} tiles`);
+        if (m.format !== 3 || m.cellFeet !== 5 || n !== 49) throw new Error(`the new square map is format ${m.format}, ${m.cellFeet} ft, ${n} tiles`);
         if ((await ev(() => document.querySelector('#ed-grid').textContent)) !== 'Grid: squares') throw new Error('the editor does not say squares');
         if (!/squares/.test(await ev(() => document.querySelector('#ed-gridnote').textContent))) throw new Error('the Map file tool does not name the grid');
         if (await ev(() => [...document.querySelectorAll('#ed-opts button')].some((b) => b.id === 'ed-grid-change'))) throw new Error('there is a way to change the grid');

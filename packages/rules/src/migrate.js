@@ -7,7 +7,7 @@ const SPELL_IDS = { fireBolt: 'fire-bolt', sacredFlame: 'sacred-flame', magicMis
 const MONSTER_IDS = { goblin: 'goblin-warrior' };
 
 import { migrateMap } from './map.js';
-import { MONSTERS, MONSTER_ACTIONS, PREGENS, PREGEN_SHEETS } from './content/index.js';
+import { MONSTERS, MONSTER_ACTIONS, PREGENS, PREGEN_SHEETS, SPELLS } from './content/index.js';
 import { validPending } from './reactions.js';
 import { leaveForm, validForm } from './forms.js';
 import { xpFor } from './rewards.js';
@@ -18,7 +18,7 @@ import { copyPacks, packsProblem } from './content/packs.js';
 import { cleanPurse } from './market.js';
 import { derive } from './derive.js';
 
-export const VERSION = 30;
+export const VERSION = 31;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -247,6 +247,17 @@ export function migrate(state) {
       }
     }
   }
+  // Version 31: a spell's lasting effect keeps the level it was cast at (`level`; durations.js), which Dispel Magic reads (#726 job 5). The slot an
+  // effect from before was cast with is not known, so it gets the spell's own level; one whose spell the pack does not have (a table's homebrew)
+  // is left without, and is read at its spell's own level when it is asked (engine/rolls.js, dispel). Parked places are covered by the walk above.
+  if (!(state.version >= 31)) {
+    for (const fx of Array.isArray(state.effects) ? state.effects : []) {
+      if (isRec(fx) && typeof fx.spell === 'string' && fx.level === undefined && Object.hasOwn(SPELLS, fx.spell) && Number.isInteger(SPELLS[fx.spell].level)) fx.level = SPELLS[fx.spell].level;
+    }
+  }
+  // Map format 3 (docs/specs/fly-swim-control.md, stage E1, #836) needs no new state version: a water tile's `depth` is added by `migrateMap`, which runs on
+  // every load (above) on the table's map and on each parked place's, whatever version the save was. Every water tile of an older map gets 10 feet and nothing
+  // else changes; a creature on a water tile (placed there by the DM) is at its surface, which is in the water.
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);
