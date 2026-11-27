@@ -337,4 +337,50 @@ export const summons = [
     checked: true,
     text: "The spectral weapon that Spiritual Weapon makes: it moves 20 feet and strikes with the caster's spell attack, and nothing can hurt it.",
   },
+  {
+    // Conjure Fey (SRD 5.2.1, flow lines 25287-25306): "a Medium spirit from the Feywild". It is a spirit, not a creature with a stat block, so as with Spiritual Weapon the block
+    // gives it nothing to be hurt by (1 Hit Point that nothing takes, immune to every damage type and condition). "As a Bonus Action on your later turns, you can teleport the spirit to an
+    // unoccupied space you can see within 30 feet of the space it left and make the attack": the engine's stand-in is a Speed of 30 feet; the teleport itself is the DM's.
+    // The attack is the caster's melee spell attack. The SRD gives no stat block; the numbers below are the engine's stand-in.
+    id: "fey-spirit", name: "Fey Spirit", source: "SRD 5.2.1",
+    level: 6,
+    size: "medium",
+    type: "fey",
+    pb: { caster: "pb" },
+    ac: 10,
+    hp: 1,
+    speed: { walk: 30, fly: 30 },
+    abilities: { str: 10, dex: 10, con: 10, int: 1, wis: 1, cha: 1 },
+    languages: [],
+    resist: [],
+    vulnerable: [],
+    immune: ["acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"],
+    conditionImmune: ["blinded", "charmed", "deafened", "exhaustion", "frightened", "grappled", "incapacitated", "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious"],
+    traits: [],
+    actions: [
+      {
+        id: "fey-strike",
+        name: "Fey Strike",
+        target: { creature: { reach: 5 } },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: { caster: "attack" },
+            onHit: [
+              { damage: "3d12", plus: { caster: "mod" }, type: "psychic" },
+              { damage: "1d12", only: { slot: 7 }, type: "psychic" },
+              { damage: "1d12", only: { slot: 8 }, type: "psychic" },
+              { damage: "1d12", only: { slot: 9 }, type: "psychic" },
+              { condition: "frightened", ends: { on: "turnStart", of: "source" } },
+            ],
+          },
+        ],
+        text: "The caster's melee spell attack against a creature within 5 feet of the spirit: Psychic damage of 3d12 plus the caster's spellcasting modifier, 1d12 more for each slot level above 6, and the target is Frightened until the start of the caster's next turn.",
+      },
+    ],
+    tier: "auto",
+    checked: true,
+    text: "The Feywild spirit that Conjure Fey makes: it strikes with the caster's spell attack and frightens what it hits, and nothing can hurt it.",
+  },
 ];
