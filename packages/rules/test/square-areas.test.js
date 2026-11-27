@@ -344,9 +344,11 @@ test("a player is sent no area square it could not otherwise know of, cast or pr
     assert.ok(sent[0].hexes.length > 0, `${sight}: the cells the player knows are sent`);
     // The preview a player's client works out from its own view holds only squares of its map.
     for (const h of areaHexes(v, v.entities.wizard, { area: { shape: "sphere", size: 20 }, range: 150 }, { q: 14, r: 4 })) assert.ok(known.has(col(h)), `${sight}: preview ${col(h)}`);
-    // A lasting zone's squares are never sent.
+    // A lasting zone's squares are sent only where the player knows them (#842), never one of the corridor.
     cast(s, { actor: "wizard", spell: "moonbeam", hex: { q: 14, r: 3 } }, PAT);
-    for (const fx of view(s, PAT).effects) assert.equal("zone" in fx, false);
+    const after = view(s, PAT), knownNow = new Set(after.map.levels.flatMap((l) => Object.keys(l.tiles))), zoned = after.effects.filter((fx) => fx.zone);
+    for (const fx of zoned) for (const k of fx.zone.hexes) assert.ok(knownNow.has(k), `${sight}: zone square ${k} is sent but not on the player's map`);
+    for (const fx of zoned) assert.ok(fx.zone.hexes.length > 0 && !("steps" in fx.zone), `${sight}: the squares it is sent`);
   }
 });
 
