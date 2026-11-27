@@ -24,7 +24,8 @@ test('every DM control is on one of the screens; only what waits for the DM is a
   const index = dm.indexOf('<ul id="dm-index"'), first = dm.indexOf('<div class="sec-screen"');
   assert.ok(index > 0 && first > index);
   const top = [...dm.slice(0, index).matchAll(/ id="([\w-]+)"/g)].map((m) => m[1]);
-  for (const id of top) assert.ok(/^(dm|dm-table|dm-fallen|dm-fallen-open|dm-rewards|dm-rewards-open)$/.test(id), `${id} is above the list of screens`);
+  // The "Waiting for you" row (#844) is what waits for the DM, so it may sit above the list too.
+  for (const id of top) assert.ok(/^(dm|dm-table|dm-fallen|dm-fallen-open|dm-rewards|dm-rewards-open|dm-waiting-ul|dm-waiting-li|dm-waiting|dm-waiting-n|dm-waiting-says)$/.test(id), `${id} is above the list of screens`);
   // After the last screen closes, nothing but the panel's own end.
   const tail = dm.slice(dm.lastIndexOf('</div>') + 6).trim();
   assert.equal(tail, '</section>', 'no section sits outside the screens, where it would always show');
