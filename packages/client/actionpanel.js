@@ -31,7 +31,7 @@ import { levelUpChip } from './levelup.js';
 import { classTitle } from './buildsheet.js';
 import { initSpellCards, spellAttrs } from './spellcard.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
-import { rollers, rollMode } from './wallaim.js';
+import { rollers, rollMode, packReady } from './wallaim.js';
 import { leapState } from './leapui.js';
 import { strikeRows, holdRows, heldText, howHeldEnds } from './grapple.js';
 
@@ -321,6 +321,8 @@ export function moveRows(S, e, { fly = null, mode = null } = {}) {
   { const L = leapState(S, e), lm = mode?.kind === 'leap';
     rows.push(row({ id: 'leap', kind: 'arm', label: 'Leap', sub: L.sub, chip: 'Move', time: null, std: false, why: L.why, armed: lm && !mode.spell, arm: { kind: 'leap', id: e.id }, mode: { kind: 'leap', id: e.id, spell: false } }));
     if (L.spellFree && !L.why) rows.push(row({ id: 'leap-jump', kind: 'arm', label: 'Use Jump', sub: `Leap up to ${L.spell} ft${enc?.budget ? ' for 10 ft of movement' : ''}`, chip: 'Move', time: null, std: false, armed: lm && !!mode.spell, arm: { kind: 'leap', id: e.id }, mode: { kind: 'leap', id: e.id, spell: true } })); }
+  // Conjure Animals' pack: moved when its caster moves, no action spent (docs/specs/rules-expansion.md, wave 5 part 3). Offered once the caster has moved this turn.
+  if (packReady(S, e)) for (const r of rollers(S, e)) if (r.pack) rows.push(row({ id: `roll:${r.id}`, kind: 'arm', label: 'Move the pack', sub: `${r.name} · up to ${r.feet} ft · tap the map`, chip: 'Move', time: null, std: false, armed: !!mode && mode.kind === 'roll' && mode.effect === r.id, mode: rollMode(r) }));
   rows.push(hideRow(S, e, row));
   rows.push(row({ id: 'search', kind: 'send', label: 'Search', sub: `Perception ${signed(skillBonus(S, e, 'perception'))} · secret doors, traps, things hiding · 15 ft`, chip: CHIP.action, time: 'action',
     why: blocked(S, e, 'action'), send: { type: 'search', actor: e.id } }));
@@ -438,7 +440,7 @@ export function bonusRows(S, e, { mode = null, fly = null } = {}) {
     add({ ...base, id: `${kind}-bonus`, label: `${base.label} (Bonus)`, chip: CHIP.bonus, time: 'bonus', why: kind === 'hide' && base.kind === 'none' ? base.why : (kind === 'hide' ? (S.encounter && inFight(S, e.id) ? blocked(S, e, 'bonus') : '') || hideProblem(S, e) : blocked(S, e, 'bonus')),
       ...(base.send ? { send: { ...base.send, bonus: true } } : {}) });
   }
-  for (const r of rollers(S, e)) add({ id: `roll:${r.id}`, kind: 'arm', label: `Roll ${r.name}`, sub: `Up to ${r.feet} ft · tap the map`, chip: CHIP.bonus, time: 'bonus', armed: !!mode && mode.kind === 'roll' && mode.effect === r.id, mode: rollMode(r) });
+  for (const r of rollers(S, e)) if (!r.pack) add({ id: `roll:${r.id}`, kind: 'arm', label: `Roll ${r.name}`, sub: `Up to ${r.feet} ft · tap the map`, chip: CHIP.bonus, time: 'bonus', armed: !!mode && mode.kind === 'roll' && mode.effect === r.id, mode: rollMode(r) });
   const why = blocked(S, e, 'bonus');
   return { rows: rows.map((r) => (r.why || !why ? r : { ...r, why })), available: !why, why };
 }
@@ -789,9 +791,9 @@ export function initActionPanel(ctx) {
   });
   const choicesHtml = (c) => `<p class="ap-ch-h">${esc(c.name)} waits for the die. Choose, then tap it.</p>${c.groups.map((g) => {
     const gid = `ap-chl-${g.id}`;
-    return `<div class="ap-ch-g" role="radiogroup" aria-labelledby="${gid}"><span class="ap-ch-l" id="${gid}">${esc(g.label)}</span><div class="ap-ch-o">${g.options.map((o, i) => {
+    return `<div class="ap-ch-g" role="${g.multi ? 'group' : 'radiogroup'}" aria-labelledby="${gid}"><span class="ap-ch-l" id="${gid}">${esc(g.label)}</span><div class="ap-ch-o">${g.options.map((o, i) => {
       const wid = `ap-chw-${g.id}-${i}`;
-      return `<button type="button" role="radio" class="ap-ch ${o.why ? 'off' : 'use'}${o.on ? ' on' : ''}" data-ch="${g.id}" data-v="${esc(o.value)}" data-why="${esc(o.why)}" aria-checked="${o.on}" aria-disabled="${o.why ? 'true' : 'false'}"${o.why ? ` aria-describedby="${wid}"` : ''}><span class="ap-ch-t">${o.on ? '\u2713 ' : ''}${esc(o.label)}</span>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}${o.why ? `<small class="ap-why" id="${wid}">${esc(o.why)}</small>` : ''}</button>`;
+      return `<button type="button" role="${g.multi ? 'checkbox' : 'radio'}" class="ap-ch ${o.why ? 'off' : 'use'}${o.on ? ' on' : ''}" data-ch="${g.id}" data-v="${esc(o.value)}" data-why="${esc(o.why)}" aria-checked="${o.on}" aria-disabled="${o.why ? 'true' : 'false'}"${o.why ? ` aria-describedby="${wid}"` : ''}><span class="ap-ch-t">${o.on ? '\u2713 ' : ''}${esc(o.label)}</span>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}${o.why ? `<small class="ap-why" id="${wid}">${esc(o.why)}</small>` : ''}</button>`;
     }).join('')}</div></div>`;
   }).join('')}`;
   for (const id of ['cost', ...new Set([...GROUP_ORDER.fight, ...GROUP_ORDER.free, 'stone']), 'sheet']) {      // 'stone': the one group of a creature merged with stone
