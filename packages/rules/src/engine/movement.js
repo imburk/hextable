@@ -648,8 +648,8 @@ function moveOn(s, a, ctx, ev, own) {
           stop = key(way.h);
         }
       }
-      if (!stop) fail("Can't get there.");
-      tk = stop; node = reach.get(tk);
+      // With no stop at all (the place is out of the mover's reach as the party knows it), it is refused as the plain world refuses it: the generic refusals below ("Too far", the locked arena), never one only a creature there would give.
+      if (stop) { tk = stop; node = reach.get(tk); } else node = undefined;
     }
     if (!node || !node.canStop) {
       if (fighting && !s.encounter.arena[col(to)]) fail("The arena is locked until the fight ends.");

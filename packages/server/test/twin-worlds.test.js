@@ -2039,3 +2039,18 @@ for (const [label, to] of [["no height given", { q: 3, r: 0 }], ["the ledge's he
   for (const d of r.diffs) assert.match(d.step, /move/, `${d.who}: nothing differs before the climb (${d.step})`);
   assert.ok(!JSON.stringify(r.hidden.raw.Sam).includes("Can't get there"), "no refusal is sent");
 });
+
+// The same in a fight, the ledge out of the climber's movement: both worlds are refused in the same words ("Too far"), so the refusal does not tell a creature is there.
+for (const from of [{ q: 0, r: 0 }, { q: -2, r: 0 }]) test(`climbing: in a fight, a ledge a hidden creature holds, too far for the climber (from ${from.q},0), is refused in the same words as with no creature`, () => {
+  // A creature hiding joins the fight in both worlds (it takes a place in the order, which players are sent as "someone"): in the plain one it hides far from the ledge.
+  const put = (at) => (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 0 }, name: "Lurker", hidden: true }); Object.assign(byName(w, "Lurker"), { pos: at, hp: 500, maxHp: 500, hiding: true }); delete byName(w, "Lurker").hidden; };
+  const setup = (w) => {
+    ledgeScene(w);
+    w.must({ type: "place", actor: "fighter", to: from });
+    w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -3, r: 3 }, name: "Foe" });
+  };
+  const steps = [{ by: "dm", act: { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 } }, (w) => turnOf(w, "fighter"), { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 3, r: 0 } }, allowError: true }, { by: "Pat", act: { type: "say", as: "fighter", text: "Hm." } }];
+  const r = twinRun({ players: ["Pat", "Sam"], setup, steps }, { hide: put({ q: 3, r: 0, z: 10 }), plain: put({ q: 5, r: 3, z: 0 }) });
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes("Too far"), "the refusal is Too far");
+  for (const d of r.diffs) assert.fail(describe([d]));
+});
