@@ -674,6 +674,60 @@ export function roomAt(s, e, to) {
 }
 
 
+
+// ---------- size changes (a `resize` step: Enlarge/Reduce) ----------
+// What stands in the way of a creature at a size (`body`) where it is: the first of the others whose space it would be in, judged on what the caster's side knows. A creature the DM keeps
+// hidden, or one the party has no way to know of, is never counted, whoever casts (a visible foe's growth is sent to the players too), so that neither a refusal nor a smaller result tells the players it is there; the DM is told
+// of it instead (`told`). 
+function inTheWay(s, t, body, caster) {
+  const G = gridOf(s.map), told = [];
+  let found = null;
+  for (const o of living(s)) {
+    if (o.id === t.id || !o.pos || !overlapAt(o, o.pos, body, t.pos, G)) continue;
+    if (o.side !== 'party' && (o.hidden || unknown(s, o))) { told.push(o); continue; }
+    found ??= o;
+  }
+  return { found, told };
+}
+const roomFor = (s, t, body) => !ground(s.map, t.pos) || fitsOn(s.map, body, t.pos, barriers(s.map));
+// Put `t` at `size` (a `resize` step, and the size going back when the effect ends). Returns false where it is not there.
+// `resize`: the creature is one size category larger or smaller for as long as the lasting effect runs; the part remembers the size it had (`size: { was, now }`), and durations.js puts it back.
+// Larger only as far as there is room ("the maximum size possible in the space available": one category is all it can grow, so no room means no change); smaller stops at Tiny. One change at a time:
+// a creature already changed by a lasting effect is left as it is and the DM is told. The benefits of the spell (its other steps) apply whether or not the size changed.
+export function resize(s, t, step, ev, f) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound) return false;
+  if (t.dead || t.object || !t.pos) return true;
+  const name = f.src.name, caster = s.entities[f.actor] ?? null, now = SIZES[t.size] ? t.size : 'medium', at = SIZE_ORDER.indexOf(now);
+  const dm = (text) => ev.push({ type: 'manual', actor: f.actor ?? t.id, name, partial: true, text });
+  if (effectsOf(s).some((x) => x.parts.some((p) => p.size && !p.ended && p.target === t.id))) {
+    dm(`${t.name} is already larger or smaller by a lasting effect, and the engine keeps one change of size for a creature. It did not change ${name}'s: the DM decides the size.`);
+    return true;
+  }
+  const to = SIZE_ORDER[at + (step.resize === 'larger' ? 1 : -1)];
+  if (!to) { ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: ${t.name} is already ${now}, so it does not get ${step.resize}` }); return true; }
+  if (step.resize === 'larger') {
+    const body = { ...t, size: to }, { found, told } = inTheWay(s, t, body, caster);
+    if (found || !roomFor(s, t, body)) { ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: there is no room for ${t.name} to grow, so it stays ${now}` }); return true; }
+    if (told.length) dm(`${t.name} grew in ${name}, and ${told.map((o) => o.name).join(', ')} (which the party does not know of) is in its new space. The engine did not count ${told.length === 1 ? 'it' : 'them'}, so as not to tell the players: the DM moves whoever should not be there.`);
+  }
+  t.size = to;
+  fx.parts.push({ target: t.id, size: { was: now, now: to } });
+  ev.push({ type: 'size', id: t.id, size: to });
+  return true;
+}
+// The size a lasting effect gave goes back when it ends (durations.js `ON.sizeEnd`): only if the creature is still the size the effect left it, and there is no change of the effect's own
+// to undo for one that was shrunk back (a creature that cannot have the room is left where it stands and the DM told, alone: a refusal would tell the players what hides there).
+export function sizeEnd(s, ev, t, was, now, name) {
+  if (t.dead || (SIZES[t.size] ? t.size : 'medium') !== now) return;
+  t.size = was;
+  ev.push({ type: 'size', id: t.id, size: was });
+  if (t.pos && SIZE_ORDER.indexOf(was) > SIZE_ORDER.indexOf(now)) {
+    const body = { ...t }, { found, told } = inTheWay(s, t, body, null);
+    if (found || told.length || !roomFor(s, t, body)) ev.push({ type: 'manual', actor: t.id, name, partial: true, text: `${t.name} is ${was} again, and there is not room for it where it stands (something is in its space). The DM moves it or whatever is in the way.` });
+  }
+}
+
 // ---------- hidden creatures ----------
 // `hidden` is a DM switch: players are not told the creature exists (see view.js). The engine's
 // part is to lift it the moment the party would find out for themselves.

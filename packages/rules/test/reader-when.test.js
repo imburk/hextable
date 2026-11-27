@@ -88,6 +88,7 @@ const MAKE = {
   'attack.advantage': (c) => { c.tgt.cond.prone = {}; },
   'attack.disadvantage': (c) => { c.atk.cond.poisoned = {}; },
   'ally.adjacentToTarget': (c) => c.ally(),
+  'target.ally': (c) => { c.tgt.side = c.atk.side; },                  // the target on the attacker's own side (the default scene has them on two)
   // The target held by the attacker (docs/specs/grapple-shove.md, Decision 2), with a range the scene's gaps never pass.
   'target.grappledBySelf': (c) => { c.tgt.cond.grappled = { source: c.atk.id, holds: [{ by: c.atk.id, with: 'hand', escape: 10, range: 60 }] }; },
 };

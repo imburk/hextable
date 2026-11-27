@@ -471,6 +471,35 @@ Not checked against any rulebook.
 DM: Step effects.0: whether the creature died of old age or lacks body parts, and the consumed diamond.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-giants-draught
+"Giant's Draught" (level 2 transmutation, 30 feet, action, 1 minute, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: damage.
+Its roll: the target makes a Constitution saving throw (read from its steps, since the entry does not say).
+When casting it, the caster chooses whether to enlarge or reduce (Enlarge (one size category larger) or Reduce (one size category smaller)); a step below that is for one of them is part of the cast only for the one chosen.
+One creature within 30 feet makes a Constitution saving throw. This happens only if the target is on another side than the caster.
+On a failure:
+  It is one size category larger (Medium becomes Large). Only as far as there is room: if there is none the creature stays as big as it was, and the table is told. A creature the caster's side does not know is there is not counted: the engine tells the DM alone if one is in the way. This is part of the cast only if the caster chose Enlarge (one size category larger).
+The size goes back when the spell ends (a creature that is bigger again with no room where it stands is left there, and the engine tells the DM). Only one change of size at a time: a creature already changed is left as it is, and the DM is told.
+  It is one size category smaller (Medium becomes Small). A Tiny creature cannot go smaller, and the table is told. This is part of the cast only if the caster chose Reduce (one size category smaller).
+The size goes back when the spell ends (a creature that is bigger again with no room where it stands is left there, and the engine tells the DM). Only one change of size at a time: a creature already changed is left as it is, and the DM is told.
+It is one size category larger (Medium becomes Large). Only as far as there is room: if there is none the creature stays as big as it was, and the table is told. A creature the caster's side does not know is there is not counted: the engine tells the DM alone if one is in the way. This happens only if the target is on the caster's side. This is part of the cast only if the caster chose Enlarge (one size category larger).
+The size goes back when the spell ends (a creature that is bigger again with no room where it stands is left there, and the engine tells the DM). Only one change of size at a time: a creature already changed is left as it is, and the DM is told.
+It is one size category smaller (Medium becomes Small). A Tiny creature cannot go smaller, and the table is told. This happens only if the target is on the caster's side. This is part of the cast only if the caster chose Reduce (one size category smaller).
+The size goes back when the spell ends (a creature that is bigger again with no room where it stands is left there, and the engine tells the DM). Only one change of size at a time: a creature already changed is left as it is, and the DM is told.
+It gets -1d4 to the damage it deals. This is part of the cast only if the caster chose Reduce (one size category smaller).
+  It never takes a part of the damage below 1 (a part that was 0 stays 0). It holds only when the attack is made with a weapon or is an Unarmed Strike.
+  It lasts as long as the spell.
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+Saving throws are against the caster's spell save DC.
+It lasts up to 1 minute. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-glow-pebble
 "Glow Pebble" (evocation cantrip, touch, action, 1 hour).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

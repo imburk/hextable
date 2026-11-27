@@ -86,7 +86,7 @@ function blockSpell(s, caster, spellId, targets, ev) {
 function chooseIn(steps, of, value) {
   const visit = (list) => {
     // Bestow Curse, Greater Restoration: a step for another value is no part of this cast (`ifChoice`), and one that is keeps nothing of the key.
-    if (of === 'curse' || of === 'affliction' || of === 'shape') for (let i = list.length - 1; i >= 0; i--) { if (list[i].ifChoice !== undefined && !list[i].ifChoice.includes(value)) list.splice(i, 1); else delete list[i].ifChoice; }
+    if (of === 'curse' || of === 'affliction' || of === 'shape' || of === 'resize') for (let i = list.length - 1; i >= 0; i--) { if (list[i].ifChoice !== undefined && !list[i].ifChoice.includes(value)) list.splice(i, 1); else delete list[i].ifChoice; }
     for (const st of list) {
     const m = st.modifier;
     if (m?.scope && of !== 'damageType') for (const k of ['skill', 'ability']) if (m.scope[k] === 'chosen' && (k === of || (of === 'curse' && k === 'ability'))) m.scope[k] = value;
@@ -591,7 +591,7 @@ function castSpell(s, a, ctx, ev, item) {
 
     // A choice made in casting (Guidance's skill, Resistance's damage type): `a.choice`.
     const pick = sp.def.choice;
-    if (pick) (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : pick.of === 'command' ? `a command (${CHOICES.command.join(', ')})` : pick.of === 'shape' ? `a shape (${(pick.from ?? CHOICES.shape).join(', ')})` : pick.of === 'affliction' ? `an affliction to end (${(pick.from ?? CHOICES.affliction).join(', ')})` : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
+    if (pick) (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : pick.of === 'command' ? `a command (${CHOICES.command.join(', ')})` : pick.of === 'shape' ? `a shape (${(pick.from ?? CHOICES.shape).join(', ')})` : pick.of === 'resize' ? `enlarge or reduce` : pick.of === 'affliction' ? `an affliction to end (${(pick.from ?? CHOICES.affliction).join(', ')})` : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
     // A zone may spare creatures the caster names (Spirit Guardians): `a.spare`.
     const zoneDef = sp.def.zone;
     if (a.spare !== undefined) {
@@ -709,7 +709,9 @@ function castSpell(s, a, ctx, ev, item) {
     // it names), so it does not show a caster the DM hid: the creature appears, its caster stays unknown.
     // A zone that affects nobody as it appears (no `atCast`: Guardian of Faith) catches nobody, so it gives away nobody standing in its area.
     const zoneDef0 = sp.def.zone;
-    if (!zoneDef0 || zoneDef0.atCast) for (const t of targets) if (!(summoning && t === e)) reveal(s, t, ev);
+    // A lit sphere with no step that works on a creature (Daylight) catches nobody either: the light shows what stands in it, it does not find it (a hidden creature stays hidden).
+    const lightOnly = !!sp.def.terrain?.light && sp.def.effects.every((x) => x.manual !== undefined);
+    if (!lightOnly && (!zoneDef0 || zoneDef0.atCast)) for (const t of targets) if (!(summoning && t === e)) reveal(s, t, ev);
 
     // What it does: run its effect steps.
     const st = item ? { dc: item.dc, attack: item.attack } : spellStats(e, s, sp.id), { steps, unscaled } = scaleSteps(sp.def, casterLevel, slot);
@@ -742,7 +744,7 @@ function castSpell(s, a, ctx, ev, item) {
       if (sp.aim === 'creature' || sp.aim === 'self') fx.aimed = [...new Set(targets.filter((t) => !invalid.includes(t) && !wardLost.has(t.id)).map((t) => t.id))];
       // Extended Spell: Advantage on saves to keep Concentration on it, for as long as it lasts.
       if (mm.has.extended && sp.def.concentration) fx.parts.push({ target: e.id, modifier: { on: 'concentration', op: 'advantage' } });
-      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });   // as aimed: an invalid target is named like one that made its save
+      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: lightOnly ? [] : [...new Set(targets.map((t) => t.id))] });   // as aimed: an invalid target is named like one that made its save
     } else if (!allLost) fx = boundEffect(s, sp.name, e.id, steps, a.spell);
     // A zone stays where it was laid out (or moves with its caster) and works on whoever comes
     // into it later (zones.js). Unless it says `atCast`, nobody is affected as it appears.
@@ -782,7 +784,7 @@ function castSpell(s, a, ctx, ev, item) {
       }
       // A Globe's columns include the caster's own space (the Emanation's list leaves it out); a Shell keeps none and moves with its caster.
       const own = ter.globe ? footprint(e, e.pos, gridOf(s.map)).map(col) : [];
-      fx.terrain = { area: { ...sp.area }, hexes: ter.shell ? [] : [...new Set([...hexes.map(col), ...own])], origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}), ...(ter.silence ? { silence: true } : {}), ...(ter.globe ? { globe: true } : {}), ...(ter.shell ? { shell: true, follows: e.id } : {}) };
+      fx.terrain = { area: { ...sp.area }, hexes: ter.shell ? [] : [...new Set([...hexes.map(col), ...own])], origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}), ...(ter.silence ? { silence: true } : {}), ...(ter.light ? { light: ter.light } : {}), ...(ter.globe ? { globe: true } : {}), ...(ter.shell ? { shell: true, follows: e.id } : {}) };
       if (ter.shell && !shellSeen(s, e)) ev.push({ type: 'manual', actor: e.id, name: sp.name, partial: true, text: `${sp.name}: the caster is hiding, so the engine does not enforce the aura (a refusal would tell the players something is there). The DM keeps creatures other than Constructs and Undead from passing into it or reaching through it.` });
     }
     const before = ev.length;

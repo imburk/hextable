@@ -147,6 +147,7 @@ function summarise(def) {
   if (kind === 'meld') return { short: 'meld into stone', long: 'The caster steps into the wall it aimed at and is held there: unseen, out of every space, sensing nothing, until it leaves (5 feet of movement), the spell ends, or a cut of the wall expels it' };
   if (kind === 'cut') return { short: `cut ${step.cut} ft`, long: `Takes ${step.cut} feet out of the wall it is aimed at (the DM is told, and undoes it if the wall is not stone)` };
   if (kind === 'sense') return { short: `sense ${step.sense}`, long: `Senses ${step.sense === 'traps' ? 'traps' : 'magic'} within ${step.feet} feet (the DM is told, and tells the player)` };
+  if (kind === 'resize') return { short: step.resize === 'larger' ? 'one size larger' : 'one size smaller', long: `The target is one size category ${step.resize} for ${def.duration}${def.concentration ? ' (Concentration)' : ''}, as far as there is room; its size goes back when the spell ends` };
   if (kind === 'stabilize') return { short: 'stabilise', long: 'A creature at 0 Hit Points becomes Stable' };
   if (kind === 'revive') return { short: 'revive', long: `Brings a creature that died within the last ${step.within === 1 ? 'minute' : `${step.within} minutes`} back to life with ${step.revive} Hit Point${step.revive === 1 ? '' : 's'}` };
   if (kind === 'dispel') return { short: 'end spells', long: `Ends spells of level ${step.dispel} or lower on it; a check against DC ${step.dc} plus the level for each higher one` };
@@ -237,7 +238,8 @@ export function spellProfile(def) {
   let harmful = false, heals = false, healStep = null;
   walk(def.effects, (st) => {
     const k = stepKind(st);
-    if (k === 'attack' || k === 'save' || k === 'damage' || k === 'fall' || (k === 'condition' && !BENEFICIAL_CONDITIONS.includes(st.condition))) harmful = true;
+    // A save asked only of a creature on another side than the caster's (`when: ['target.enemy']`: Enlarge/Reduce, "if the target is unwilling") is not an attack by itself: the spell is a buff first, and casting it outside a fight starts none.
+    if (k === 'attack' || (k === 'save' && !(st.when ?? []).includes('target.enemy')) || k === 'damage' || k === 'fall' || (k === 'condition' && !BENEFICIAL_CONDITIONS.includes(st.condition))) harmful = true;
     if (k === 'modifier' && st.modifier.against) harmful = true;     // a mark or curse that works only against its target (Hex, Hunter's Mark) is cast at a foe
     if (k === 'heal') { heals = true; healStep ??= st; }
   });
@@ -601,6 +603,7 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
   if (kind === 'stabilize') return kit.stabilise(s, t, ev, f);
+  if (kind === 'resize') return kit.resize(s, t, step, ev, f) || handOver(`${f.src.name} changes ${t.name}'s size, which the engine has no lasting effect to hang on. The DM applies it with setSize and puts it back.`);
   if (kind === 'cut') { const cut = kit.cutWall(s, f.src.wall, step.cut, f, ev); if (cut) kit.expelMelded(s, cut, f, ev); return; }      // a creature merged with stone near the cut is thrown out of it
   if (kind === 'meld') return kit.meldInto(s, t, f, ev) || handOver(`${f.src.name} merges the caster with the stone, which the engine has no lasting effect or wall to hang on. The DM applies it: the caster is out of sight and out of every space until it leaves.`);
   if (kind === 'sense') return kit.sense(s, t, step, f, ev);

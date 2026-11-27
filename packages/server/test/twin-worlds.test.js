@@ -1508,3 +1508,55 @@ test("a DM-hidden foe carrying a light lights nothing the players are sent (sigh
   });
   if (r.diffs.length) assert.fail(describe(r.diffs));
 });
+
+// ---- Daylight (#786 wave 5 part 2): a lit sphere is cast where everyone sees it, and the light shows a DM-hidden creature in it to nobody ----
+// What the rule shows: the sphere lights the cells (the players are sent the lit area either way); a creature the DM keeps hidden is withheld from the view whether it stands in the light or not.
+const daylightSetup = (w) => {
+  darkvisionSetup(w);
+  const s = w.state;
+  w.must({ type: "place", actor: "wizard", to: { q: -2, r: 0 } });
+  Object.assign(s.entities.wizard, { slots: { 3: 3 }, slotsMax: { 3: 3 } });
+  s.entities.wizard.spells.push("daylight");
+};
+test("daylight: a DM-hidden creature standing in the lit sphere (or just past its Dim Light) is sent to no player: the worlds with and without it are the same", () => {
+  const script = { players: ["Pat", "Sam"], setup: daylightSetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "daylight", hex: { q: 4, r: 0 }, slot: 3 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] };
+  const sit = (w, at) => { w.must({ type: "spawn", monster: "goblin-warrior", at, name: "Lurker", hidden: true }); Object.assign(byName(w, "Lurker"), { hp: 500, maxHp: 500 }); };
+  for (const q of [8, 4 + 12, 4 + 13]) {
+    const r = twin(script, { hide: (w) => sit(w, { q, r: 0 }), plain: (w) => burn(w, { q: q - 1, r: 0 }) });
+    for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing (q ${q})`);
+  }
+});
+
+// ---- Enlarge/Reduce (#786 wave 5 part 2): growth is judged on what the caster's side knows, so a DM-hidden creature in the new space neither stops it nor is told of ----
+test("enlarge: a Large fighter growing into the spaces of hidden creatures (all six neighbours) is sent the same as with a bare cell: the growth is not refused or shoved", () => {
+  const ring = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
+  const setup = (w) => {
+    seeInvisibleSetup(w);
+    const s = w.state;
+    w.must({ type: "place", actor: "fighter", to: { q: 0, r: 0 } });
+    w.must({ type: "place", actor: "wizard", to: { q: -3, r: 0 } });
+    Object.assign(s.entities.wizard, { slots: { 2: 3 }, slotsMax: { 2: 3 } });
+    s.entities.wizard.spells.push("enlarge-reduce");
+  };
+  const script = { players: ["Pat", "Sam"], setup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "enlarge-reduce", target: "fighter", choice: "enlarge", slot: 2 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Bigger." } }] };
+  const sit = (w) => ring.forEach(([dq, dr], i) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: dq, r: dr }, name: `Lurker${i}`, hidden: true }); });
+  const r = twin(script, { hide: sit, plain: (w) => ring.forEach(([dq, dr]) => burn(w, { q: dq + 8, r: dr - 6 })) });
+  for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes('"size":"large"'), "it grew (the players are sent the new size)");
+});
+
+// ---- review of #832: a non-party caster, and a DM-hidden Daylight caster ----
+const wait1 = [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } }];
+test("enlarge: a visible foe enlarging itself next to hidden creatures is sent the same as with bare cells (room is judged on what the players know)", () => {
+  const ring = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
+  const setup = (w) => { seeInvisibleSetup(w); w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 4, r: 0 }, name: "Shaman" }); Object.assign(byName(w, "Shaman"), { size: "medium", hp: 500, maxHp: 500, spells: ["enlarge-reduce"], slots: { 2: 3 }, slotsMax: { 2: 3 } }); };
+  const script = { players: ["Pat", "Sam"], setup, steps: [{ by: "dm", act: (w) => ({ type: "cast", actor: byName(w, "Shaman").id, spell: "enlarge-reduce", target: byName(w, "Shaman").id, choice: "enlarge", slot: 2 }) }, ...wait1] };
+  twin(script, { hide: (w) => ring.forEach(([dq, dr], i) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 4 + dq, r: dr }, name: `Lurker${i}`, hidden: true })), plain: (w) => ring.forEach(([dq, dr]) => burn(w, { q: 12 + dq, r: dr - 6 })) });
+});
+test("daylight: a DM-hidden caster's sphere lights nothing the players are sent (the cast is not public either)", () => {
+  const script = { players: ["Pat", "Sam"], setup: darkvisionSetup, steps: wait1 };
+  twin(script, {
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 10, r: 0 }, name: "Mage", hidden: true }); Object.assign(byName(w, "Mage"), { hp: 500, maxHp: 500, spells: ["daylight"], slots: { 3: 3 }, slotsMax: { 3: 3 } }); w.must({ type: "cast", actor: byName(w, "Mage").id, spell: "daylight", hex: { q: 8, r: 0 }, slot: 3 }); },
+    plain: (w) => burn(w, { q: 10, r: 0 }),
+  });
+});
