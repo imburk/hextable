@@ -342,3 +342,13 @@ test("a swimmer sent to a place a hidden creature holds stops beside it and find
   for (const w of [p2, h2]) ok(apply(w, { type: "move", actor: "fighter", to: { q: 3, r: 0 } }, DM));
   assert.deepEqual(h2.entities.fighter.pos, p2.entities.fighter.pos);
 });
+
+test("the map edit: a tile that stops being water drops its depth, and one that becomes water gets the default", () => {
+  const s = pool({ depth: 15 });
+  const wet = { q: 2, r: 0 };
+  assert.equal(s.map.levels[0].tiles["2,0"].depth, 15);
+  ok(apply(s, { type: "mapEdit", ops: [{ op: "tile", level: "ground", at: wet, tile: { ...s.map.levels[0].tiles["2,0"], t: "stone" } }] }, DM));
+  assert.deepEqual(s.map.levels[0].tiles["2,0"], { t: "stone" });
+  ok(apply(s, { type: "mapEdit", ops: [{ op: "tile", level: "ground", at: wet, tile: { t: "water" } }] }, DM));
+  assert.equal(s.map.levels[0].tiles["2,0"].depth, WATER_DEPTH.default);
+});

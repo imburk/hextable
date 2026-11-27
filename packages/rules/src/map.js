@@ -271,7 +271,13 @@ export const EDITS = {
     const l = map.levels.find((x) => x.id === level);
     if (!l || !at) return `A tile needs a level and a ${gridOf(map).word.one}.`;
     // Water painted without a depth (the editor has no field for it yet, DEBT) is as deep as the migration makes old water: 10 feet.
-    if (tile) l.tiles[col(at)] = tile.t === 'water' && tile.depth === undefined ? { ...structuredClone(tile), depth: WATER_DEPTH.default } : structuredClone(tile);
+    // A tile that stops being water drops its depth (a client that sends the old tile with a new type must not leave one on stone: the linter refuses it).
+    if (tile) {
+      const next = structuredClone(tile);
+      if (next.t === 'water' && next.depth === undefined) next.depth = WATER_DEPTH.default;
+      else if (next.t !== 'water') delete next.depth;
+      l.tiles[col(at)] = next;
+    }
     else {
       delete l.tiles[col(at)];
       for (const r of map.regions) if (r.level === level) r.hexes = r.hexes.filter((k) => k !== col(at));
