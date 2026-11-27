@@ -504,6 +504,11 @@ from the SRD: "Suffocation" (Hazards), "Underwater Combat", "Swimming", the spel
   creature that is not the party's, nothing: the events name it (`id`, `actor`) and `view.js` drops them; the notes are not even made for it; the DM is told by a `partial` `manual`. Twin
   tests: `packages/server/test/twin-worlds.test.js` (a hidden creature running out of breath, gaining Exhaustion, and surfacing, by time and by the rounds of a fight).
 - **Not built, with reasons:** DEBT T110.
+- **The client shows the breath** (#857, `packages/client/breath.js`, pure and tested in Node). `breathView(S, e)` reads the record the engine sends and the limit from `breathOf` (the rules'
+  own, through `./shared/modifiers.js`, never recomputed) and gives the share left, the rounds left and the words: "Holding breath: 2 rounds left" (a long breath, over 20 rounds, in
+  minutes) and "Out of breath". It gives nothing for a creature not under the surface (`submerged`), dead, that breathes water or that the engine cannot judge, or whose `breath` was not sent
+  (a foe, for a player; the DM's view is the whole state, so the DM sees it for every creature that has a record). Over the token (`render-three.js`) a bar under the health bar empties as the
+  breath goes and turns to `--bad` (the theme's warning colour) in the last two rounds and when out; the words are a line under the Hit Points on the character's page (`app.js` `breathLine`).
 
 ## Build notes (E3, #849)
 

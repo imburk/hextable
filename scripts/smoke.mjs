@@ -31,6 +31,7 @@ const REGISTRY = {
   walls: ['walls'],
   circle: ['circle'],
   healthbars: ['healthbars'],
+  breath: ['breath'],
   dieconfirm: ['dieconfirm'],
   spellcard: ['spellcard'],
   upcast: ['upcast'],

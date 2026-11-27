@@ -59,6 +59,7 @@ import { dmLine, tableRule } from './shared/scores.js';
 import { initTableControls, importLine, gridWords, aimedWords } from './tablecontrols.js';
 import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY, readSheet, classNames } from './mycharacters.js';
 import { levelOf } from './shared/derive.js';
+import { breathView } from './breath.js';
 import { SETTINGS, SETTING_TEXT } from './shared/engine.js';
 import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from './startflow.js';
 import { initDefeat } from './defeat.js';
@@ -993,6 +994,15 @@ function deadLine(e) {
   const html = on ? `${esc(shownName(S, e))} has died. ${isDM() ? 'You decide what happens next.' : 'Your DM decides what happens next.'} <button type="button" class="link" data-menu-open="log">Open the log</button>` : '';
   if (d.dataset.sig !== html) { d.dataset.sig = html; d.innerHTML = html; }
 }
+// Breath under water (breath.js, DEBT T110 (1)): a line under the character's Hit Points, "Holding breath: 2 rounds left" or "Out of breath". It is made here, beside the
+// status pills, and is empty for a creature not under the surface, one that needs no air, or one whose breath we were not sent.
+function breathLine(e) {
+  let p = $('c-breath');
+  if (!p) { p = document.createElement('p'); p.id = 'c-breath'; p.setAttribute('role', 'status'); p.hidden = true; $('c-hp').after(p); }
+  const v = e ? breathView(S, e) : null;
+  p.hidden = !v; p.classList.toggle('warn', !!v?.warn);
+  if (p.textContent !== (v?.words ?? '')) p.textContent = v?.words ?? '';
+}
 // #717: the quick actions of the turn line. On a turn of mine, for the selected creature when the turn is its own: up to three rows that need the map next, so a fight
 // action is the quick action and then the target. They are the action panel's own rows (AP.quick), and a tap is a tap on the row.
 function showQuick() {
@@ -1054,6 +1064,7 @@ function refresh() {
   let hint = '', go = false, multi = null;
   choicesNow = e && mine(e) && !ED.on ? choicesFor() : null;
   AP.render(e, mode, { my: !!e && mine(e), full: !!e?.abil });
+  breathLine(e);
   showQuick();
   if (e) {
     // full: we were sent this creature's whole record (a party member, or anything if we are the DM).
