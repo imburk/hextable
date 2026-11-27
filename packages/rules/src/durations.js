@@ -27,6 +27,7 @@
 // an effect anyway, `bound`, that ends when its parts do.
 // Ending an effect removes its parts. Design: docs/specs/rules-expansion.md.
 import { has, incapacitated } from './modifiers.js';
+import { submerged } from './space.js';
 import { leaveForm } from './forms.js';
 import { homebrewBlock, srcOf } from './homebrew.js';
 
@@ -42,6 +43,8 @@ export function durationMinutes(text) {
   return m ? +m[1] * MINUTES[m[2]] : null;
 }
 
+// Is anyone under the surface of water now (space.js `submerged`)?
+const anyUnder = (s) => Object.values(s.entities ?? {}).some((e) => !e.dead && submerged(s, e));
 export const effectsOf = (s) => (s.effects ??= []);
 const inFight = (s, id) => !!s.encounter && s.encounter.order.some((o) => o.id === id);
 
@@ -154,9 +157,9 @@ function expire(s, ev, fx) {
 // The world clock moved: end whatever has run out.
 export function tick(s, ev) {
   // Everyone under water holds its breath through the time that passed since the clock was last looked at (engine/rolls.js `breathe`). `breathAt` is that moment, kept
-  // from one look to the next; a game that has none yet (a new one, a save from before swimming: it is optional, so there is no state version for it) works it out from what
-  // this advance told (`time`, a rest), and from nothing else: a clock moved some other way is counted from now.
-  if (Number.isFinite(s.clock)) {
+  // from one look to the next. It is written only once a game has had a creature under water (a table that never swims has no new field: its state is what it was), and it is
+  // optional (no state version): a game with none works the first advance out from the `time` or `rest` event it just made, and from nothing else (that one is counted from now).
+  if (Number.isFinite(s.clock) && (Number.isFinite(s.breathAt) || anyUnder(s))) {
     const told = ev.findLast?.((x) => x?.type === 'time' || x?.type === 'rest');
     const from = Number.isFinite(s.breathAt) ? s.breathAt : told?.type === 'time' ? s.clock - told.minutes : told?.short === true ? s.clock - 60 : told ? s.clock - 480 : s.clock;
     const dt = s.clock - from;
@@ -202,7 +205,7 @@ function boundary(s, ev, e, kit, when) {
 }
 // A turn boundary is also where a swimmer's breath is looked at (`secs` 0: surfacing is noticed here), and where a game with no `breathAt` yet takes the clock as it is, so that
 // the first round of a fight counts.
-const watch = (s, ev, e, turnEnd) => { if (!Number.isFinite(s.breathAt) && Number.isFinite(s.clock)) s.breathAt = s.clock; ON.breath?.(s, ev, e, 0, turnEnd); };
+const watch = (s, ev, e, turnEnd) => { if (!Number.isFinite(s.breathAt) && Number.isFinite(s.clock) && anyUnder(s)) s.breathAt = s.clock; ON.breath?.(s, ev, e, 0, turnEnd); };
 export const turnStarted = (s, ev, e, kit) => { boundary(s, ev, e, kit, 'turnStart'); watch(s, ev, e, false); };
 export const turnEnded = (s, ev, e, kit) => { boundary(s, ev, e, kit, 'turnEnd'); watch(s, ev, e, true); };
 

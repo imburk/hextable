@@ -308,3 +308,13 @@ test("a game with no `breathAt` (a new one, a save from before swimming) counts 
   ok(apply(t, { type: "shortRest" }, DM));
   assert.equal(exh(g) > 0, true, "an hour under water");
 });
+
+test("a table that never swims is untouched: no `breathAt`, no `breath` anywhere, however much time passes", () => {
+  const s = pool({ foe: true });
+  delete s.breathAt;
+  wait(s, 30);
+  fight(s); turnOf(s, "fighter");
+  for (let i = 0; i < 12; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  assert.equal(Object.hasOwn(s, "breathAt"), false);
+  assert.ok(Object.values(s.entities).every((e) => e.breath === undefined));
+});

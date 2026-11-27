@@ -474,8 +474,8 @@ from the SRD: "Suffocation" (Hazards), "Underwater Combat", "Swimming", the spel
   minutes, 30 seconds at least (a `hold-breath` trait: 1 hour). Its record is `breath: { held, gave, out?, told? }` (seconds held, Exhaustion levels suffocation gave it, said to
   be out of breath, the DM told); it is optional, so there is no new state version and no migration. The time is the game clock's: in a fight a round is 0.1 of a minute and the
   clock moves a round at the start of each round (as it always did), outside one it is whatever `advanceTime`, a rest or travel moves it. `durations.js` `tick` counts it for every
-  creature under the surface, from `state.breathAt` (the clock at the last look: optional too; a game with none works the first advance out from the `time` or `rest` event it just
-  made, and from nothing else), and every turn boundary of a creature looks at it with 0 seconds, which is where surfacing is noticed.
+  creature under the surface, from `state.breathAt` (the clock at the last look: optional too, and written only once someone has been under water, so a table that never swims keeps the state it had; a game with
+  none works the first advance out from the `time` or `rest` event it just made, and from nothing else), and every turn boundary of a creature looks at it with 0 seconds, which is where surfacing is noticed.
 - **Running out.** In a fight the rounds are counted as they complete, and the round whose turn is ending counts too: a creature with three minutes holds its breath for rounds 1 to 30,
   and gains 1 Exhaustion level at the end of each of its turns from round 31 on. Outside a fight a turn is a round: one
   level for each full 6 seconds past the limit. The sixth level is death (Exhaustion, SRD "Rules Glossary"): `kill` runs, so Death Ward holds against it as against any other kill
