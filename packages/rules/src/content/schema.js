@@ -3364,7 +3364,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   // spells
   'spells.level': [0, 9], 'spells.range': [1, 10560000],
   'area.size': FEET, 'area.range': FEET, 'area.height': [5, 100], 'area.width': [5, 100], 'area.choose': [2, 20], 'area.count': [2, 20],
-  'terrain.light': [5, 120], 'creature.count': [1, 20], 'creature.range': [5, 1200], 'arm.range': [5, 120], 'water.by': [5, 20], 'water.size': [5, 1000], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
+  'terrain.light': [5, 120], 'creature.count': [1, 20], 'creature.range': [5, 1200], 'arm.range': [5, 120], 'water.by': [5, 20], 'water.size': [5, 200], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
   'targets.#': [1, 20], 'range.#': [5, 240], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],

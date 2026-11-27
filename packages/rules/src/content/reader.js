@@ -1272,10 +1272,10 @@ export const STEP_SENTENCES = {
       const by = w.by ?? 20;
       this.num(`${at}.water.by`, by, 'feet');
       this.num(`${at}.water.size`, w.size, 'feet');
-      say(`Once for the cast, the surface of every cell of standing water in the area (the cube's cells on the level it lies on, whose water lies within its height) rises by ${by} feet, as the DM's own water change does, keeping what each cell was; a creature in the water or on its surface rises with it, with no fall damage. Where the rise would make the water deeper than the deepest there is, the cast does nothing there and the DM is told.`);
+      say(`Once for the cast, the surface of every cell of standing water in the area (the cube, ${w.size} feet a side: its cells on the level it lies on, whose water lies within its height) rises by ${by} feet, as the DM's own water change does, keeping what each cell was; a creature in the water or on its surface rises with it, with no fall damage. Where the rise would make the water deeper than the deepest there is, the cast does nothing there and the DM is told.`);
     } else {
       this.num(`${at}.water.size`, w.size, 'feet');
-      say('Once for the cast, the water of every cell in the area is lowered to its bed and the cells become the bed (a trench), as the DM\'s own water change does, keeping what each cell was; a creature that was in the water comes down to the bed with no fall damage.');
+      say('Once for the cast, the water of every cell in the area (the cube, ${w.size} feet a side) is lowered to its bed and the cells become the bed (a trench), as the DM\'s own water change does, keeping what each cell was; a creature that was in the water comes down to the bed with no fall damage.');
     }
     if (!this.fx || this.fx === 'bound' || this.obj) {
       this.line('The spell does not last, so the engine has nothing to hang the change on: the DM puts the water back.');

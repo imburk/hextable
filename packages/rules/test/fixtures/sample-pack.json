@@ -903,6 +903,43 @@
       "tier": "assist",
       "checked": false,
       "text": "The caster steps into a wall within touch and is hidden there for an hour. The DM judges what the wall is made of."
+    },
+    {
+      "id": "hb-sample-rising-pool",
+      "name": "Rising Pool",
+      "source": "homebrew:sample",
+      "level": 3,
+      "school": "transmutation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": 60,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "1 minute",
+      "concentration": true,
+      "ritual": false,
+      "target": {
+        "area": {
+          "shape": "cube",
+          "size": 20
+        }
+      },
+      "effects": [
+        {
+          "water": {
+            "mode": "flood",
+            "by": 10,
+            "size": 20
+          }
+        }
+      ],
+      "tier": "assist",
+      "checked": false,
+      "text": "Standing water in a small cube rises ten feet for a minute and sinks back when the spell ends."
     }
   ]
 }
