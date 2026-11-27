@@ -177,7 +177,9 @@ test('the reading says what the engine hands to the DM, for the SRD\'s own monst
   has('bulette', /cannot lay out this area/);
   has('adult-red-dragon', /The engine has no legendary, lair or mythic actions/);
   const none = readEntry('monster', CONTENT.monsters.black_bear ?? CONTENT.monsters['black-bear']);
-  assert.ok(none.doesNot.includes('Moving it by its swim speed.'));
+  // Swimming is built (#836): the engine moves a creature by its swim speed, so the reading no longer hands it to the DM and says how it swims.
+  assert.ok(!none.doesNot.includes('Moving it by its swim speed.'));
+  assert.ok(none.lines.some((l) => /It swims by its swim speed/.test(l)));
 });
 
 // ---------- what the engine does, said (the readings stay true) ----------

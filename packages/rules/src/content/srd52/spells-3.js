@@ -512,11 +512,11 @@ export const spells3 = [
     time: "action", range: 30, components: ["v", "s", "m"],
     duration: "1 hour", concentration: false, ritual: true,
     target: {"creature": {"count": 10}},
-    effects: [{"modifier": {"on": "surface", "op": "immune", "scope": {"surface": "water"}}}, {"manual": "Water Walk: the engine lets each target walk across, and stop on, the water tiles of the map for 1 hour. The DM applies the rest: other liquid surfaces (acid, mud, snow, quicksand, lava; creatures crossing molten lava can still take heat damage), the Bonus Action an affected target must take to pass from the surface into the liquid and back (a creature that falls in passes through the surface), and what befalls a creature standing on water when the spell ends (it is in the water: the engine has no swimming yet, so the DM places it)."}],
+    effects: [{"modifier": {"on": "surface", "op": "immune", "scope": {"surface": "water"}}}, {"manual": "Water Walk: the engine lets each target walk across, and stop on, the water tiles of the map for 1 hour. The DM applies the rest: other liquid surfaces (acid, mud, snow, quicksand, lava; creatures crossing molten lava can still take heat damage), the Bonus Action an affected target must take to pass from the surface into the liquid and back (a creature that falls in passes through the surface). When the spell ends on a creature standing on water, it is in the water at the surface: it swims from there by the engine's swimming rules, and the DM judges anything else (rough water, what it carries)."}],
     kinds: ["utility"],
     roll: "none",
     tier: "assist", checked: true,
-    text: "Up to ten willing creatures within 30 feet can walk across any liquid surface as if it were solid ground for an hour. The engine lets them cross and stop on the map's water; the DM handles other liquids, the Bonus Action to pass into the liquid, and a creature left standing on water when it ends. It can be a ritual.",
+    text: "Up to ten willing creatures within 30 feet can walk across any liquid surface as if it were solid ground for an hour. The engine lets them cross and stop on the map's water; the DM handles other liquids and the Bonus Action to pass into the liquid. A creature standing on water when it ends is in the water at the surface and swims from there. It can be a ritual.",
   },
   {
     id: "wind-wall", name: "Wind Wall", source: "SRD 5.2.1",
