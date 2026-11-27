@@ -237,7 +237,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         const empty = await host.$$eval('#pm-review .pm-entry[data-entry]', (l) => l.filter((d) => d.querySelectorAll('.pm-line').length < 3 || !d.querySelector('.pm-tier')).length);
         if (empty) throw new Error(`${empty} entries without a reading`);
         const t = await host.textContent('#pm-review');
-        if (!/17 auto, 3 assist, 1 manual/.test(t) || !/Licence: CC0, by the author/.test(t) || !/Attribution: Written for the Hextable tests/.test(t)) throw new Error(t.slice(0, 400));
+        if (!/17 auto, 4 assist, 1 manual/.test(t) || !/Licence: CC0, by the author/.test(t) || !/Attribution: Written for the Hextable tests/.test(t)) throw new Error(t.slice(0, 400));
         if (!/Add to this table/.test(await host.textContent('#pm-go'))) throw new Error('no Add');
         const vh = await host.evaluate(() => innerHeight), gb = await (await host.$('#pm-go')).boundingBox();
         if (gb.y + gb.height > vh) { await host.evaluate(() => document.querySelector('#pm-review').scrollIntoView()); }
@@ -559,7 +559,7 @@ async function solo(browser, url, label0, opts, tag) {
         const n = await page.$$eval('#pm-review .pm-entry[data-entry]', (l) => l.length);
         if (n !== 22) throw new Error(`${n} entries`);
         const t2 = await page.textContent('#pm-review');
-        if (!/17 auto, 3 assist, 1 manual/.test(t2) || !/Add to this game/.test(await page.textContent('#pm-go'))) throw new Error(t2.slice(0, 300));
+        if (!/17 auto, 4 assist, 1 manual/.test(t2) || !/Add to this game/.test(await page.textContent('#pm-go'))) throw new Error(t2.slice(0, 300));
         await page.evaluate(() => { const d = document.querySelector('#pm-review .pm-entry[data-entry]'); d.open = true; d.querySelector('.pm-try-btn').click(); });
         await wait(page, () => /damage|hit|missed|target/i.test(document.querySelector('#pm-review .pm-try')?.textContent ?? ''));
         await shot(page, `homebrew-solo-review-${tag}`);
