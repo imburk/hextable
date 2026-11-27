@@ -27,8 +27,8 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [Keyboard](keyboard.md) | WASD and arrows, follow camera, key maps | Built (#357) |
 | [Pop-out windows](popout-windows.md) | Turn order, log, dice and a sheet in their own windows on a computer; the map later | Draft; owner's answers of 21 November; not built |
 | [Feedback button](feedback.md) | A comment with what the player was just shown | Built (first version) |
-| [Portable characters](portable-characters.md) | A character file with a signed history and level meter | Draft; nothing built |
-| [Homebrew](homebrew.md) | Table packs, the registry, reader, dry run, builder | Draft; B1 to B7 and the CLI built; builder (B9 to B11) not |
+| [Portable characters](portable-characters.md) | A character file with a signed history and level meter; it carries its own homebrew (#592) | Draft; nothing built |
+| [Homebrew](homebrew.md) | Table packs, the registry, reader, dry run, builder; a character file may carry its own pieces, which the DM allows one by one (#592) | Draft; B1 to B7 and the CLI built; builder (B9 to B11) not |
 | [Homebrew subclasses](homebrew-subclasses.md) | A subclass of an SRD class as a pack entry | Draft; B1 to B5 built |
 | [Species](species.md) | SRD species as content, the sheet field, homebrew species | Draft; SP1 and SP2 built |
 | [Ability scores](ability-scores.md) | Standard array, point buy, rolling, the DM's reroll rule | Agreed; built |
