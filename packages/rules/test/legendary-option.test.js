@@ -273,3 +273,13 @@ test("7: undo of a legendary action reopens the window with the creature offered
   h.redo(s);
   assert.equal(JSON.stringify(s), s1, "redo gives the same state");
 });
+
+test("4: `after: true` makes the action first, from where it stands, then moves", () => {
+  const { s, d, f } = window();
+  d.pos = at(f, 1);
+  s.entities[d.id].legendary.actions.options.find((o) => o.id === "pounce").move.after = true;
+  const r = ok(s, { type: "legendary", actor: d.id, option: "pounce", to: at(f, 4), target: "fighter" });
+  const t = types(r);
+  assert.ok(t.indexOf("attack") > 0 && t.indexOf("attack") < t.indexOf("moved"), "the attack comes before the move");
+  assert.equal(s.entities[d.id].pos.q, f.q + 4);
+});
