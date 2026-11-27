@@ -126,7 +126,7 @@ async function circle(browser, url, label, opts) {
         await panelTab(page, 'move');
         const fx = await state(page, (S) => S.effects.find((f) => f.spell === 'conjure-animals').id);
         const sel = `#ap-move [data-row="roll:${fx}"]`;
-        await waitShown(page, sel);
+        await waitShown(page, sel).catch(async (e) => { throw new Error(`${e.message.slice(0, 80)} | ${JSON.stringify(await page.evaluate(([i]) => ({ b: window.hextable.state.encounter?.budget, cur: window.hextable.state.encounter?.order[window.hextable.state.encounter.turn]?.id, rows: [...document.querySelectorAll('#ap-move [data-row]')].map((r) => r.dataset.row), pos: window.hextable.state.entities[i].pos }), [id]))}`); });
         if (!/Move the pack/.test(await page.textContent(sel))) throw new Error(`row: ${await page.textContent(sel)}`);
         await shot('4-pack-row');
         await page.click(sel);
