@@ -47,11 +47,11 @@ export const spells6 = [
     time: "action", range: 60, components: ["v","s"],
     duration: "10 minutes", concentration: true, ritual: false,
     target: {"self":true},
-    effects: [{"summon": "fey-spirit", "bond": {"kind": "summon", "turn": "after", "orders": "command", "range": 500, "at0": "vanish", "first": "commanded"}}, {"manual": "Conjure Fey: on later turns the caster teleports the spirit to an unoccupied space the caster can see within 30 feet of the space it left, as part of the Bonus Action that commands it; the DM moves it. The spirit looks like a Fey creature the caster chooses. The fear has the caster and the spirit as its source."}],
+    effects: [{"summon": "fey-spirit", "bond": {"kind": "summon", "turn": "after", "orders": "command", "range": 500, "at0": "vanish", "first": "commanded"}}, {"manual": "Conjure Fey: on later turns the caster teleports the spirit to an unoccupied space the caster can see within 30 feet of the space it left, as part of the Bonus Action that commands it; the DM moves it. The spirit looks like a Fey creature the caster chooses. The fear has the caster and the spirit as its source. Two deviations from the SRD: the spirit's attack \"when it appears\" is not made as part of the cast, it attacks on its own turn straight after the caster's (that first attack costs no Bonus Action; later ones cost the caster's Bonus Action to command it); and the engine ends Frightened when the spirit's next turn starts, which is after the caster's next turn, so the fear lasts one caster turn too long. The DM may lift it at the start of the caster's next turn."}],
     kinds: ["damage", "control"],
     roll: "attack",
     tier: "assist", checked: true,
-    text: "A Medium Feywild spirit appears within 60 feet for up to 10 minutes of Concentration. Cast in a fight, it acts straight after the caster and the caster's player plays that turn: a melee spell attack for 3d12 plus the spellcasting modifier Psychic damage (1d12 more per slot level above 6), and a creature hit is Frightened until the spirit's next turn starts. A Bonus Action commands it on later turns. The DM keeps the teleport and the target within 5 feet.",
+    text: "A Medium Feywild spirit appears within 60 feet for up to 10 minutes of Concentration. Cast in a fight, it acts straight after the caster and the caster's player plays that turn: a melee spell attack for 3d12 plus the spellcasting modifier Psychic damage (1d12 more per slot level above 6), and a creature hit is Frightened until the spirit's next turn starts (one caster turn longer than the SRD). A Bonus Action commands it on later turns. The DM keeps the teleport and the target within 5 feet.",
   },
   {
     id: "contingency", name: "Contingency", source: "SRD 5.2.1",

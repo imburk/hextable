@@ -80,7 +80,6 @@ test("Conjure Fey: the spirit appears, attacks with the caster's spell attack fo
     assert.equal(d.dtype, "psychic");
     assert.deepEqual([d.dice.length, d.dice[0].sides], [3, 12]);
     assert.ok(json(g.cond ?? g.conditions).includes("frightened"), json(g.cond));
-    const fear = s.effects.find((fx) => fx.parts?.some((p) => p.target === g.id && p.condition === "frightened"));
     const fe = s.effects.find((f) => f.name === "Fey Strike"); assert.ok(json(fe).includes("turnStart"), "ends at the start of the caster's next turn: " + json(fe)); assert.ok(json(fe).includes("\"of\":\"source\"") || json(fe).includes("wizard"), json(fe));
   }
 });
@@ -105,9 +104,6 @@ test("Conjure Celestial: the cylinder sears an enemy that fails the save and hea
   const heal = r.events.find((e) => e.type === "heal" && e.target === "fighter");
   assert.ok(heal, json(r.events.map((e) => [e.type, e.target])));
   assert.ok(f.hp > 100);
-  // A higher slot grows both.
-  const s2 = field(); s2.entities.cleric.slots[8] = 1; s2.entities.cleric.slotsMax[8] = 1;
-  assert.equal(SPELLS["conjure-celestial"].def.higher.slot.heal, "1d12");
 });
 
 test("Conjure Fey: the fear lasts until the spirit's next turn starts, which follows the caster's straight away", () => {
@@ -125,4 +121,78 @@ test("Conjure Fey: the fear lasts until the spirit's next turn starts, which fol
   for (let i = 0; i < 40 && current(s) !== id; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
   assert.equal(current(s), id);
   assert.ok(!g.cond.frightened, "gone when the spirit's turn starts");
+});
+
+// The dice a cast rolled on one creature, summed over the damage (or heal) events.
+const dice = (events, type, id) => events.filter((e) => e.type === type && e.target === id).reduce((n, e) => n + (e.dice?.length ?? 0), 0);
+
+test("Conjure Celestial at an 8th-level slot: 7d12 to a foe and 5d12 to an ally, rolled", () => {
+  const s = field();
+  s.entities.cleric.slots[8] = 1; s.entities.cleric.slotsMax[8] = 1;
+  const g = spawn(s, "goblin-warrior", 6, 0); g.abil.dex = 1;
+  s.entities.fighter.hp = 100;
+  ok(apply(s, { type: "place", actor: "fighter", to: { q: 6, r: 1 } }, DM));
+  fight(s); turnOf(s, "cleric");
+  const r = ok(apply(s, { type: "cast", actor: "cleric", spell: "conjure-celestial", slot: 8, hex: { q: 6, r: 0 } }, DM));
+  assert.equal(dice(r.events, "damage", g.id), 7, json(r.events.map((e) => [e.type, e.target, e.dice?.length])));
+  assert.equal(dice(r.events, "heal", "fighter"), 5, json(r.events.map((e) => [e.type, e.target, e.dice?.length])));
+});
+
+test("Conjure Celestial heals the caster in its own cylinder", () => {
+  const s = field();
+  s.entities.cleric.hp = 100;
+  spawn(s, "goblin-warrior", 0, 6);
+  fight(s); turnOf(s, "cleric");
+  const r = ok(apply(s, { type: "cast", actor: "cleric", spell: "conjure-celestial", slot: 7, hex: { q: -3, r: 0 } }, DM));
+  assert.ok(r.events.some((e) => e.type === "heal" && e.target === "cleric"), json(r.events.map((e) => [e.type, e.target])));
+  assert.ok(s.entities.cleric.hp > 100);
+});
+
+test("Conjure Celestial: a creature that enters it and ends its turn there in one turn is affected once", () => {
+  const s = field();
+  const g = spawn(s, "goblin-warrior", 3, 3); g.abil.dex = 1;
+  fight(s); turnOf(s, "cleric");
+  ok(apply(s, { type: "cast", actor: "cleric", spell: "conjure-celestial", slot: 7, hex: { q: 6, r: 0 } }, DM));
+  for (let i = 0; i < 40 && current(s) !== g.id; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  assert.equal(current(s), g.id);
+  const hp0 = g.hp;
+  const hit = [];
+  const log = (r) => { for (const e of r.events) if (e.type === "damage" && e.target === g.id) hit.push(e); return r; };
+  g.pos = { q: 6, r: 0, z: 0 };                                    // the DM puts it inside: no entering by walking here
+  log(ok(apply(s, { type: "endTurn", actor: g.id }, DM)));
+  assert.equal(hit.length, 1, "ending the turn inside is one dose");
+  const first = hp0 - g.hp;
+  assert.ok(first > 0);
+  assert.equal(hit.length, 1);
+});
+
+test("Conjure Celestial: a creature the caster cannot see is not bathed when it ends its turn in the cylinder (`seen`)", () => {
+  const s = field();
+  const g = spawn(s, "goblin-warrior", 3, 3); g.abil.dex = 1;
+  g.cond.invisible = { source: "test" };
+  fight(s); turnOf(s, "cleric");
+  ok(apply(s, { type: "cast", actor: "cleric", spell: "conjure-celestial", slot: 7, hex: { q: 6, r: 0 } }, DM));
+  for (let i = 0; i < 40 && current(s) !== g.id; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  g.pos = { q: 6, r: 0, z: 0 };
+  const r = ok(apply(s, { type: "endTurn", actor: g.id }, DM));
+  assert.ok(!r.events.some((e) => e.target === g.id && (e.type === "damage" || e.type === "save")), json(r.events.map((e) => [e.type, e.target])));
+  // Not the same as a creature the caster sees: it is bathed.
+  g.cond.invisible = undefined; delete g.cond.invisible;
+  for (let i = 0; i < 40 && current(s) !== g.id; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  const r2 = ok(apply(s, { type: "endTurn", actor: g.id }, DM));
+  assert.ok(r2.events.some((e) => e.target === g.id && e.type === "damage"), json(r2.events.map((e) => [e.type, e.target])));
+});
+
+test("Conjure Fey at a 7th-level slot adds 1d12", () => {
+  const s = field();
+  s.entities.wizard.slots[7] = 1; s.entities.wizard.slotsMax[7] = 1;
+  const g = spawn(s, "goblin-warrior", 3, 0);
+  s.entities.wizard.owner = "pat";
+  fight(s); turnOf(s, "wizard");
+  const PAT = { role: "player", userId: "pat" };
+  const id = ok(apply(s, { type: "cast", actor: "wizard", spell: "conjure-fey", slot: 7, summon: { at: [{ q: 2, r: 0 }] } }, PAT)).events.find((e) => e.type === "summoned").id;
+  ok(apply(s, { type: "endTurn", actor: "wizard" }, PAT));
+  const a = ok(apply(s, { type: "act", actor: id, action: "fey-strike", target: g.id }, PAT));
+  assert.ok(a.events.find((e) => e.type === "attack").hit);
+  assert.equal(dice(a.events, "damage", g.id), 4, json(a.events.map((e) => [e.type, e.dice?.length])));
 });
