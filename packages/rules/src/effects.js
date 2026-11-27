@@ -380,7 +380,7 @@ export function begin(s, { steps, actor, targets, src, shared = null }) {
     : { kind: 'each', steps, t: 0, actor, targets, src, shared });
   // A `water` step (Control Water) acts once for the cast, on the cells of its area, whether or not a creature stands in the area: it has a frame of its own, run first (the stack runs the last
   // pushed), which also says the spell's `manual` steps (they are said once, the `told` marks being shared with the creatures' frames, and an area with nobody in it would say nothing).
-  if (targets !== null && steps.some((st) => 'water' in st)) {
+  if (targets !== null && steps.some((st) => 'water' in st || st.once === true)) {
     const told = {};
     s.stack.at(-1).told = told;
     s.stack.push({ kind: 'seq', steps, path: '', i: 0, actor, target: null, src, shared: null, told, once: true });

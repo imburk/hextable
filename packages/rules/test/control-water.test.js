@@ -170,10 +170,10 @@ test("Redirect Flow and Whirlpool change no water and hand the DM the effect; th
     const s = lake();
     const r = ok(cast(s, choice));
     assert.equal(json(s.map.levels[0].tiles), original());
-    // Nobody is in the area, so only the spell's standing note reaches the DM (it names both, and the later turns).
-    const text = r.events.filter((e) => e.type === "manual").map((e) => e.text).join("\n");
-    assert.match(text, /Redirect Flow and Whirlpool/);
-    assert.match(text, /later turn/);
+    const text = r.events.filter((e) => e.type === "manual" && /^Control Water \(/.test(e.text)).map((e) => e.text).join("\n");
+    assert.match(text, choice === "redirect" ? /Redirect Flow/ : /Whirlpool/);
+    assert.doesNotMatch(text, choice === "redirect" ? /Whirlpool: in an area/ : /Redirect Flow\): flowing/, "only the chosen effect is told");
+    assert.match(text, /later turns/);
   }
 });
 
