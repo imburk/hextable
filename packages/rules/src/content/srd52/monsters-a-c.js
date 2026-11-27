@@ -1166,6 +1166,8 @@ export const monsters = [
         text: "A melee attack that also stops Reactions."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: { resistance: { day: 3 } },
     tier: "assist",
     checked: true,
     text: "A towering demon of fire and lightning."
@@ -5792,6 +5794,24 @@ export const monsters = [
         text: "Recharge 5-6. A line 90 feet long and 5 feet wide."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "cloaked-flight", name: "Cloaked Flight", again: "nextTurn", move: { speed: "half", mode: "fly" },
+            manual: "Uses Spellcasting to cast Invisibility on itself.",
+            text: "Casts Invisibility on itself with its Spellcasting and flies up to half its Fly Speed. Not again before its next turn." },
+          { id: "sonic-boom", name: "Sonic Boom", again: "nextTurn",
+            manual: "Uses Spellcasting to cast Shatter.",
+            text: "Casts Shatter with its Spellcasting. Not again before its next turn." },
+          { id: "tail-swipe", name: "Tail Swipe", use: ["rend"],
+            text: "Makes one Rend attack." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 18000 },
+    },
     tier: "assist",
     checked: true,
     text: "A huge adult blue dragon, a desert dragon that breathes lightning."
@@ -6549,6 +6569,27 @@ export const monsters = [
         text: "Recharge 5-6. A 60 foot cone."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "mind-invasion", name: "Mind Invasion",
+            manual: "Uses Spellcasting to cast Mind Spike (level 3 version).",
+            text: "Casts Mind Spike (level 3 version) with its Spellcasting." },
+          { id: "noxious-miasma", name: "Noxious Miasma", again: "nextTurn",
+            target: { area: { shape: "sphere", size: 20, range: 90 } },
+            effects: [{ save: "con", dc: 17, half: false, onFail: [
+              { damage: "2d6", type: "poison" },
+              { modifier: { on: "ac", op: "add", value: -2 }, ends: { on: "turnEnd" } }] }],
+            text: "A 20-foot sphere centred on a point it sees within 90 feet: Constitution save or poison damage and -2 AC until the end of the target's next turn. Not again before its next turn." },
+          { id: "pounce", name: "Pounce", move: { speed: "half" }, use: ["rend"],
+            text: "Moves up to half its Speed, then makes one Rend attack." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 15000 },
+    },
     tier: "assist",
     checked: true,
     text: "A huge adult green dragon, a scheming forest dragon that breathes poison."
