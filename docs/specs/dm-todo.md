@@ -20,6 +20,8 @@ What the engine cannot apply it hands to the DM in a `manual` event. Until now t
 
 `one-token-menu.md` M6 says the badge shows only when something waits and that opening the menu lists what waits. The tray is that list: `initTodo` takes its mount point, so M6 moves `#todo-mount` under the token's "Waiting for you" and adds the tray's count to the token's badge sum. No other code changes. The "waiting for the DM" line moves to the token's status line.
 
+**The badge says what it counts (#844).** `waitingWords` (`todo.js`) turns the three sources (players to let in, rewards to settle, open cards) into one sentence, "2 waiting: Ana asks to join; rewards to settle", used as the `title` and `aria-label` of `#menu-badge` and `#dm-badge`, and a long press on a badge shows it in the toast. The DM tools list has a first row, "Waiting for you (n)", with the same words; the drawer may open one place from another, so tapping it opens the d20 menu's first level, where "Waiting for you" and the cards are (the cards are not drawn a second time).
+
 ## Not built
 
 - Cards do not yet pick the target of a note when the engine's words name no creature but the actor (Mage Armor names its caster only): the DM taps the creature in the party bar and uses its tools there.

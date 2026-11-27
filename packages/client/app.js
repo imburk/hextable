@@ -44,7 +44,7 @@ import { claimWriter } from './solowriter.js';
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
 import { initHandouts } from './handouts.js';
-import { initTodo } from './todo.js';
+import { initTodo, waitingWords } from './todo.js';
 import { initPacks } from './packmanager.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
@@ -914,17 +914,28 @@ function hpNote() {
 }
 // Waiting for you: what the token's badge counts, in words, at the top of the first level, each with its way in. A player's: handouts not opened yet, a level their
 // character can take (the DM's to give). The DM's: players waiting to join, rewards not settled, and under them the cards of the to-do tray (todo.js draws those).
-function renderWaiting() {
+function waitItems() {
   const items = [];
   if (isDM()) {
-    for (const p of (T.lobby?.pending ?? [])) items.push({ text: `${p.name} is waiting to join`, label: 'Let in', act: `in:${p.id}` });
-    if (S.conclusion && S.conclusion.published === false) items.push({ text: 'A fight is over and its rewards are not settled', label: 'Settle', act: 'rewards' });
+    for (const p of (T.lobby?.pending ?? [])) items.push({ text: `${p.name} is waiting to join`, short: `${p.name} asks to join`, label: 'Let in', act: `in:${p.id}` });
+    if (S.conclusion && S.conclusion.published === false) items.push({ text: 'A fight is over and its rewards are not settled', short: 'rewards to settle', label: 'Settle', act: 'rewards' });
   } else {
-    for (const h of HO.unseen()) items.push({ text: `New handout: ${h.title || 'untitled'}`, label: 'Open', act: `ho:${h.id}` });
-    for (const e of Object.values(S.entities)) if (e.kind === 'pc' && e.owner === T.you.userId && levelReady(e)) items.push({ text: `${shownName(S, e)} can reach level ${levelNext(e)}. Your DM levels them up.`, label: 'Open', act: `sheet:${e.id}` });
+    for (const h of HO.unseen()) items.push({ text: `New handout: ${h.title || 'untitled'}`, short: `a new handout (${h.title || 'untitled'})`, label: 'Open', act: `ho:${h.id}` });
+    for (const e of Object.values(S.entities)) if (e.kind === 'pc' && e.owner === T.you.userId && levelReady(e)) items.push({ text: `${shownName(S, e)} can reach level ${levelNext(e)}. Your DM levels them up.`, short: `${shownName(S, e)} can reach level ${levelNext(e)}`, label: 'Open', act: `sheet:${e.id}` });
   }
+  return items;
+}
+// The words of what the badges count, from the same sources as the count (#844): the title and aria-label of both badges, and the DM tools' first row.
+function badgeWords(items = waitItems()) {
+  const w = waitingWords(items.map((i) => i.short), TD.cards());
+  for (const id of ['menu-badge', 'dm-badge']) { const b = $(id); if (b.title !== w.text) { b.title = w.text; b.setAttribute('aria-label', w.text); } }
+  const row = $('dm-waiting-li'); if (row) { row.hidden = !w.n || !isDM(); $('dm-waiting-n').textContent = w.n; $('dm-waiting-says').textContent = w.text.replace(/^\d+ waiting: /, ''); }
+  return w;
+}
+function renderWaiting() {
+  const items = waitItems();
   const n = items.length + TD.count(), box = $('menu-waiting');
-  box.dataset.count = String(n); box.hidden = !n;
+  box.dataset.count = String(n); box.hidden = !n; badgeWords(items);
   const html = items.map((i) => `<li><span>${esc(i.text)}</span><button type="button" data-wait="${esc(i.act)}">${esc(i.label)}</button></li>`).join('');
   if ($('waiting-list').dataset.sig !== html) { $('waiting-list').dataset.sig = html; $('waiting-list').innerHTML = html; }
   $('waiting-list').hidden = !items.length;
@@ -1268,7 +1279,7 @@ function renderDM() {
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
   const owed = lb.pending.length + (S.conclusion && S.conclusion.published === false ? 1 : 0) + TD.count();       // players waiting to be let in, and rewards waiting to be settled
-  $('dm-badge').hidden = !owed; $('dm-badge').textContent = owed;
+  $('dm-badge').hidden = !owed; $('dm-badge').textContent = owed; badgeWords();
   table.textContent = '';
   if (!T.solo) {
     table.innerHTML = `<p class="note">Table code</p><code>${esc(T.you.code)}</code><p class="note">At the table: ${lb.members.map((m) => `${esc(m.name)}${m.online ? '' : ' (away)'}`).join(', ')}</p>`;
@@ -1684,6 +1695,16 @@ $('pick-bring').addEventListener('click', (ev) => {
   if (D.isOpen) D.close(false);
   MC.bring(bringOffer);
 });
+// A long press on a badge says in a toast what it counts (a phone has no hover for the title): the same words, and the press that said it does not open the menu.
+for (const id of ['menu-badge', 'dm-badge']) {
+  let timer = null, said = false;
+  const b = $(id), stop = () => { clearTimeout(timer); timer = null; };
+  b.addEventListener('pointerdown', (ev) => { said = false; stop(); if (ev.pointerType === 'mouse') return; timer = setTimeout(() => { timer = null; said = true; if (b.title) toast(b.title, true, 4000); }, 500); });
+  for (const t of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(t, stop);
+  b.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  b.addEventListener('click', (ev) => { if (said) { said = false; ev.stopPropagation(); ev.preventDefault(); } }, true);
+}
+$('dm-waiting').onclick = () => D.open([]);       // the DM tools' first row: the d20 menu's first level, where "Waiting for you" and the to-do cards are (one-token-menu.md, Decision 4)
 $('waiting-list').addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-wait]'); if (!b || !S) return;
   const [kind, id] = [b.dataset.wait.split(':')[0], b.dataset.wait.split(':').slice(1).join(':')];
