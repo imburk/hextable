@@ -1976,3 +1976,35 @@ for (const kind of ["flood", "part"]) {
     assert.equal(byName(r.hidden.w, "Swimmer").pos.z, kind === "flood" ? 0 : 0, "the hidden creature was carried back to the surface by the end");
   });
 }
+
+// ---- review of #855: a PARTY caster floods water that reaches into a region the party has not seen ----
+// The lasting effect is sent to the table (a party caster), but what it recorded of the water (every cell's tile before and after) is the DM's: the cells of the unseen region
+// (q 5 to 8) are water in the hidden world and stone in the plain one, and the players are sent the same bytes.
+const deepScene = (w) => {
+  const s = w.state;
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  const tiles = {};
+  for (let q = -5; q <= 9; q++) for (let r = -3; r <= 3; r++) tiles[H.col({ q, r })] = { t: "stone" };
+  for (let q = 1; q <= 4; q++) tiles[H.col({ q, r: 0 })] = { t: "water", h: 0, depth: 10 };
+  const far = [5, 6, 7, 8].flatMap((q) => [-3, -2, -1, 0, 1, 2, 3].map((r) => H.col({ q, r })));
+  w.must({ type: "loadMap", map: newMap({ id: "pond", name: "Pond", starts: [{ q: 0, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles }], regions: [{ id: "deep", name: "Far cave", level: "ground", hexes: far, revealed: false }] }) });
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  for (const [id, q, r] of [["fighter", -3, 0], ["rogue", -3, 1], ["cleric", -3, 2], ["wizard", -3, -1]]) w.must({ type: "place", actor: id, to: { q, r } });
+  Object.assign(w.state.entities.wizard, { owner: w.ids.Sam, ownerName: "Sam", hp: 500, maxHp: 500, spells: [...w.state.entities.wizard.spells, "control-water"], slots: { 4: 2 }, slotsMax: { 4: 2 } });
+};
+const deepHide = (w) => {
+  const t = w.state.map.levels[0].tiles;
+  for (const q of [5, 6, 7, 8]) t[H.col({ q, r: 0 })] = { t: "water", h: 0, depth: 30 };
+};
+for (const kind of ["flood", "part"]) {
+  test(`control water: a party caster's ${kind} that reaches into an unexplored region sends the players the same as when there is no water there`, () => {
+    const steps = [
+      { by: "Sam", act: { type: "cast", actor: "wizard", spell: "control-water", hex: { q: 1, r: 0 }, slot: 4, choice: kind } },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "The pond!" } },
+      { by: "dm", act: (w) => ({ type: "endEffect", effect: w.state.effects.find((x) => x.spell === "control-water").id }) },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "And now?" } },
+    ];
+    const r = twin({ players: ["Pat", "Sam"], setup: deepScene, steps }, { hide: deepHide, plain: () => {} });
+    for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes('"water":{'), `${who} is sent none of the water record`);
+  });
+}

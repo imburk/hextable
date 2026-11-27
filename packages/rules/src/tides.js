@@ -201,8 +201,8 @@ export function endWater(s, ev, fx, rec) {
   undo(s, rec, ev, { fx: fx.id, end: true });
 }
 
-// The start of a round: every trench Control Water opened (and let go of since) fills in. A trench of a map that is not the one in play is dropped with its map.
-function refill(s, ev) {
+// The start of a round, and the end of a fight (engine/resolve.js `endEncounter`: a map cannot change in a fight, so no trench outlives one): every trench Control Water opened (and let go of since) fills in. A trench of a map that is not the one in play is dropped with its map.
+export function refill(s, ev) {
   if (!Array.isArray(s.refills)) return;
   const list = s.refills;
   delete s.refills;

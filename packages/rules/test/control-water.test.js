@@ -170,10 +170,10 @@ test("Redirect Flow and Whirlpool change no water and hand the DM the effect; th
     const s = lake();
     const r = ok(cast(s, choice));
     assert.equal(json(s.map.levels[0].tiles), original());
-    const text = r.events.filter((e) => e.type === "manual" && /^Control Water \(/.test(e.text)).map((e) => e.text).join("\n");
-    assert.match(text, choice === "redirect" ? /Redirect Flow/ : /Whirlpool/);
-    assert.doesNotMatch(text, choice === "redirect" ? /Whirlpool: in an area/ : /Redirect Flow\): flowing/, "only the chosen effect is told");
-    assert.match(text, /later turns/);
+    // Nobody is in the area, so only the spell's standing note reaches the DM (it names both, and the later turns).
+    const text = r.events.filter((e) => e.type === "manual").map((e) => e.text).join("\n");
+    assert.match(text, /Redirect Flow and Whirlpool/);
+    assert.match(text, /later turn/);
   }
 });
 
@@ -193,4 +193,17 @@ test("the map the water was changed on is gone: the water is left and the DM is 
   s.map = { ...s.map, id: "elsewhere" };
   endWater(s, ev, fx, rec);
   assert.ok(ev.some((e) => e.type === "manual" && /not the one in play/.test(e.text)));
+});
+
+test("a trench left to fill by the next round fills when the fight ends, not when a later fight starts", () => {
+  const s = lake();
+  swimmer(s, 30, 0, 0);
+  ok(cast(s, "part"));
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 40 }, DM));
+  end(s);
+  assert.equal(tile(s, 11).t, "stone", "still a trench in the round it ended");
+  ok(apply(s, { type: "endEncounter" }, DM));
+  assert.equal(s.encounter, null);
+  assert.equal(json(s.map.levels[0].tiles), original(), "the fight is over: the trench is full");
+  assert.equal(s.refills, undefined);
 });

@@ -449,17 +449,6 @@ function exec(s, ev, kit, f, step, at) {
       crit: f.crit, mode: f.mode, half: f.half, evade: f.evade, told: f.told, hit: f.hit, weapon: f.weapon, n: f.n, ...extra });
   };
 
-  // A step for one value of a choice the cast did not strip (engine/casting.js `chooseIn` strips those of a curse, an affliction, a shape and a resize): Control Water's, for the effect the caster
-  // chose, which the cast event names. A step with no choice to read is left out and the DM is told.
-  if (step.ifChoice !== undefined) {
-    const cast = ev.findLast((x) => x.type === 'cast' && x.actor === f.actor && x.spell === f.src.spell);
-    if (!cast || cast.choice === undefined) {
-      if (f.told?.[at]) return;
-      if (f.told) f.told[at] = true;
-      return handOver(`${f.src.name} does one thing or another by the caster's choice, and the engine could not read the choice. The DM applies the one the caster chose.`);
-    }
-    if (!step.ifChoice.includes(cast.choice)) return;
-  }
   // Control Water: once for the cast, on the cells of the area (a creature's frame leaves it to the frame of its own, `begin`).
   if (kind === 'water') {
     if (f.target !== null) return;
