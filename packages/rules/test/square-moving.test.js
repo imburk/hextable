@@ -380,7 +380,7 @@ test("loadMap ends the lasting areas of the old map (E8) and migrates a format 1
   const t = newGame(14), old = structuredClone(squareRoom());
   delete old.grid; delete old.cellFeet; old.format = 1; old.hexFeet = 5;
   ok(apply(t, { type: "loadMap", map: old }, DM));
-  assert.equal(t.map.format, 2);
+  assert.equal(t.map.format, 3);
   assert.equal(t.map.grid, "hex", "a format 1 map is a hex map, whatever it looks like");
 });
 

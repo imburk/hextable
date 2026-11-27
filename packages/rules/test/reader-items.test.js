@@ -237,12 +237,12 @@ test('the reading says what the engine does, for the SRD\'s own items and feats'
   has('item', 'potion-of-healing', /gone from the sheet/);
   has('item', 'belt-of-dwarvenkind', /needs attunement/);
   has('item', 'armor-plus-1', /\+1 Armor Class/);
-  has('item', 'ring-of-swimming', /does not move a creature by a swim speed/);
+  has('item', 'ring-of-swimming', /Speeds: swim 40 feet/);      // the engine moves a creature by a swim speed since #836: no line that it does not
   has('item', 'spell-scroll', /DC 13 and \+5 up to level 2/);
   has('feat', 'alert', /The Proficiency Bonus to its Initiative/);
   has('feat', 'magic-initiate', /up to 2 cantrips and 1 level 1 spell/);
   has('feat', 'archery', /\+2 to the holder's attack rolls with ranged weapons/);
-  assert.deepEqual(readEntry('item', CONTENT.items['ring-of-swimming']).doesNot.includes('Moving the holder by its swim speed.'), true);
+  assert.deepEqual(readEntry('item', CONTENT.items['ring-of-swimming']).doesNot.includes('Moving the holder by its swim speed.'), false);
   assert.deepEqual(SCROLL_STATS.map(([n]) => scrollStats(n)), SCROLL_STATS.map(([, dc, attack]) => ({ dc, attack })), 'the scroll table is the engine\'s');
 });
 

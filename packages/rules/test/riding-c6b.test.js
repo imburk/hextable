@@ -555,7 +555,9 @@ for (const grid of GRIDS) {
     assert.deepEqual({ markets, shops }, { markets: [], shops: [] });                 // version 27 (#596) adds the markets and shops, empty
     const { strikeFirst, ...settings } = rest.settings;           // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
     assert.equal(strikeFirst, save.settings.autoEngage !== false ? "casts" : "off");
-    assert.equal(json({ ...rest, settings, version: save.version }), json(save), "loads unchanged");
+    // ... and the map: format 3 (#836) is format 2 with a depth on each water tile, so put those back for the comparison.
+    const oldMap = (m) => ({ ...m, format: 2, levels: m.levels.map((l) => ({ ...l, tiles: Object.fromEntries(Object.entries(l.tiles).map(([k, { depth, ...t }]) => [k, t])) })) });
+    assert.equal(json({ ...rest, map: oldMap(rest.map), settings, version: save.version }), json(save), "loads unchanged");
     assert.equal(s.entities.fighter.riding.on, horse);
     assert.equal(s.entities.fighter.riding.told, true);
     const r2 = ok(apply(s, { type: "condition", actor: "rogue", condition: "prone" }, DM));

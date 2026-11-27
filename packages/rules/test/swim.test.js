@@ -271,3 +271,23 @@ test("a saved game's map comes up with its water 10 feet deep, and a creature on
   assert.ok(inWater(loaded, loaded.entities.fighter));
   assert.deepEqual(lintMap(loaded.map), []);
 });
+
+test("a party swimmer that names a column of water without a height is not sent to another place of it by a creature the party does not know of", () => {
+  const world = (lurk) => {
+    const s = pool({ depth: 20 });
+    if (lurk) {
+      const id = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: -5, r: 0 }, hidden: true }, DM)).events.find((e) => e.type === "spawned").id;
+      Object.assign(s.entities[id], { pos: { q: 2, r: 0, z: 0 }, hp: 500, maxHp: 500 });
+    }
+    return s;
+  };
+  const bare = world(false), lurked = world(true);
+  const goblin = Object.values(lurked.entities).find((e) => e.side !== "party");
+  ok(apply(bare, { type: "move", actor: "fighter", to: { q: 2, r: 0 } }, DM));
+  assert.deepEqual(bare.entities.fighter.pos, { q: 2, r: 0, z: 0 }, "with nothing there it goes to the surface, the place nearest its own height");
+  ok(apply(lurked, { type: "move", actor: "fighter", to: { q: 2, r: 0 } }, DM));
+  // As on land: it stops beside the creature and finds it. It does not slip under it to another place of the column, which would tell the players something is there.
+  const f = lurked.entities.fighter.pos;
+  assert.equal(Math.max(Math.abs(f.q - 2), Math.abs(f.r)), 1, `it stopped beside the creature, at ${JSON.stringify(f)}`);
+  assert.equal(goblin.hidden, undefined, "and found it");
+});

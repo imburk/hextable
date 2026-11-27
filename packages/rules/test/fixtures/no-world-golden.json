@@ -17,8 +17,8 @@
     "title": "The inn"
    }
   ],
-  "vpat": "b6bf7bd9f4852eba",
-  "vsam": "b6bf7bd9f4852eba"
+  "vpat": "9978e82b10eda40a",
+  "vsam": "9978e82b10eda40a"
  },
  {
   "type": "sceneNpc",
@@ -42,8 +42,8 @@
     "change": "added"
    }
   ],
-  "vpat": "db7381912b732044",
-  "vsam": "db7381912b732044"
+  "vpat": "6656df7065fa2b60",
+  "vsam": "6656df7065fa2b60"
  },
  {
   "type": "say",
@@ -71,8 +71,8 @@
     "line": 1
    }
   ],
-  "vpat": "db7381912b732044",
-  "vsam": "db7381912b732044"
+  "vpat": "6656df7065fa2b60",
+  "vsam": "6656df7065fa2b60"
  },
  {
   "type": "say",
@@ -100,8 +100,8 @@
     "line": 2
    }
   ],
-  "vpat": "db7381912b732044",
-  "vsam": "db7381912b732044"
+  "vpat": "6656df7065fa2b60",
+  "vsam": "6656df7065fa2b60"
  },
  {
   "type": "say",
@@ -109,8 +109,8 @@
   "error": "You can speak only as your own character.",
   "pat": [],
   "sam": [],
-  "vpat": "db7381912b732044",
-  "vsam": "db7381912b732044"
+  "vpat": "6656df7065fa2b60",
+  "vsam": "6656df7065fa2b60"
  },
  {
   "type": "say",
@@ -118,8 +118,8 @@
   "error": "You can speak only as your own character.",
   "pat": [],
   "sam": [],
-  "vpat": "db7381912b732044",
-  "vsam": "db7381912b732044"
+  "vpat": "6656df7065fa2b60",
+  "vsam": "6656df7065fa2b60"
  },
  {
   "type": "say",
@@ -127,8 +127,8 @@
   "error": "You can speak only as your own character.",
   "pat": [],
   "sam": [],
-  "vpat": "db7381912b732044",
-  "vsam": "db7381912b732044"
+  "vpat": "6656df7065fa2b60",
+  "vsam": "6656df7065fa2b60"
  },
  {
   "type": "say",
@@ -156,8 +156,8 @@
     "line": 3
    }
   ],
-  "vpat": "db7381912b732044",
-  "vsam": "db7381912b732044"
+  "vpat": "6656df7065fa2b60",
+  "vsam": "6656df7065fa2b60"
  },
  {
   "type": "say",
@@ -185,8 +185,8 @@
     "line": 4
    }
   ],
-  "vpat": "db7381912b732044",
-  "vsam": "db7381912b732044"
+  "vpat": "6656df7065fa2b60",
+  "vsam": "6656df7065fa2b60"
  },
  {
   "type": "advanceTime",
@@ -204,8 +204,8 @@
     "minutes": 1
    }
   ],
-  "vpat": "442aa5704a5ae18c",
-  "vsam": "442aa5704a5ae18c"
+  "vpat": "db5f51695e4bf6e0",
+  "vsam": "db5f51695e4bf6e0"
  },
  {
   "type": "say",
@@ -213,8 +213,8 @@
   "error": "This scene has gone on long enough. Start a new one.",
   "pat": [],
   "sam": [],
-  "vpat": "442aa5704a5ae18c",
-  "vsam": "442aa5704a5ae18c"
+  "vpat": "db5f51695e4bf6e0",
+  "vsam": "db5f51695e4bf6e0"
  },
  {
   "type": "say",
@@ -222,8 +222,8 @@
   "error": "This scene has gone on long enough. Start a new one.",
   "pat": [],
   "sam": [],
-  "vpat": "442aa5704a5ae18c",
-  "vsam": "442aa5704a5ae18c"
+  "vpat": "db5f51695e4bf6e0",
+  "vsam": "db5f51695e4bf6e0"
  },
  {
   "type": "say",
@@ -231,8 +231,8 @@
   "error": "This scene has gone on long enough. Start a new one.",
   "pat": [],
   "sam": [],
-  "vpat": "442aa5704a5ae18c",
-  "vsam": "442aa5704a5ae18c"
+  "vpat": "db5f51695e4bf6e0",
+  "vsam": "db5f51695e4bf6e0"
  },
  {
   "type": "endScene",
@@ -252,8 +252,8 @@
     "title": "The inn"
    }
   ],
-  "vpat": "4986add4b71883db",
-  "vsam": "4986add4b71883db"
+  "vpat": "a2492e9c610c3c1e",
+  "vsam": "a2492e9c610c3c1e"
  },
  {
   "type": "spawn",
@@ -271,8 +271,8 @@
     "id": "m11"
    }
   ],
-  "vpat": "9ca45d7a245fe29d",
-  "vsam": "9ca45d7a245fe29d"
+  "vpat": "886c9842ea02576e",
+  "vsam": "886c9842ea02576e"
  },
  {
   "type": "startEncounter",
@@ -456,8 +456,8 @@
     "round": 1
    }
   ],
-  "vpat": "4e6b072acb05b097",
-  "vsam": "4e6b072acb05b097"
+  "vpat": "efbe0474e6f0da4c",
+  "vsam": "efbe0474e6f0da4c"
  },
  {
   "type": "move",
@@ -465,8 +465,8 @@
   "error": "It isn't Brenna's turn.",
   "pat": [],
   "sam": [],
-  "vpat": "4e6b072acb05b097",
-  "vsam": "4e6b072acb05b097"
+  "vpat": "efbe0474e6f0da4c",
+  "vsam": "efbe0474e6f0da4c"
  },
  {
   "type": "endTurn",
@@ -486,8 +486,8 @@
     "round": 1
    }
   ],
-  "vpat": "eb4f6dd9228e3f79",
-  "vsam": "eb4f6dd9228e3f79"
+  "vpat": "badb7be996922183",
+  "vsam": "badb7be996922183"
  },
  {
   "type": "endTurn",
@@ -507,8 +507,8 @@
     "round": 1
    }
   ],
-  "vpat": "9f5f31649c3c56e9",
-  "vsam": "9f5f31649c3c56e9"
+  "vpat": "4a50611e2e077ef2",
+  "vsam": "4a50611e2e077ef2"
  },
  {
   "type": "endEncounter",
@@ -530,8 +530,8 @@
     "fight": 1
    }
   ],
-  "vpat": "8b78ef4373a8b873",
-  "vsam": "8b78ef4373a8b873"
+  "vpat": "a194affa394746bf",
+  "vsam": "a194affa394746bf"
  },
  {
   "type": "shortRest",
@@ -549,8 +549,8 @@
     "short": true
    }
   ],
-  "vpat": "d310abf02bcf3ee4",
-  "vsam": "d310abf02bcf3ee4"
+  "vpat": "ebe08a2ca9bbad64",
+  "vsam": "ebe08a2ca9bbad64"
  },
  {
   "type": "rest",
@@ -566,7 +566,7 @@
     "type": "rest"
    }
   ],
-  "vpat": "4d22c2b003924551",
-  "vsam": "4d22c2b003924551"
+  "vpat": "9779b529127bee0a",
+  "vsam": "9779b529127bee0a"
  }
 ]

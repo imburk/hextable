@@ -1686,3 +1686,37 @@ test("polymorph: a party member polymorphed beside hidden creatures that a Large
   for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
   assert.ok(JSON.stringify(r.hidden.raw.Pat).includes('"size":"large"'), "it became a Large Beast");
 });
+
+// ---- swimming (#836, E1): a creature under the water is in its level, so what hides a creature on land hides it there ----
+// A lake of water 15 feet deep from q = 1 east, its far water (q 5 and beyond) a region the party has not seen. The party's fighter swims in the near water, down
+// to 10 feet under the surface and across. A creature swimming under the far water (not hidden by the DM: hidden by the region), and a creature the DM hid there,
+// are sent to no player: the worlds with and without them are the same, in every message.
+const lakeScene = (w) => {
+  const s = w.state;
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  const tiles = {};
+  for (let q = -4; q <= 8; q++) for (let r = -3; r <= 3; r++) tiles[H.col({ q, r })] = q >= 1 ? { t: "water", depth: 15 } : { t: "grass" };
+  const far = Object.keys(tiles).filter((k) => Number(k.split(",")[0]) >= 5);
+  w.must({ type: "loadMap", map: newMap({ id: "lake", name: "Lake", starts: [{ q: 0, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles }], regions: [{ id: "deep", name: "Far water", level: "ground", hexes: far, revealed: false }] }) });
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -3, 0], ["cleric", -3, 1], ["wizard", -3, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+  Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+};
+const SWIM = [
+  { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 2, r: 0, z: 0 } } },
+  { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 2, r: 0, z: -10 } } },
+  { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 3, r: 0, z: -10 } } },
+  { by: "Pat", act: { type: "say", as: "fighter", text: "Anything down here?" } },
+];
+const swimmer = (w, hidden) => {
+  w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 0 }, name: "Lurker", hidden: true });          // spawned hidden, so no one is sent it on the shore on its way in
+  Object.assign(byName(w, "Lurker"), { pos: { q: 6, r: 0, z: -10 }, hp: 500, maxHp: 500 });
+  if (!hidden) delete byName(w, "Lurker").hidden;                                                                      // from here only the region hides it
+};
+for (const hidden of [false, true]) test(`swimming: a creature ${hidden ? "the DM hid" : "in a region the party has not seen"}, under the far water, is sent to no player; the worlds with and without it are the same`, () => {
+  const r = twin({ players: ["Pat", "Sam"], setup: lakeScene, steps: SWIM }, { hide: (w) => swimmer(w, hidden), plain: (w) => burn(w, { q: -4, r: 0 }) });
+  for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
+  assert.ok(JSON.stringify(r.hidden.raw.dm).includes("Lurker"), "the DM is told of it");
+  assert.deepEqual(r.hidden.w.state.entities.fighter.pos, { q: 3, r: 0, z: -10 }, "the swimmer went where it was sent");
+  assert.equal(r.hidden.w.state.map.regions[0].revealed, false, "and the far water stayed unseen");
+});
