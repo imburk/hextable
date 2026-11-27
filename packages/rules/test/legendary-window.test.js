@@ -184,7 +184,7 @@ test("skip and done: validated, and a refusal changes nothing", () => {
   const snap = JSON.stringify(s);
   const bad = (a, re, ctx = DM) => { const r = apply(s, a, ctx); assert.equal(r.ok, false); assert.match(r.error, re); assert.equal(JSON.stringify(s), snap, `${JSON.stringify(a)} changed something`); };
   bad({ type: "legendary", actor: d.id }, /Say what to do/);
-  bad({ type: "legendary", actor: d.id, option: "pounce" }, /does not take a legendary action yet/);
+  bad({ type: "legendary", actor: d.id, option: "no-such-option" }, /no legendary action called that/);       // taking an option is built in L1c (legendary-option.test.js)
   bad({ type: "legendary", actor: who, skip: true }, /not offered/);
   bad({ type: "legendary", done: true }, /Only the DM/, players);
   bad({ type: "legendary", actor: d.id, skip: true }, /isn't yours/, players);

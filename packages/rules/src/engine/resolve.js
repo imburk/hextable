@@ -406,6 +406,7 @@ export function thenFight(s, e, ev, lands, { area = false, target = null, owed =
 export function endEncounter(s, ev, result) {
   for (const e of fighters(s)) {
     delete e.cond.dodging; delete e.cond.disengaged; e.reactionUsed = false;
+    if (e.legend) { e.legend.acts = 0; e.legend.again = {}; }          // and when a fight ends (`resisted` stays until a Long Rest)
     if (up(e)) delete e.cond.prone;                       // nothing stops you standing once the fight is over
   }
   // Stepping away is for a fight: whoever was set aside, or asked to be, is back when it ends.
@@ -499,6 +500,7 @@ function beginTurn(s, e, ev, stepped = false) {
   enc.budget = { move: speed, action: can, bonus: can, dashes: 0 };     // `move` is walking feet left; other ways of moving are worked out from it
   e.reactionUsed = false;
   delete e.cond.dodging;
+  if (e.legend) { e.legend.acts = 0; e.legend.again = {}; }              // legendary actions are regained as its turn starts (docs/specs/legendary.md, Decision 2)
   ev.push({ type: 'turn', id: e.id, round: enc.round });
   noteRuns(s, e, 'turn');                                              // abilities the DM runs for this creature (todo.js)
   // E23 with CAST_TAKES_FIRST_ACTION (casting.js): the hostile cast that started the fight was this turn's action (or

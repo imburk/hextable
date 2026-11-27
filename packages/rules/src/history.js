@@ -390,7 +390,9 @@ export function describeStep(action, events, before, after) {
     case 'place': if (a.node !== undefined) { const r = ev('relocated'), ids = r?.ids ?? []; label = { label: `${names(ids, name)} ${ids.length === 1 ? 'was' : 'were'} placed at ${place(r)}`, shown: told(names(ids, name, true), shownIds(ids).length === 1 ? 'was placed' : 'were placed') }; break; }
       label = `${who} ${ACTS.place}`; break;
     // The legendary window (engine/legendary.js): the DM's; players are told nothing of a skip, of closing it or of setting a creature's counters.
-    case 'legendary': label = { label: a.done ? 'The legendary window was closed' : `Skipped ${who}'s legendary action`, shown: null }; break;
+    case 'legendary':
+      if (a.option !== undefined && !a.skip && !a.done) { const opt = (after.entities[a.actor] ?? prior?.entities?.[a.actor])?.legendary?.actions?.options?.find((x) => x.id === a.option); label = `${who}: ${opt?.name ?? 'a legendary action'}`; break; }     // an option taken (L1c): "Verdigris: Pounce", the name read from the creature as `act`'s is
+      label = { label: a.done ? 'The legendary window was closed' : `Skipped ${who}'s legendary action`, shown: null }; break;
     case 'legendarySet': label = { label: `${who}'s legendary counters were set`, shown: null }; break;
     case 'dismount': label = `${who} dismounted`; break;
     case 'companion': label = a.auto ? `${who} was left to the engine to play` : `${who} waits for its player again`; break;
