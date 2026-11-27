@@ -28,6 +28,7 @@
 // Ending an effect removes its parts. Design: docs/specs/rules-expansion.md.
 import { has, incapacitated } from './modifiers.js';
 import { leaveForm } from './forms.js';
+import { SIZES } from './content/sizes.js';
 import { homebrewBlock, srcOf } from './homebrew.js';
 
 export const ROUND = 0.1;                 // one round is six seconds; the world clock counts minutes
@@ -73,7 +74,20 @@ function endPart(s, ev, fx, p) {
   // A Hit Point maximum it raised comes down again; current Hit Points stay within it.
   if (p.hpMax && t && !t.dead) { t.maxHp -= p.hpMax; t.hp = Math.min(t.hp, t.maxHp); ev.push({ type: 'maxHp', id: t.id, maxHp: t.maxHp, hp: t.hp }); }
   // A form it held ends: what the form replaced is put back (forms.js).
-  if (p.form && t?.form?.fx === fx.id) { leaveForm(t); ev.push({ type: 'form', id: t.id, form: null }); }
+  if (p.form && t?.form?.fx === fx.id) {
+    const formSize = t.size;
+    leaveForm(t);
+    // A change of size still running (Enlarge/Reduce) was made on the form's size: the creature's own size takes the same step, and what the change goes back to is that.
+    const live = effectsOf(s).flatMap((x) => x.parts).find((q) => q.size && !q.ended && q.target === t.id && q.size.now === formSize);
+    if (live) {
+      const order = Object.keys(SIZES), step = order.indexOf(live.size.now) - order.indexOf(live.size.was), own = SIZES[t.size] ? t.size : 'medium';
+      const to = order[Math.max(0, Math.min(order.length - 1, order.indexOf(own) + step))];
+      live.size = { was: own, now: to };
+      t.size = to;
+    }
+    ev.push({ type: 'form', id: t.id, form: null });
+    if (t.size !== formSize) ev.push({ type: 'size', id: t.id, size: t.size });
+  }
   // Confusion ends on it (a `confuse` step): its Reaction comes back as it was, unless another Confusion still holds it.
   if (p.confuse && t && !t.dead && !effectsOf(s).some((x) => x.parts.some((q) => q !== p && q.confuse && !q.ended && q.target === t.id))) t.reactionUsed = !!p.confuse.had;
   // The stone lets go of a creature merged with it (a `meld` step: Meld into Stone): its mark goes, and it comes out where it went in.
@@ -146,6 +160,11 @@ function expire(s, ev, fx) {
 
 // The world clock moved: end whatever has run out.
 export function tick(s, ev) {
+  // A whole form (Polymorph) ends on the creature when it has no Temporary Hit Points left, however they went (a rest clears them; damage ends it as it soaks).
+  for (const e of Object.values(s.entities)) {
+    const fx = e.form?.whole === true && !(e.tempHp > 0) ? effectsOf(s).find((x) => x.id === e.form.fx) : null;
+    if (fx) endEffect(s, ev, fx, `${e.name} has no Temporary Hit Points left`);
+  }
   for (const fx of [...effectsOf(s)]) if (fx.until?.clock !== undefined && fx.until.clock <= s.clock + EPS) expire(s, ev, fx);
 }
 

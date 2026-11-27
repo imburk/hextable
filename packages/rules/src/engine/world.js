@@ -721,7 +721,10 @@ export function resize(s, t, step, ev, f) {
 // The size a lasting effect gave goes back when it ends (durations.js `ON.sizeEnd`): only if the creature is still the size the effect left it, and there is no change of the effect's own
 // to undo for one that was shrunk back (a creature that cannot have the room is left where it stands and the DM told, alone: a refusal would tell the players what hides there).
 export function sizeEnd(s, ev, t, was, now, name) {
-  if (t.dead || (SIZES[t.size] ? t.size : 'medium') !== now) return;
+  if (t.dead) return;
+  // In a form (Wild Shape, Polymorph) the size on the creature is the form's, and the one the form puts back is `form.kept.size`: if that is the size this change left, it is that one that goes back.
+  if (t.form?.kept?.size === now && (SIZES[t.size] ? t.size : 'medium') !== now) { t.form.kept.size = was; return; }
+  if ((SIZES[t.size] ? t.size : 'medium') !== now) return;
   t.size = was;
   ev.push({ type: 'size', id: t.id, size: was });
   if (t.pos && SIZE_ORDER.indexOf(was) > SIZE_ORDER.indexOf(now)) {

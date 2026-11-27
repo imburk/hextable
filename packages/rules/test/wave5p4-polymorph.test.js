@@ -307,3 +307,49 @@ test("Polymorph: the form is saved and migrated whole (a whole form is a valid f
   assert.ok(validForm(copy.entities.fighter.form));
   assert.equal(copy.entities.fighter.form.whole, true);
 });
+
+test("Polymorph: a rest that clears the Temporary Hit Points ends the form", () => {
+  const s = field();
+  const f = s.entities.fighter;
+  ok(cast(s, "fighter", "wolf"));
+  f.tempHp = 0;
+  ok(apply(s, { type: "advanceTime", minutes: 1 }, DM));
+  assert.ok(!f.form && !fxOf(s), "no Temporary Hit Points: no form");
+  ok(cast(s, "fighter", "wolf"));
+  ok(apply(s, { type: "shortRest" }, DM));
+  assert.ok(!f.form, "after a rest");
+});
+
+// Enlarge/Reduce and a form on one creature, in both orders and for both kinds of form (Polymorph, Wild Shape).
+const enlarge = (s, id) => { s.entities.cleric.spells.push("enlarge-reduce"); ok(apply(s, { type: "cast", actor: "cleric", spell: "enlarge-reduce", target: id, choice: "enlarge", slot: 2 }, DM)); return s.effects.find((x) => x.name === "Enlarge/Reduce"); };
+const formWith = { polymorph: (s) => { ok(apply(s, { type: "cast", actor: "wizard", spell: "polymorph", target: "fighter", choice: "wolf", slot: 4 }, DM)); return fxOf(s); },
+  wild: (s) => { const f = s.entities.fighter; const tpl = { size: "medium", ac: 12, speed: 40, speeds: {}, abil: { str: 12, dex: 15, con: 12, int: 3, wis: 12, cha: 6 }, hp: 11, prof: 2 };
+    const fx = { id: "fxWS", name: "Wild Shape (Wolf)", parts: [{ target: "fighter", form: true }], source: "fighter", lasts: "1 hour" }; s.effects.push(fx); takeForm(f, "wolf", "Wolf", tpl, [], fx.id); return fx; } };
+for (const kind of ["polymorph", "wild"]) {
+  test(`Enlarge and a ${kind} form: the Enlarge ends first, the creature is its own size when the form ends`, () => {
+    const s = field(); const f = s.entities.fighter;
+    const en = enlarge(s, "fighter"); assert.equal(f.size, "large");
+    formWith[kind](s); assert.equal(f.size, "medium");
+    ok(apply(s, { type: "endEffect", actor: "cleric", effect: en.id }, DM));
+    ok(apply(s, { type: "endEffect", actor: "wizard", effect: (kind === "polymorph" ? fxOf(s) : s.effects.find((x) => x.id === "fxWS")).id }, DM));
+    assert.equal(f.size, "medium");
+  });
+  test(`Enlarge and a ${kind} form: the form ends first, the Enlarge still runs and keeps the creature large; then it ends`, () => {
+    const s = field(); const f = s.entities.fighter;
+    const en = enlarge(s, "fighter");
+    const fx = formWith[kind](s);
+    ok(apply(s, { type: "endEffect", actor: "wizard", effect: fx.id }, DM));
+    assert.equal(f.size, "large");
+    ok(apply(s, { type: "endEffect", actor: "cleric", effect: en.id }, DM));
+    assert.equal(f.size, "medium");
+  });
+  test(`Enlarge cast in a ${kind} form, the form ends first: the creature is Large, then back to Medium with the Enlarge`, () => {
+    const s = field(); const f = s.entities.fighter;
+    const fx = formWith[kind](s); assert.equal(f.size, "medium");
+    const en = enlarge(s, "fighter"); assert.equal(f.size, "large");
+    ok(apply(s, { type: "endEffect", actor: "wizard", effect: fx.id }, DM));
+    assert.equal(f.size, "large");
+    ok(apply(s, { type: "endEffect", actor: "cleric", effect: en.id }, DM));
+    assert.equal(f.size, "medium");
+  });
+}
