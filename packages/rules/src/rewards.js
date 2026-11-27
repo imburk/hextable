@@ -48,9 +48,9 @@ export function concludeFight(s, ev, result, enc, who, land = null) {
   // XP of 0 stays 0, and the DM may untick any. One the party saw vanish in the fight is kept by the fight (`gone`,
   // resolve.js, vanish) and counts as a death does; one that vanished unseen is a dead husk among `who`. So seen,
   // unseen, killed or vanished, a foe counts the same, once.
-  const xpOf = (tpl) => CONTENT.monsters[tpl]?.xp ?? 0, ids = new Set(who.map((e) => e.id));
+  const xpOf = (tpl) => CONTENT.monsters[tpl]?.xp ?? 0, xpNow = (e) => (e.legend?.lair && Number.isInteger(e.legendary?.lair?.xp) ? e.legendary.lair.xp : xpOf(e.tpl)), ids = new Set(who.map((e) => e.id));
   const foes = [
-    ...who.filter((e) => e.side === 'foe').map((e) => ({ id: e.id, name: e.name, tpl: e.tpl ?? null, xp: xpOf(e.tpl), counts: !up(e) })),
+    ...who.filter((e) => e.side === 'foe').map((e) => ({ id: e.id, name: e.name, tpl: e.tpl ?? null, xp: xpNow(e), counts: !up(e) })),
     ...(enc.gone ?? []).filter((g) => !ids.has(g.id)).map((g) => ({ id: g.id, name: g.name, tpl: g.tpl, xp: xpOf(g.tpl), counts: true, gone: true, shown: g.shown })),
   ];
   const c = { id: enc.id, fight: enc.id, result, rounds: enc.round, where: enc.where ?? null, foes, party,

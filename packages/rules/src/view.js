@@ -84,6 +84,8 @@ function acShown(state, e) {
   const light = e.light?.fx !== undefined ? { light: { bright: e.light.bright, dim: e.light.dim, ...(e.light.item ? { item: e.light.item } : {}) } } : {};
   return { ...(ac === e.ac ? {} : { acNow: ac, acWhy: why }), ...light };
 }
+// Its legendary uses left and the most it may spend, as engine/legendary.js reckons them (usesMax, usesLeft): the lair's number when it is marked in its lair.
+const legendCount = (e) => { const max = (e.legend.lair && e.legendary.lair?.uses) || e.legendary.actions.uses; return { left: Math.max(0, max - (e.legend.acts ?? 0)), max }; };
 function seenRecord(e, state) {
   const cond = {};
   for (const c of visibleConditions(e)) cond[c] = true;         // which conditions show is decided by their data
@@ -93,6 +95,7 @@ function seenRecord(e, state) {
     pos: { q: e.pos.q, r: e.pos.r, z: e.pos.z }, look: e.look && !form ? structuredClone(e.look) : undefined,
     dead: !!e.dead, hp: seenHp(e), health: healthOf(e), cond,
     ...(e.light ? { light: { bright: e.light.bright, dim: e.light.dim } } : {}),     // a carried light is plain to see
+    ...(e.legend?.show === true && e.legendary?.actions?.uses ? { legend: legendCount(e) } : {}),     // the DM chose to show its legendary uses (docs/specs/legendary.md, Decision 9): the count, nothing else of `legend` or `legendary`
     ...(e.remains ? { remains: e.remains } : {}),                                    // a frozen statue or dust where it fell is plain to see
     ...(state ? rideSeen(state, e) : {}),
     ...(state ? heldBy(state, e) : {}),
@@ -867,6 +870,9 @@ function viewEventsOf(events, state, viewer) {
         out.push({ ...pick(ev, ['type', 'actor', 'name']),
           hexes: ev.hexes ? hexesOf(ev.hexes) : null,
           targets: (ev.targets || []).filter((id) => cls(id) !== 'hidden') });
+        break;
+      case 'legendary':                                // a legendary creature took an option (engine/legendary.js): who and the option's name, as `act`; never `after` (whose turn it followed)
+        out.push(pick(ev, ['type', 'actor', 'name']));
         break;
       case 'encounterStart':
         out.push({ type: ev.type, ...(ev.fight !== undefined && { fight: ev.fight, where: ev.where }), center: ev.center, radius: ev.radius,
