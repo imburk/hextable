@@ -13,7 +13,8 @@
 //          { target, confuse: { had } } (a `confuse` step: Confusion; `had` is what its Reaction was before),
 //          { target, turn: { steps, src } } (an `eachTurn` step: what the effect runs on the creature at the start of each of its turns, effects.js `turnSteps`;
 //          never sent to players), { target, meld: true } (a `meld` step: Meld into Stone; the creature's `melded` mark names this effect, and ending the effect
-//          brings it out of the stone: see `ON.meldEnd`), { target, light: true } (a light it gave to carry), { target, size: { was, now } } (a size it gave: Enlarge/Reduce), or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
+//          brings it out of the stone: see `ON.meldEnd`), { target, light: true } (a light it gave to carry), { target, size: { was, now } } (a size it gave: Enlarge/Reduce), { target, water: { mode, map, level, cells: { key: { was, now } } } } (water a `water` step changed: Control Water; `target` is the caster, and
+//          ending the effect puts the water back, tides.js `endWater`), or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
 //          raised creature under control). `born` names the turn it was made in (turnKey).
 // A `summon` part is the creature a spell made (docs/specs/companions.md, Decision 4): its bond names the
 // effect (`bond.fx`), and once the part has ended, or the effect has, the creature vanishes ('ended'). Ending
@@ -30,6 +31,7 @@ import { has, incapacitated } from './modifiers.js';
 import { submerged } from './space.js';
 import { leaveForm } from './forms.js';
 import { homebrewBlock, srcOf } from './homebrew.js';
+import { endWater } from './tides.js';
 
 export const ROUND = 0.1;                 // one round is six seconds; the world clock counts minutes
 const EPS = 1e-6;                         // rounds are added as 0.1, which does not sum exactly
@@ -90,6 +92,8 @@ function endPart(s, ev, fx, p) {
   if (p.meld && t?.melded?.fx === fx.id) { const m = t.melded; delete t.melded; if (!t.dead) ON.meldEnd?.(s, ev, t, m); }
   // A size it gave goes back (a `resize` step: Enlarge/Reduce): what it was, if the creature is still the size the effect left it; engine/world.js `sizeEnd` says whether there is room.
   if (p.size && t) ON.sizeEnd?.(s, ev, t, p.size.was, p.size.now, fx.name);
+  // Water it changed goes back (a `water` step: Control Water): a flood comes down, a trench fills in (tides.js).
+  if (p.water) endWater(s, ev, fx, p.water);
   // A light it gave goes out (a `light` step: Light).
   if (p.light && t?.light?.fx === fx.id) { delete t.light; ev.push({ type: 'light', id: t.id, bright: 0, dim: 0 }); }
   // An action a spell gave it goes (an `arm` step: Flame Blade).

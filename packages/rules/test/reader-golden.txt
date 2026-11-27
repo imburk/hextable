@@ -535,6 +535,29 @@ When it is cast, the DM is shown the author's description (unless a step has alr
 Not checked against any rulebook.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-tide-call
+"Tide Call" (level 4 transmutation, 300 feet, action, 10 minutes, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: the entry does not say, and the steps cannot tell, so the list shows no roll for it.
+When casting it, the caster chooses which effect on the water (Flood (the standing water rises), Part Water (a trench opens), Redirect Flow (the DM runs it) or Whirlpool (the DM runs it)); a step below that is for one of them is part of the cast only for the one chosen.
+Once for the cast, the surface of every cell of standing water in the area (the cube, 100 feet a side: its cells on the level it lies on, whose water lies within its height) rises by 15 feet, as the DM's own water change does, keeping what each cell was; a creature in the water or on its surface rises with it, with no fall damage. Where the rise would make the water deeper than the deepest there is, the cast does nothing there and the DM is told. This is part of the cast only if the caster chose Flood (the standing water rises).
+When the spell ends the water comes down by what it rose (a cell a tide has changed since keeps the tide's change; one the water has left is not touched).
+Once for the cast, the water of every cell in the area (the cube, ${w.size} feet a side) is lowered to its bed and the cells become the bed (a trench), as the DM's own water change does, keeping what each cell was; a creature that was in the water comes down to the bed with no fall damage. This is part of the cast only if the caster chose Part Water (a trench opens).
+When the spell ends the trench fills in: at the start of the next round in a fight, at once outside one.
+The engine does not do this; the DM does this: "The DM runs the rest." This is part of the cast only if the caster chose Redirect Flow (the DM runs it) or Whirlpool (the DM runs it).
+The cube is placed at a point the caster picks within 300 feet; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
+It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Step effects.0: a large body of water (the wave instead of a flood), flowing water, and a big creature the water could not carry (it stays where it was).
+DM: Step effects.1: a large body of water (the wave instead of a flood), flowing water, and a big creature the water could not carry (it stays where it was).
+DM: "The DM runs the rest."
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-glow-pebble
 "Glow Pebble" (evocation cantrip, touch, action, 1 hour).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

@@ -88,6 +88,8 @@ const FIXTURES = [
       { modifier: { on: 'damage.dealt', op: 'add', value: '-1d4', atLeast: 1, when: ['attack.weaponOrUnarmed'] }, ifChoice: ['reduce'] }] }),
   base('beast-shape', 'Beast Shape', { level: 4, school: 'transmutation', range: 60, duration: '1 hour', concentration: true, target: { creature: { count: 1 } }, tier: 'assist', choice: { of: 'beast' },
     effects: [{ save: 'wis', when: ['target.enemy'], onFail: [{ polymorph: 'chosen' }] }, { polymorph: 'chosen', when: ['target.ally'] }] }),
+  base('tide-call', 'Tide Call', { level: 4, school: 'transmutation', range: 300, duration: '10 minutes', concentration: true, target: { area: { shape: 'cube', size: 100 } }, tier: 'assist', choice: { of: 'water' },
+    effects: [{ water: { mode: 'flood', by: 15, size: 100 }, ifChoice: ['flood'] }, { water: { mode: 'part', size: 100 }, ifChoice: ['part'] }, { manual: 'The DM runs the rest.', ifChoice: ['redirect', 'whirlpool'] }] }),
   base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
   // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.
   base('honed-edge', 'Honed Edge', { level: 2, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto',

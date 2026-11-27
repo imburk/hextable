@@ -233,7 +233,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
       await run.do('the sample pack is read back: a reading and a tier for each entry, counts, the licence', async () => {
         await choose('sample-pack.json', SAMPLE);
         const n = await host.$$eval('#pm-review .pm-entry[data-entry]', (l) => l.length);
-        if (n !== 21) throw new Error(`${n} entries`);
+        if (n !== 22) throw new Error(`${n} entries`);
         const empty = await host.$$eval('#pm-review .pm-entry[data-entry]', (l) => l.filter((d) => d.querySelectorAll('.pm-line').length < 3 || !d.querySelector('.pm-tier')).length);
         if (empty) throw new Error(`${empty} entries without a reading`);
         const t = await host.textContent('#pm-review');
@@ -255,7 +255,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await waitShown(host, '.pm-pack[data-pack="sample"]');
         await wait(player, () => window.hextable.packs.built.includes('sample'));
         const l = await host.textContent('.pm-pack[data-pack="sample"]');
-        if (!/21 spells/.test(l)) throw new Error(l);
+        if (!/22 spells/.test(l)) throw new Error(l);
         await shot(host, `homebrew-manager-${tag}`);
       });
       await run.do('the same file again says the table has it; a lower version is no update', async () => {
@@ -557,7 +557,7 @@ async function solo(browser, url, label0, opts, tag) {
         await shot(page, `homebrew-solo-monster-${tag}`);
         await choose('sample-pack.json', SAMPLE);
         const n = await page.$$eval('#pm-review .pm-entry[data-entry]', (l) => l.length);
-        if (n !== 21) throw new Error(`${n} entries`);
+        if (n !== 22) throw new Error(`${n} entries`);
         const t2 = await page.textContent('#pm-review');
         if (!/17 auto, 3 assist, 1 manual/.test(t2) || !/Add to this game/.test(await page.textContent('#pm-go'))) throw new Error(t2.slice(0, 300));
         await page.evaluate(() => { const d = document.querySelector('#pm-review .pm-entry[data-entry]'); d.open = true; d.querySelector('.pm-try-btn').click(); });
@@ -579,7 +579,7 @@ async function solo(browser, url, label0, opts, tag) {
         await page.click('#pm-go');
         await waitShown(page, '.pm-pack[data-pack="sample"]');
         const l = await page.textContent('.pm-pack[data-pack="sample"]');
-        if (!/21 spells/.test(l)) throw new Error(l);
+        if (!/22 spells/.test(l)) throw new Error(l);
         const kept = JSON.parse(await stored());
         if (kept.length !== 1 || kept[0].id !== 'sample' || !kept[0].data?.spells) throw new Error('not kept');
         const st = await page.evaluate(() => ({ named: window.hextable.state.packs.map((p) => p.id), built: window.hextable.packs.built, installed: window.hextable.packs.installed }));

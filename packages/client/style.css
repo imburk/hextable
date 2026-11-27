@@ -194,6 +194,7 @@ body.editing #hint { display: none !important; }
 #editor .ed-form .ed-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 #editor .ed-form .ed-line > span { flex: 1 1 8em; }
 #editor .ed-form .ed-note { margin: 0; color: var(--danger, #e57373); font-size: 13px; }
+#editor .ed-row .ed-note { font-size: 13px; opacity: .85; } #editor .ed-row[hidden] { display: none; }
 #editor .ed-form button { min-height: 44px; padding: 6px 10px; }
 #editor .ed-form button.sel, #editor .ed-form button.go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 #editor .ed-form ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }

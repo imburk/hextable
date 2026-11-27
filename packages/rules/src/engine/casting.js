@@ -86,7 +86,7 @@ function blockSpell(s, caster, spellId, targets, ev) {
 function chooseIn(steps, of, value) {
   const visit = (list) => {
     // Bestow Curse, Greater Restoration: a step for another value is no part of this cast (`ifChoice`), and one that is keeps nothing of the key.
-    if (of === 'curse' || of === 'affliction' || of === 'shape' || of === 'resize') for (let i = list.length - 1; i >= 0; i--) { if (list[i].ifChoice !== undefined && !list[i].ifChoice.includes(value)) list.splice(i, 1); else delete list[i].ifChoice; }
+    if (of === 'curse' || of === 'affliction' || of === 'shape' || of === 'resize' || of === 'water') for (let i = list.length - 1; i >= 0; i--) { if (list[i].ifChoice !== undefined && !list[i].ifChoice.includes(value)) list.splice(i, 1); else { delete list[i].ifChoice; if (of === 'water') list[i].once = true; } }      // Control Water: what the choice kept is said once for the cast (effects.js `begin`)
     for (const st of list) {
     const m = st.modifier;
     if (m?.scope && of !== 'damageType') for (const k of ['skill', 'ability']) if (m.scope[k] === 'chosen' && (k === of || (of === 'curse' && k === 'ability'))) m.scope[k] = value;
