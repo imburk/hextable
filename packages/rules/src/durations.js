@@ -63,7 +63,7 @@ export function startEffect(s, { name, spell, source, conc, duration, level }) {
 
 // Things this module cannot do itself because they need the engine's placing and zones (engine/resolve.js sets them when it loads): a creature merged
 // with stone comes out of it (`meldEnd(s, ev, creature, melded)`), at the place it went in or the nearest one free.
-export const ON = { meldEnd: null, sizeEnd: null };
+export const ON = { meldEnd: null, sizeEnd: null, breath: null };
 
 function endPart(s, ev, fx, p) {
   if (p.ended) return;
@@ -153,6 +153,13 @@ function expire(s, ev, fx) {
 
 // The world clock moved: end whatever has run out.
 export function tick(s, ev) {
+  // Everyone under water holds its breath through the time that passed since the clock was last looked at (engine/rolls.js `breathe`). `breathAt` is that moment:
+  // a state with none (a game saved before swimming, a new one) takes it as now.
+  if (Number.isFinite(s.clock)) {
+    const dt = Number.isFinite(s.breathAt) ? s.clock - s.breathAt : 0;
+    s.breathAt = s.clock;
+    if (dt > EPS) ON.breath?.(s, ev, null, Math.round(dt * 60), false);
+  }
   // A whole form (Polymorph) ends on the creature when it has no Temporary Hit Points left, however they went (a rest clears them; damage ends it as it soaks).
   for (const e of Object.values(s.entities)) {
     const fx = e.form?.whole === true && !(e.tempHp > 0) ? effectsOf(s).find((x) => x.id === e.form.fx) : null;
@@ -190,8 +197,11 @@ function boundary(s, ev, e, kit, when) {
     if (spent(fx)) endEffect(s, ev, fx, 'nothing is left of it');
   }
 }
-export const turnStarted = (s, ev, e, kit) => boundary(s, ev, e, kit, 'turnStart');
-export const turnEnded = (s, ev, e, kit) => boundary(s, ev, e, kit, 'turnEnd');
+// A turn boundary is also where a swimmer's breath is looked at (`secs` 0: surfacing is noticed here), and where a game with no `breathAt` yet takes the clock as it is, so that
+// the first round of a fight counts.
+const watch = (s, ev, e, turnEnd) => { if (!Number.isFinite(s.breathAt) && Number.isFinite(s.clock)) s.breathAt = s.clock; ON.breath?.(s, ev, e, 0, turnEnd); };
+export const turnStarted = (s, ev, e, kit) => { boundary(s, ev, e, kit, 'turnStart'); watch(s, ev, e, false); };
+export const turnEnded = (s, ev, e, kit) => { boundary(s, ev, e, kit, 'turnEnd'); watch(s, ev, e, true); };
 
 // The fight is ending (call before the encounter is cleared). Whatever was counted in rounds
 // carries on by the clock, and whatever was waiting for a turn boundary ends now.

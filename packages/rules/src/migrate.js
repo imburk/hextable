@@ -258,6 +258,10 @@ export function migrate(state) {
   // Map format 3 (docs/specs/fly-swim-control.md, stage E1, #836) needs no new state version: a water tile's `depth` is added by `migrateMap`, which runs on
   // every load (above) on the table's map and on each parked place's, whatever version the save was. Every water tile of an older map gets 10 feet and nothing
   // else changes; a creature on a water tile (placed there by the DM) is at its surface, which is in the water.
+  // Breath (stage E2, #840): `breathAt` is the game clock at the last moment the time that passes was counted against a swimmer's breath (durations.js `tick`). A save from
+  // before it takes the clock as it is, so the first advance of time counts from there. No version of its own: a creature's `breath` record is optional (absent means it has
+  // held none), and it is only ever written by the engine; running this again finds nothing to do.
+  if (Number.isFinite(state.clock) && !Number.isFinite(state.breathAt)) state.breathAt = state.clock;
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

@@ -29,6 +29,7 @@ export const PARTY_FIELDS = {
   features: 'sent', feats: 'sent', attacks: 'sent', actions: 'sent', spells: 'sent', spellAbil: 'sent', castAbil: 'sent', pact: 'sent', slots: 'sent', slotsMax: 'sent',
   uses: 'sent', charges: 'sent', spent: 'sent', loaded: 'sent', hitDie: 'sent', hitDice: 'sent', hd: 'sent', hdBy: 'sent', gear: 'sent',
   // Where it is in play: its health, its turn, what it carries and whether it is set aside (`melded`: merged with stone, Meld into Stone: a creature of the party is one its party knows).
+  breath: 'sent',              // seconds it has held its breath under water, the Exhaustion levels suffocation gave it, whether it is out of breath, and whether the DM was told the engine cannot judge it: its own, like its Hit Points (a creature that is not the party's is never sent its record at all)
   death: 'sent', dead: 'sent', reactionUsed: 'sent', light: 'sent', away: 'sent', vanished: 'sent', remains: 'sent', hidden: 'sent', hiding: 'sent', melded: 'sent', march: 'sent',
   // These can name another creature.
   cond: 'scrubbed',            // a condition's `source`, a grapple's `holds[].by` (renamed 'someone'; its escape numbers only where the grappler is the party's: holdsShown)

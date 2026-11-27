@@ -6,11 +6,11 @@ import { d20Faces, die, negate, roll } from '../rng.js';
 import { ABILITIES, COMMANDS, SKILLS } from '../content/schema.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { walk as walkSteps } from '../effects.js';
-import { concentrationLost, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
-import { apart, FT } from '../space.js';
+import { concentrationLost, effectsOf, endEffect, ON, startEffect, turnKey, useUp } from '../durations.js';
+import { apart, FT, submerged } from '../space.js';
 import { canSee, COVER, coverOf, sees } from '../sight.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { bounded, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers, untrainedGear, wardName } from '../modifiers.js';
+import { bounded, breathOf, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers, speedOf, untrainedGear, wardName } from '../modifiers.js';
 import { derive } from '../derive.js';
 import { castAbilOf, current, dying, fail, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
 import { baked, weaponKey } from '../imbue.js';
@@ -68,6 +68,62 @@ export function cure(s, t, list, ev) {
     if (fx.parts.every((p) => p.ended)) endEffect(s, ev, fx, `${t.name} was cured`);
   }
 }
+
+// ---------- breath ----------
+// Holding breath under water (SRD "Suffocation"; docs/specs/fly-swim-control.md, "Build notes (E2)"). A creature under the surface (space.js `submerged`) that needs
+// air holds its breath for `breathOf(...).hold` seconds, counted in the time the game clock passes (a round of a fight is 6 seconds of it: resolve.js moves the clock
+// a round at the start of each round). Its record, `breath`, is `{ held, gave, out?, told? }`: seconds held, Exhaustion levels suffocation has given it, whether it has
+// been said to be out of breath, whether the DM has been told that the engine cannot judge it. When it runs out it gains 1 Exhaustion level at the end of each of its
+// turns (in a fight), or one for each 6 seconds it stays out (outside one: a turn is a round); a sixth level is death (Exhaustion). When it can breathe again (it is
+// at or above the surface, or breathes water: Water Breathing, an Amphibious or Water Breathing trait), it removes the levels suffocation gave it (`gave`: kept
+// apart from other Exhaustion, and no more than it has), and the count starts again. Observed where the clock moves (durations.js `tick`: `secs` is the time that
+// passed) and at each end and start of its own turn (`secs` 0), which is also where surfacing is noticed.
+// Nothing here is sent to a player of a creature that is not the party's: the events carry its id (view.js drops what names a hidden creature), a creature that is not
+// the party's is never told in words but to the DM (a `manual` that is `partial`), and `breath` is a field the party's own creatures send (view-fields.js).
+const ROUND_SECONDS = 6;
+function breathless(s, ev, e) {
+  const b = e.breath;
+  if (!b) return;
+  const ex = e.cond?.exhaustion;
+  if (b.gave > 0 && ex) {
+    const was = ex.level ?? 1, now = Math.max(0, was - b.gave);
+    if (now > 0) { ex.level = now; ev.push({ type: 'cond', id: e.id, cond: 'exhaustion', level: now, why: 'breathing again' }); }
+    else { delete e.cond.exhaustion; ev.push({ type: 'condEnd', id: e.id, cond: 'exhaustion', why: 'breathing again' }); }
+  }
+  if (b.out && e.side === 'party') ev.push({ type: 'note', id: e.id, text: `${e.name} can breathe again` });
+  if (b.told) e.breath = { held: 0, gave: 0, told: true }; else delete e.breath;
+}
+function suffocate(s, ev, e, b) {
+  if (immuneTo(s, e, 'exhaustion')) return;
+  const ex = e.cond.exhaustion;
+  if (ex) ex.level = (ex.level ?? 1) + 1; else e.cond.exhaustion = { level: 1 };
+  b.gave++;
+  ev.push({ type: 'cond', id: e.id, cond: 'exhaustion', level: e.cond.exhaustion.level, why: 'suffocation' });
+  if (e.cond.exhaustion.level >= 6) kill(s, e, ev);        // Exhaustion level 6: death
+}
+export function breathe(s, ev, e, secs = 0, turnEnd = false) {
+  if (!e || e.dead || e.melded || !e.pos) return;
+  const wet = submerged(s, e), air = wet ? breathOf(s, e) : null;
+  if (!wet || air.water) return breathless(s, ev, e);
+  if (!air.judged) {
+    if (e.breath?.told) return;
+    e.breath = { held: 0, gave: 0, told: true };
+    return ev.push({ type: 'manual', actor: e.id, name: 'Breath', partial: true, text: `${e.name} is under water. The SRD does not say whether a creature of its kind breathes, so the engine does not count its breath. The DM decides, and gives it Exhaustion by hand if it needs air (once the DM says it does, once is all it is told).` });
+  }
+  const b = e.breath ??= { held: 0, gave: 0 };
+  if (!turnEnd) b.held += secs;
+  // In a fight the round whose turn is ending counts too (the clock moves a round at the start of the next): 30 rounds are held, the 31st is the first without breath.
+  const fight = inFight(s, e.id);
+  if (b.held + (fight && turnEnd ? ROUND_SECONDS : 0) <= air.hold) return;
+  if (!b.out) {
+    b.out = true;
+    if (e.side === 'party') ev.push({ type: 'note', id: e.id, text: `${e.name} is out of breath` });
+  }
+  const owed = fight ? (turnEnd ? 1 : 0) : Math.max(0, Math.floor((b.held - air.hold) / ROUND_SECONDS) - b.gave);
+  for (let n = 0; n < owed && !e.dead; n++) suffocate(s, ev, e, b);
+}
+// The clock moved `secs` seconds: everyone under water holds its breath through it.
+ON.breath = (s, ev, e, secs, turnEnd) => { if (e) breathe(s, ev, e, secs, turnEnd); else for (const x of Object.values(s.entities)) breathe(s, ev, x, secs); };
 
 // A Death Saving Throw: a d20, with what modifiers add to saves (`save.death`, and `save` for any
 // saving throw, such as Bless). A 1 or a 20 on the die counts as itself whatever is added.
@@ -192,6 +248,17 @@ export function rollMode(s, e, t, atk) {
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
+  // SRD "Underwater Combat", Impeded Weapons: a melee attack roll with a weapon by a creature under the surface that lacks a Swim Speed has Disadvantage unless the weapon deals
+  // Piercing damage; a ranged one automatically misses a target beyond the weapon's normal range and has Disadvantage within it. Our ruling (docs/specs/fly-swim-control.md,
+  // "Build notes (E2)"): a melee attack is judged by where the attacker is (the SRD speaks of the one who makes it), a ranged one by where either end is; a spell attack and an
+  // Unarmed Strike are not weapon attacks; a creature's own attack counts as one (its stat block calls it a weapon attack), by the damage types it deals, and one that names none is
+  // left as it is. "Under" is below the surface (space.js `submerged`).
+  let miss = null;
+  if (!atk.spell && !e.object && atk.id !== 'unarmed-strike' && atk.id !== 'unarmed-strike-bonus') {
+    const types = atk.dtypes ?? (atk.dtype ? [atk.dtype] : []);
+    if (!ranged) { if (submerged(s, e) && speedOf(s, e, 'swim') <= 0 && types.length && !types.includes('piercing')) dis.push('weapon underwater'); }
+    else if (submerged(s, e) || submerged(s, t)) { if (Array.isArray(atk.range) && d * FT > atk.range[0]) miss = 'beyond normal range underwater'; else dis.push('ranged weapon underwater'); }
+  }
   if (GRANT && GRANT.who === e.id) { GRANT.used = true; (GRANT.mode === 'advantage' ? adv : dis).push(GRANTS[GRANT.mode]); }
   // SRD Ranged Attacks in Close Combat: only an enemy within 5 feet who can see the attacker and is not Incapacitated counts.
   if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && !incapacitated(o) && apart(s, o, e) <= 1 && canSee(s, o, e) !== 'no')) dis.push('enemy within 5 ft');
@@ -203,7 +270,7 @@ export function rollMode(s, e, t, atk) {
     if (theirs.see === 'no' && !own.includes(theirs.why)) adv.push(`attacker ${UNSEEN[theirs.why]}`);
   }
   // A bonus to rolls against the target (Sundering Blow's +5) adds to the roll as the attacker's own do.
-  return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add + theirs.add, dice: [...mine.dice, ...theirs.dice], crit: theirs.crit, used: [...mine.used, ...theirs.used] };
+  return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, miss, add: mine.add + theirs.add, dice: [...mine.dice, ...theirs.dice], crit: theirs.crit, used: [...mine.used, ...theirs.used] };
 }
 
 // A failed save against an effect that would put one of some conditions on a creature: an ally

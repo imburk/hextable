@@ -116,6 +116,9 @@ export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage
   // `surface`: `{ on: 'surface', op: 'immune', scope: { surface: 'water' } }`, a modifier step: the creature walks on water as on solid ground for as long as the effect lasts (Water Walk); engine/world.js `moveOptions` reads it through `walksOn`.
   // docs/specs/rules-expansion.md, "Build notes: wave 4 part 4".
   'surface',
+  // `breath`: `{ on: 'breath', op: 'immune' }`, a modifier step: the creature breathes water for as long as the effect lasts, and keeps its own way of breathing (Water Breathing);
+  // the breath rule (engine/rolls.js `breathe`) reads it through modifiers.js `breathOf`. docs/specs/fly-swim-control.md, "Build notes (E2)".
+  'breath',
   // `leap`: `{ on: 'leap', op: 'set', value: <feet> }`, a modifier step: once on each of its turns the creature may leap up to `value` feet for 10 feet of movement (Jump);
   // engine/movement.js `leap` reads it through modifiers.js `leapOf`. docs/specs/rules-expansion.md, "Build notes: wave 4 part 8".
   'leap'];
@@ -229,6 +232,8 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   if (m.on === 'terrain' && !(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on terrain is `{ on: "terrain", op: "immune" }`: the creature\'s movement is unaffected by Difficult Terrain');
   // `surface` (Water Walk): only a modifier step `{ on: 'surface', op: 'immune', scope: { surface: 'water' } }`.
   if (m.on === 'surface' && !(stepOk && m.op === 'immune' && m.scope?.surface === 'water' && Object.keys(m.scope).length === 1 && Object.keys(m).length === 3)) say('a modifier on surface is a modifier step `{ on: "surface", op: "immune", scope: { surface: "water" } }`: the creature walks on water as on solid ground for as long as the effect lasts');
+  // `breath` (Water Breathing): only a modifier step `{ on: 'breath', op: 'immune' }`.
+  if (m.on === 'breath' && !(stepOk && m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on breath is a modifier step `{ on: "breath", op: "immune" }`: the creature breathes water for as long as the effect lasts, and keeps its own way of breathing');
   // `invisible` (See Invisibility): only `{ on: 'invisible', op: 'immune' }`, from a spell's lasting effect or a creature's trait (it sees the Invisible).
   // `senses` (True Seeing): only a modifier step `{ on: 'senses', op: 'set', value: <5 to 240 feet>, scope: { sense } }`.
   if (m.on === 'senses' && !(stepOk && m.op === 'set' && Number.isInteger(m.value) && m.value >= 5 && m.value <= 240 && m.value % 5 === 0 && m.scope?.sense !== undefined && Object.keys(m).length === 4)) say('a modifier on senses is a modifier step `{ on: "senses", op: "set", value: <5 to 240 feet, a multiple of 5>, scope: { sense } }`');

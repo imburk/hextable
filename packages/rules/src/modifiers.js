@@ -362,6 +362,26 @@ export function walksOn(s, e, surface = 'water') {
   return false;
 }
 
+// How a creature breathes, for the breath rule under water (SRD "Suffocation"; docs/specs/fly-swim-control.md, "Build notes (E2)"):
+//   `water`: it breathes water as well as whatever it breathes otherwise, so under water it does not run out of breath. A lasting effect of a `breath`
+//            modifier (Water Breathing), or a trait of its stat block (or of the form it has taken) with the id `amphibious` or `water-breathing`.
+//   `judged`: whether the engine can say that it needs air. A character, and a creature of a living kind (beast, humanoid, dragon, monstrosity, giant,
+//            fey) breathes air. For any other kind (an Undead, a Construct, an Elemental, an Ooze, a Plant, an Aberration, a Celestial, a Fiend)
+//            the SRD says nothing either way, and a creature with no stat block of its own says nothing at all: the engine does not guess, and the DM is told.
+//   `hold`:  the seconds it holds its breath: 1 minute plus its Constitution modifier in minutes, 30 seconds at least; 1 hour for a `hold-breath` trait.
+const LIVING = ['beast', 'humanoid', 'dragon', 'monstrosity', 'giant', 'fey'];
+export function breathOf(s, e) {
+  let water = false;
+  for (const src of sources(s, e)) for (const m of src.modifiers) if (m.on === 'breath' && m.op === 'immune') water = true;
+  const blocks = [e.tpl, e.form?.block].filter((id) => typeof id === 'string').map((id) => (Object.hasOwn(CONTENT.monsters, id) ? CONTENT.monsters[id] : Object.hasOwn(CONTENT.summons ?? {}, id) ? CONTENT.summons[id] : null)).filter(Boolean);
+  const traits = blocks.flatMap((b) => b.traits ?? []);
+  if (traits.some((t) => t.id === 'amphibious' || t.id === 'water-breathing')) water = true;
+  const kind = typeOf(e);                          // a form never changes the creature's type (SRD Wild Shape)
+  const judged = e.kind === 'pc' || (typeof kind === 'string' && LIVING.includes(kind));
+  const con = Math.floor(((e.abil?.con ?? 10) - 10) / 2);
+  return { water, judged, hold: traits.some((t) => t.id === 'hold-breath') ? 3600 : Math.max(30, (1 + con) * 60) };
+}
+
 // A number kept within what `min` and `max` modifiers allow.
 export const bounded = (m, n) => Math.min(m.max ?? Infinity, Math.max(m.min ?? -Infinity, n));
 
