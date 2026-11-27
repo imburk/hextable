@@ -1560,3 +1560,67 @@ test("daylight: a DM-hidden caster's sphere lights nothing the players are sent 
     plain: (w) => burn(w, { q: 10, r: 0 }),
   });
 });
+
+// ---- Conjure Animals and Magic Circle (#786 wave 5 part 3, issue #833) ----
+// The pack and the circle are public (their cast shows the cells), but nothing about a DM-hidden creature may reach a player: not a save, an event, a refusal, a stop or a count.
+const w5p3Field = (w, { fey = false } = {}) => {
+  const s = w.state;
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  for (let q = -16; q <= 24; q++) for (let r = -8; r <= 8; r++) s.map.levels[0].tiles[`${q},${r}`] = { t: "grass" };
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  for (const [id, q, r] of [["fighter", fey ? 14 : -8, 0], ["rogue", -8, 1], ["wizard", -8, 2], ["cleric", 0, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+  Object.assign(s.entities.cleric, { owner: w.ids.Pat, ownerName: "Pat", spells: [...s.entities.cleric.spells, "conjure-animals", "magic-circle"], slots: { ...s.entities.cleric.slots, 3: 3 }, slotsMax: { ...s.entities.cleric.slotsMax, 3: 3 } });
+  Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+  if (fey) s.entities.fighter.type = "fey";
+};
+const packScript = (steps) => ({
+  players: ["Pat"],
+  setup(w) { w5p3Field(w); w.putIn(); w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 }); turnOf(w, "cleric"); },
+  steps,
+});
+const ghost = (q, r) => ({ hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q, r }, name: "Ghost", hidden: true }); }, plain: (w) => { burn(w, { q, r }); } });
+test("conjure animals: a cast on a space a hidden creature stands in, and the pack moved onto another hidden creature's space and over a third, is accepted and sent the same as over bare cells", () => {
+  twin(packScript([
+    { by: "Pat", act: { type: "cast", actor: "cleric", spell: "conjure-animals", slot: 3, hex: { q: 4, r: 0 } } },
+    { by: "Pat", act: { type: "move", actor: "cleric", to: { q: -1, r: 0 } } },
+    { by: "Pat", act: { type: "moveZone", actor: "cleric", to: { q: 8, r: 0 } } },
+    { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } },
+  ]), {
+    hide: (w) => { for (const [q, r, n] of [[5, 0, "GhostA"], [8, 0, "GhostB"], [11, 0, "GhostC"]]) w.must({ type: "spawn", monster: "goblin-warrior", at: { q, r }, name: n, hidden: true }); },
+    plain: (w) => { for (const [q, r] of [[5, 0], [8, 0], [11, 0]]) burn(w, { q, r }); },
+  });
+});
+test("conjure animals: a hidden creature the pack's zone reaches, by the pack moving to it and by it walking in, is made to save nothing and sent no player", () => {
+  const r = twin(packScript([
+    { by: "Pat", act: { type: "cast", actor: "cleric", spell: "conjure-animals", slot: 3, hex: { q: 4, r: 0 } } },
+    { by: "Pat", act: { type: "move", actor: "cleric", to: { q: -1, r: 0 } } },
+    { by: "Pat", act: { type: "moveZone", actor: "cleric", to: { q: 9, r: 0 } } },
+    { by: "dm", act: (w) => ({ type: "move", actor: byName(w, "Ghost")?.id ?? "nobody", to: { q: 12, r: 1 } }), allowError: true },
+    { by: "Pat", act: { type: "check", actor: "fighter", skill: "athletics" } },
+    { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } },
+  ]), ghost(11, 0));
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("Ghost"));
+});
+const circleScript = (steps, { fey = false } = {}) => ({
+  players: ["Pat"],
+  setup(w) { w5p3Field(w, { fey }); w.must({ type: "place", actor: "cleric", to: { q: 6, r: 0 } }); w.putIn(); },
+  steps: [{ by: "Pat", act: { type: "cast", actor: "cleric", spell: "magic-circle", slot: 3, hex: { q: 8, r: 0 }, choice: ["fey"] } }, ...steps],
+});
+test("magic circle: a DM-hidden creature of a chosen type that tries to walk in, and one that walks up to the edge, is sent no player and changes nothing they see", () => {
+  const r = twin(circleScript([
+    { by: "dm", act: (w) => ({ type: "move", actor: byName(w, "Ghost")?.id ?? "nobody", to: { q: 8, r: 0 } }), allowError: true },
+    { by: "dm", act: (w) => ({ type: "move", actor: byName(w, "Ghost")?.id ?? "nobody", to: { q: 11, r: 0 } }), allowError: true },
+    { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } },
+  ]), ghost(14, 3));
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("Ghost"));
+});
+test("magic circle: a party creature of a chosen type that tries to walk into a hidden creature's space inside the circle, or ends its move beside the circle, is refused and sent the same as over a bare cell", () => {
+  const r = twin(circleScript([
+    { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 8, r: 0 } }, allowError: true },
+    { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 9, r: 0 } }, allowError: true },
+    { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 11, r: 0 } }, allowError: true },
+    { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 11, r: 1 } }, allowError: true },
+  ], { fey: true }), ghost(8, 0));
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("Ghost"));
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes("keeps"), "the party's creature was refused by the circle");
+});
