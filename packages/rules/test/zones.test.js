@@ -45,9 +45,10 @@ test("Moonbeam: a save as it appears, when a creature walks in, and at the end o
   for (let i = 0; i < 10 && current(s) !== a.id; i++) later.push(...ok(apply(s, { type: "endTurn", actor: current(s) }, DM)).events);
   later = ok(apply(s, { type: "endTurn", actor: a.id }, DM)).events;
   assert.equal(savesBy(later, a.id).length, 1);
-  // Players are not sent the zone itself, nor the zone event; they see the save and the damage.
+  // Players are sent the zone's shape (#842) but not how it works, and not the zone event; they see the save and the damage.
   s.entities.wizard.owner = "pat";
-  assert.equal("zone" in view(s, PLAYER).effects.find((x) => x.name === "Moonbeam"), false);
+  const shown = view(s, PLAYER).effects.find((x) => x.name === "Moonbeam").zone;
+  assert.ok(shown && shown.hexes.length && !("steps" in shown) && !("src" in shown) && !("last" in shown));
   assert.equal(viewEvents(later, s, PLAYER).some((e) => e.type === "zone"), false);
 });
 
