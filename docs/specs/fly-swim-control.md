@@ -1,6 +1,6 @@
 # Spec: flying and swimming control (a column of cubes, a plane of cells)
 
-Status: C1 to C4 are built (#716, flying) and E1 (the swimming engine, #836); C5 (the swimming control) is not. The owner answered questions 1 to 8 with the defaults (board, 23 November 2026). What was
+Status: C1 to C4 are built (#716, flying), E1 (the swimming engine, #836) and E2 (breath, underwater combat, Water Breathing, #840); C5 (the swimming control) is not. The owner answered questions 1 to 8 with the defaults (board, 23 November 2026). What was
 settled while building is in "Build notes" at the end.
 
 Written 22 November 2026, after the owner's game night. It sits beside `maps-and-objects.md` (the rules for height, M6),
@@ -464,3 +464,43 @@ What was settled while building the swimming engine (the owner said yes to quest
 - **Reader.** `MOVE_ENGINE.swim` is true: a swim speed is no longer handed to the DM, and a monster's reading says how it swims; the goldens moved.
 - **Not built, with reasons:** DEBT T109.
 
+## Build notes (E2, #840)
+
+What was settled while building what being under water does (the owner said yes to swimming on 26 November 2026; Water Breathing is the druid Ventus's, #786). Every number is
+from the SRD: "Suffocation" (Hazards), "Underwater Combat", "Swimming", the spell Water Breathing, and the monster traits Amphibious, Water Breathing and Hold Breath.
+
+- **Under water** is `submerged(s, e)` (E1): below the surface, not at it. A creature swimming at the surface is not under water, for breath, for weapons or for Fire.
+- **Holding breath** (`engine/rolls.js` `breathe`, `modifiers.js` `breathOf`). A creature under the surface that needs air holds its breath for 1 + its Constitution modifier
+  minutes, 30 seconds at least (a `hold-breath` trait: 1 hour). Its record is `breath: { held, gave, out?, told? }` (seconds held, Exhaustion levels suffocation gave it, said to
+  be out of breath, the DM told); it is optional, so there is no new state version and no migration. The time is the game clock's: in a fight a round is 0.1 of a minute and the
+  clock moves a round at the start of each round (as it always did), outside one it is whatever `advanceTime`, a rest or travel moves it. `durations.js` `tick` counts it for every
+  creature under the surface, from `state.breathAt` (the clock at the last look: optional too; a game with none works the first advance out from the `time` or `rest` event it just
+  made, and from nothing else), and every turn boundary of a creature looks at it with 0 seconds, which is where surfacing is noticed.
+- **Running out.** In a fight the rounds are counted as they complete, and the round whose turn is ending counts too: a creature with three minutes holds its breath for rounds 1 to 30,
+  and gains 1 Exhaustion level at the end of each of its turns from round 31 on. Outside a fight a turn is a round: one
+  level for each full 6 seconds past the limit. The sixth level is death (Exhaustion, SRD "Rules Glossary"): `kill` runs, so Death Ward holds against it as against any other kill
+  that deals no damage. A creature immune to Exhaustion (`conditionImmune`) gains none.
+- **Breathing again** (it is at or above the surface, or breathes water): the levels suffocation gave it come off (`breath.gave`, kept apart from Exhaustion that came from elsewhere:
+  no more than it has) and the count starts again. A level a long rest took off meanwhile is not taken twice.
+- **Who needs no air** (`breathOf`): a lasting `{ on: 'breath', op: 'immune' }` modifier (Water Breathing), or a trait of its stat block, or of the form it has taken (Wild Shape lays
+  the beast's traits over the druid), with the id `amphibious` or `water-breathing`, breathes water as well as whatever it breathes otherwise. A character, and a creature of a kind
+  that lives by breathing (beast, humanoid, dragon, monstrosity, giant, fey), is judged to need air. The SRD says nothing of whether an Aberration, a Celestial, a Construct, an
+  Elemental, a Fiend, an Ooze, a Plant or an Undead breathes, and a creature with no stat block of its own says nothing at all: the engine does not guess; the DM is told once (a
+  `manual` that is `partial`: for the DM alone, once for the creature and never again), the creature is not counted, and the DM applies Exhaustion by hand. A form never changes the
+  creature's kind (SRD, Wild Shape). A creature that breathes only water (a fish, Water Breathing trait) and is out of the water suffocates in the SRD's hour; that half is not built.
+- **Underwater combat** (`rollMode` in `engine/rolls.js`, `damage` in `engine/resolve.js`). A weapon attack roll is judged by where the attacker or its target is, under the surface.
+  Melee (the SRD: "a creature that lacks a Swim Speed ... underwater"): the attacker is under the surface, has no Swim Speed, and the weapon deals no Piercing damage: Disadvantage
+  (reason "weapon underwater"). Ranged: **either end** under the surface (the arrow passes through water however it is shot): beyond the weapon's normal range the attack
+  **automatically misses** (the die is still rolled, and never hits, a natural 20 included; reason "beyond normal range underwater"), within it Disadvantage. A spell attack and an
+  Unarmed Strike are not weapon attacks; a creature's own attack counts as a weapon attack (its stat block calls it one), by the damage types its steps deal, and one that names no type is
+  left as it is. A ranged attack at point blank keeps its other Disadvantage; they do not add. **Fire**: damage of the Fire type to a creature under the surface is halved, as any
+  Resistance is (once, with any other Resistance: it does not stack; Overchannel's damage that ignores Resistance still does).
+- **Water Breathing** is `auto`: `[{ modifier: { on: 'breath', op: 'immune' } }]` for 24 hours on up to ten willing creatures, ritual too. The hook is `breath`, a modifier step
+  only (`schema.js`, `reader.js`); it adds water to what the creature breathes, so "also retain normal respiration" is the rule itself. Water Walk is as it was.
+- **The brain** (`ai.js`). A creature that needs air and has two rounds of it or less left comes up first, before it does anything else: it moves to the cheapest place it can reach that
+  is not under the surface, or as far up as it can get, and it does not choose to end a turn under the surface while it is down to those two rounds (a creature with a Swim Speed may
+  otherwise stay under, as it could before). It reads the true state and rolls nothing. It does not dive on purpose, drown a foe, or hold a foe under.
+- **Players are sent** a party creature's `breath` (`view-fields.js`: sent) and the notes "is out of breath" and "can breathe again" for it, and its Exhaustion as any condition of its own. Of a
+  creature that is not the party's, nothing: the events name it (`id`, `actor`) and `view.js` drops them; the notes are not even made for it; the DM is told by a `partial` `manual`. Twin
+  tests: `packages/server/test/twin-worlds.test.js` (a hidden creature running out of breath, gaining Exhaustion, and surfacing, by time and by the rounds of a fight).
+- **Not built, with reasons:** DEBT T110.
