@@ -3,7 +3,11 @@
 //
 // A zone is `fx.zone` on a lasting effect (durations.js), made when the spell is cast, or when a subclass feature's action that carries one is used:
 //   { area, on: ['enter' | 'step' | 'turnStart' | 'turnEnd'], once: 'turn' | 'enter'?, follows: id?, near?,
-//     hexes: [col keys]?, origin, spare: [ids], steps, src, last: { id: turnKey } }
+//     hexes: [col keys]?, origin, spare: [ids], steps, src, last: { id: turnKey },
+//     seen?, foes?, body?: [col keys], move?, with?, beside?, ward?: { types, reverse } }
+// `seen` and `foes` (Conjure Animals): it goes off only on a creature its caster can see, and not on one on the caster's side. `body` (a zone laid out from a space,
+// `area.space`): the cells of the pack's own space, the `hexes` being every cell within the area's size of them. `ward` (Magic Circle): the zone is a barrier, not a
+// thing that goes off (`on` is empty): see `wardsFor` in modifiers.js and engine/world.js.
 // `follows` names the creature an Emanation moves with (Spirit Guardians); otherwise the zone
 // keeps the hexes it was laid out on. `steps` are the spell's own effect steps, scaled and with
 // the caster's choices made, run against one creature at a time with `src` (the caster's DC and
@@ -16,9 +20,20 @@
 import { gridOf, col, boxOf, squareAround } from './grid.js';
 import { begin, run } from './effects.js';
 import { effectsOf, endEffect, thisTurn, turnKey } from './durations.js';
-import { FT, footprint, gap, ground, rise, sizeOf } from './space.js';
+import { FT, footprint, gap, ground, hasColumn, rise, sizeOf } from './space.js';
 
 export const zonesOf = (s) => effectsOf(s).filter((fx) => fx.zone);
+
+// An area laid out from a space (`area.space`, Conjure Animals' pack: "every space within 10 feet of the pack"): the space is the footprint of a creature of that size
+// anchored at `origin`, and the area is its own cells and every cell within `area.size` feet of any of them. On hexes a cell is within so many hexes of one of the space's
+// cells; on squares it is the table rule `areaFill`'s Emanation round the space's box, as an Emanation round a creature is laid out (world.js), with the space's own squares in it.
+// Nothing is stretched from a sphere: the shape is the space's, not a point's. Returns { body, hexes } (cells with a column on the map).
+export function spaceOf(s, area, origin) {
+  const G = gridOf(s.map), n = area.size / FT, body = footprint({ size: area.space }, origin, G);
+  const cells = G.kind === 'square' ? [...body, ...squareAround(boxOf(body), n, s.settings?.areaFill ?? 'round')] : body.flatMap((b) => G.range(b, n));
+  const seen = new Set(), keep = (list) => list.filter((h) => !seen.has(col(h)) && seen.add(col(h)) && hasColumn(s.map, h)).map(({ q, r }) => ({ q, r }));
+  return { body: body.filter((b) => hasColumn(s.map, b)).map(({ q, r }) => ({ q, r })), hexes: keep(cells) };
+}
 
 // Make the zone of a lasting effect just started: by a spell (engine/casting.js builds the same record inline) or by a feature's action
 // (engine/features.js, addition D of docs/specs/homebrew-subclasses.md). `def` is the `zone` of the spell or the action (`on`, `once`,
@@ -66,7 +81,7 @@ export function holds(s, fx, t) {
   const o = z.origin, shape = z.area.shape, tall = z.area.height ?? z.area.size;
   if (shape === 'cylinder') return t.pos.z > o.z - FT / 2 && t.pos.z <= o.z + tall;
   if (shape === 'cube') return t.pos.z < o.z + z.area.size && t.pos.z + sizeOf(t).height > o.z;
-  if (shape === 'sphere') return gap(s, o, t.pos) <= n;
+  if (shape === 'sphere') return z.area.space ? rise(t.pos.z - o.z) <= n : gap(s, o, t.pos) <= n;      // from a space (the pack): the cells say how far across, the height is judged from where it stands
   if (shape === 'line' && z.area.placed) return t.pos.z < o.z + (z.area.height ?? FT) && t.pos.z + sizeOf(t).height > o.z;      // a wall stands from the surface up `height` feet
   return true;
 }
@@ -116,6 +131,12 @@ function trigger(s, ev, kit, fx, t, why, pre = () => {}) {
   // A zone limited to some creature types (`area.types`, Turn Undead's kind) leaves a creature of another type alone, as aimArea does for
   // those caught when it is cast (the same test, with the same creatureType, which the kit lends); it is not counted as having gone off.
   if (z.area?.types && !z.area.types.includes(kit.creatureType(t))) return false;
+  // `foes` and `seen` (Conjure Animals: "a creature you can see ... you can force"): a creature on the caster's side is not forced to save, and one the caster cannot see is not either. Nothing is
+  // said or sent of a creature it leaves alone: not counted as having gone off, no event, nothing rolled, so a hidden creature in the area is as a bare cell is.
+  if (z.foes || z.seen) {
+    const c = s.entities[fx.source];
+    if (!c || c.dead || (z.foes && t.side === c.side) || (z.seen && !kit.seen(s, c, t))) return false;
+  }
   if (z.once === 'turn' && now !== null && thisTurn(s, z.last[t.id])) return false;
   // `once: 'enter'` (Wall of Fire: "when it enters the wall for the first time on a turn or ends its turn there"): only entering is held to the one go; the end of a turn is its own.
   if (z.once === 'enter' && why === 'enter') {
@@ -142,9 +163,10 @@ function fire(s, ev, kit, fx, t, why) {
 // The zone is rolled to a new place (Flaming Sphere: "you can move the sphere up to 30 feet ... If you move the sphere into a creature's space, that creature makes the save against
 // the sphere"): it keeps its steps and what each creature has had of it, and has new hexes and a new origin. `met` is the creature whose space it rolled into, if any: it goes off on
 // that creature at once (outside the once-a-turn count: it is the moving that does it, not the creature's own turn).
-export function shiftZone(s, ev, kit, fx, { hexes, origin }, met = null) {
+export function shiftZone(s, ev, kit, fx, { hexes, origin, body }, met = null) {
   fx.zone.hexes = hexes.map(col);
   fx.zone.origin = { ...origin };
+  if (body) fx.zone.body = body.map(col);
   if (met && !met.dead) fire(s, ev, kit, fx, met, 'rolled');
 }
 

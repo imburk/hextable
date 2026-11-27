@@ -6,7 +6,8 @@
 // gets back the total and the reasons, which is what the log shows.
 // Design: docs/specs/rules-expansion.md, decision 3.
 import { CONTENT } from './content/index.js';
-import { apart, FT } from './space.js';
+import { col, gridOf } from './grid.js';
+import { apart, footprint, FT, gap } from './space.js';
 import { canSee, coverOf } from './sight.js';
 
 // Things a creature can be that are not SRD conditions but work the same way.
@@ -104,6 +105,25 @@ export function judge(tag, sit, s) {
   }
 }
 
+// Magic Circle (docs/specs/rules-expansion.md, "Build notes: wave 5 part 3"): a lasting zone with `ward: { types, reverse }`, a Cylinder of the cast's own cells and height. What a circle does to a
+// creature of one of its types: it cannot willingly move into it (`warded`; engine/world.js, movement), it has Disadvantage on attack rolls against targets within, and cannot give them the Charmed or Frightened
+// condition (`wardGuards`, `immuneTo` below). Reversed, all of that holds the other way round: it cannot willingly leave, and protects targets outside. A creature whose type the engine cannot tell is bound by none.
+export const wardsOf = (s) => (s?.effects ?? []).filter((fx) => fx.zone?.ward);
+export function inWard(s, fx, c, pos = c.pos) {
+  const z = fx.zone, keys = new Set(z.hexes), tall = z.area.height ?? z.area.size, o = z.origin;
+  return footprint(c, pos, gridOf(s.map)).some((f) => keys.has(col(f))) && pos.z > o.z - FT / 2 && pos.z <= o.z + tall;
+}
+const wardOfType = (fx, c) => { const ty = typeOf(c); return ty !== null && fx.zone.ward.types.includes(ty); };
+// The circles whose type list includes this creature's.
+export const wardsFor = (s, c) => wardsOf(s).filter((fx) => wardOfType(fx, c));
+// Would a step (or a teleport) of `c` from `from` to `to` cross the barrier of circle `fx` the way it bars: into it, or out of it if reversed?
+export const warded = (s, fx, c, from, to) => (fx.zone.ward.reverse ? inWard(s, fx, c, from) && !inWard(s, fx, c, to) : !inWard(s, fx, c, from) && inWard(s, fx, c, to));
+// Does circle `fx` protect target `t`: within it, or outside it if reversed?
+export const wardCovers = (s, fx, t) => (fx.zone.ward.reverse ? !inWard(s, fx, t) : inWard(s, fx, t));
+// Is `t` kept from the Charmed or Frightened condition by a circle, when the creature `giver` would give it? Only when the giver is known and is of a chosen type.
+const wardGuards = (s, t, id, giver) => (id === 'charmed' || id === 'frightened') && !!giver && wardsFor(s, giver).some((fx) => wardCovers(s, fx, t));
+export const wardName = (s, t, id, giver) => wardsFor(s, giver).find((fx) => wardCovers(s, fx, t) && wardGuards(s, t, id, giver))?.name;
+
 // Auras (a built character's feature with `aura`: Aura of Protection, Aura of Courage): what
 // reaches creature `e` from its own auras and those of its allies. An aura is an Emanation of
 // `range` feet from its holder, inactive while the holder is Incapacitated (or down or dead), and
@@ -145,7 +165,7 @@ export const typeOf = (t) => (t ? t.type ?? CONTENT.monsters[t.tpl]?.type ?? CON
 const ofTypes = (t, types) => { const ty = typeOf(t); return ty !== null && types.includes(ty); };
 // Is a creature immune to a condition: its own immunity (a monster's), an ally's aura (Aura of Courage), or a spell on it (Heroism)? `giver`: the creature that would give it, for an immunity that is only against some creatures.
 // `magic`: a spell gives the condition (a modifier with `magic: true` holds only then).
-export const immuneTo = (s, e, id, giver = undefined, magic = false) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id)) || spellImmune(s, e, giver, false, magic).includes(id);
+export const immuneTo = (s, e, id, giver = undefined, magic = false) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id)) || spellImmune(s, e, giver, false, magic).includes(id) || wardGuards(s, e, id, giver);
 
 // What a built character wears without training (SRD "Armor Training": armour it lacks training with; a Shield without training only loses its Armor Class bonus), by name, as derive()
 // worked it out (`untrained` on the record). A creature in a form wears none (it melds into the form), as armourWorn says.
@@ -171,6 +191,13 @@ function* sources(s, e) {
     // `against`: the modifier holds only against that creature (Hex, Hunter's Mark: the marked target).
     // `except`: it does not hold for rolls that creature makes (Sundering Blow: "another creature").
     for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against, except: p.except, part: p, magic: !!fx.spell };
+  }
+  // A zone laid out from a space gives its caster a modifier while the caster is within `beside.feet` of that space (Conjure Animals: Advantage on Strength saves within 5 feet of the pack).
+  for (const fx of s?.effects ?? []) {
+    const b = fx.zone?.beside;
+    if (!b || fx.source !== e.id || !e.pos || !fx.zone.body?.length) continue;
+    const G = gridOf(s.map), n = b.feet / FT, z0 = fx.zone.origin.z ?? 0, mine = footprint(e, e.pos, G);
+    if (mine.some((f) => fx.zone.body.some((k) => { const [q, r] = k.split(',').map(Number); return gap(s, f, { q, r, z: z0 }) <= n; }))) yield { name: fx.name, modifiers: [b.modifier], level: 1, key: fx.id };
   }
   const auras = aurasOn(s, e), spelled = spellImmune(s, e);
   for (const [id, inst] of conditionsOf(e)) {
@@ -302,6 +329,8 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       }
     }
   }
+  // Magic Circle: a creature of a chosen type has Disadvantage on attack rolls against targets the circle protects.
+  if (hook === 'attack.roll' && sit.target) for (const fx of wardsFor(s, e)) if (wardCovers(s, fx, sit.target)) out.disadvantage.push(fx.name);
   return out;
 }
 

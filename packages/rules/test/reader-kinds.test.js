@@ -114,7 +114,7 @@ test('the golden monsters use every field, shape, step, hook and op the strict l
   assert.deepEqual([...traitKeys].sort(), keysOf(HOMEBREW_TYPES.trait));
   assert.deepEqual([...actionKeys].sort(), keysOf(HOMEBREW_TYPES.action));
   assert.deepEqual([...creatureKeys].sort(), keysOf(HOMEBREW_TYPES.creature));
-  assert.deepEqual([...areaKeys].sort(), keysOf(HOMEBREW_TYPES.area).filter((k) => k !== 'placed'), '`placed` (a wall) is for a spell: no monster action has one');
+  assert.deepEqual([...areaKeys].sort(), keysOf(HOMEBREW_TYPES.area).filter((k) => k !== 'placed' && k !== 'space'), '`placed` (a wall) and `space` (a pack laid out from a space) are for a spell: no monster action has one');
   assert.deepEqual([...shapes].sort(), ['cone', 'cube', 'cylinder', 'emanation', 'line', 'sphere']);
   assert.deepEqual([...steps].sort(), STEPS.filter((s) => s !== 'summon' && s !== 'counter' && s !== 'imbue' && s !== 'revive' && s !== 'eachTurn' && s !== 'endSpell' && s !== 'arm' && s !== 'command' && s !== 'ward' && s !== 'confuse' && s !== 'sense' && s !== 'cut' && s !== 'meld' && s !== 'resize').sort(), 'a creature\'s action cannot hold a summon, a counter, an imbue, a revive, an eachTurn, an endSpell, an arm, a command, a ward, a confuse, a sense, a cut, a meld or a resize step');
   assert.deepEqual([...branches].sort(), BRANCHES.filter((b) => b !== 'eachTurn').sort());

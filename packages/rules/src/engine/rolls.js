@@ -10,7 +10,7 @@ import { concentrationLost, effectsOf, endEffect, startEffect, turnKey, useUp } 
 import { apart, FT } from '../space.js';
 import { canSee, COVER, coverOf, sees } from '../sight.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { bounded, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers, untrainedGear } from '../modifiers.js';
+import { bounded, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers, untrainedGear, wardName } from '../modifiers.js';
 import { derive } from '../derive.js';
 import { castAbilOf, current, dying, fail, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
 import { baked, weaponKey } from '../imbue.js';
@@ -312,7 +312,12 @@ function ending(s, step, f, ev, t) {
 // (the Disadvantage is a modifier for a hold; a holder drags what it holds when it walks, movement.js), so the DM is told neither.
 export function condition(s, t, id, ev, f = null, step = null, level = undefined, ended = false) {
   if (!up(t) || t.cond[id]) return;
-  if (immuneTo(s, t, id, f?.actor !== undefined ? s.entities[f.actor] : undefined, f?.src?.spell !== undefined)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
+  const giver = f?.actor !== undefined ? s.entities[f.actor] : undefined;
+  if (immuneTo(s, t, id, giver, f?.src?.spell !== undefined)) {
+    // Magic Circle (modifiers.js `wardName`): said with its name, and carrying the giver as `actor`, so the players are told nothing of a giver they cannot see (view.js drops an event whose actor is hidden).
+    const ward = giver ? wardName(s, t, id, giver) : undefined;
+    return ev.push({ type: 'note', id: t.id, ...(ward ? { actor: giver.id } : {}), text: ward ? `${ward} keeps ${t.name} from being ${conditionName(id)}` : `Immune to ${conditionName(id)}` });
+  }
   // An instant spell's effect that exists only to hold the endings of its other steps (`bound`) cannot end a condition
   // whose step names no ending: tied to it, the condition would never end and no one would say so. It is kept off the
   // effect instead, and the DM is told below that nothing ends it (T32).

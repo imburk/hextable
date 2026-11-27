@@ -207,7 +207,9 @@ export const AFFLICTIONS = ['exhaustion', 'charmed', 'petrified', 'curse', 'abil
 export const CURE_WORDS = ['exhaustionLevel', 'curse', 'curses'];
 // `resize` (Enlarge/Reduce): `enlarge` or `reduce`. A step with `ifChoice` is part of the cast only for the values it lists.
 export const RESIZES = ['enlarge', 'reduce'];
-export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES, familiarity: FAMILIARITY, affliction: AFFLICTIONS, shape: STONE_SHAPES, resize: RESIZES };
+// `ward` (Magic Circle): the kinds of creature a circle may be set against, one or more of them (the cast's `choice` is a list of these; `reverse: true` turns the circle round).
+export const WARDS = ['celestial', 'elemental', 'fey', 'fiend', 'undead'];
+export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES, familiarity: FAMILIARITY, affliction: AFFLICTIONS, shape: STONE_SHAPES, resize: RESIZES, ward: WARDS };
 function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
@@ -321,10 +323,22 @@ function lintZone(e, say, action = false) {
   const z = e.zone;
   if (z === undefined) return;
   if (!z || typeof z !== 'object' || Array.isArray(z)) return say('`zone` must be an object');
-  for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
+  for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'with', 'beside', 'ward'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
+  // `ward: true` (Magic Circle): the zone is a barrier, not something that goes off: it has no `on`, and the cast's `choice` is the types it works against (docs/specs/rules-expansion.md, "Build notes: wave 5 part 3").
+  if (z.ward !== undefined && !(z.ward === true && !action && e.target?.area?.shape === 'cylinder' && e.choice?.of === 'ward' && z.on === undefined && Object.keys(z).length === 1)) say('`zone.ward` is true, alone, on a spell whose area is a cylinder and whose `choice` is of `ward`');
+  // `seen: true` ("a creature you can see") and `foes: true` (the caster forces only creatures that are not on its side): a spell's zone, which goes off only on such creatures. `with: "move"` (Conjure Animals): the zone may be moved when its caster moves, on its turn, and not with an action;
+  // `beside: { feet, modifier }`: while the caster is within `feet` of the zone's own space it has that modifier (Advantage on Strength saves); only on a zone that is laid out from a space (`area.space`).
+  for (const k of ['seen', 'foes']) if (z[k] !== undefined && !(z[k] === true && !action && z.ward === undefined)) say(`\`zone.${k}\` is true or left out, on a spell's zone`);
+  if (z.with !== undefined && !(z.with === 'move' && z.move !== undefined)) say('`zone.with` is "move", on a zone that can move (`zone.move`): it moves when its caster does');
+  if (z.beside !== undefined) {
+    const b = z.beside;
+    if (!(b && typeof b === 'object' && !Array.isArray(b) && Object.keys(b).every((k) => ['feet', 'modifier'].includes(k)) && isInt(b.feet) && b.feet >= 5 && b.feet <= 30 && b.feet % 5 === 0 && b.modifier && typeof b.modifier === 'object' && !action && e.target?.area?.space !== undefined)) say('`zone.beside` is { feet: 5 to 30, a multiple of 5, modifier: a modifier }, on a spell whose area is laid out from a space (`area.space`)');
+    else { lintModifier(b.modifier, (m) => say(`in \`zone.beside\`: ${m}`), false, true); if (!(b.modifier.on?.startsWith('save') || b.modifier.on === 'check' || b.modifier.on === 'attack.roll')) say('`zone.beside.modifier` is on a save, a check or an attack roll'); }
+  }
+  if (e.target?.area?.space !== undefined && !(z.move !== undefined && z.on !== undefined)) say('an area laid out from a space (`area.space`) is the zone of a spell with `zone.move`');
   // `budget: n` (Guardian of Faith: "vanishes when it has dealt a total of 60 damage"): the zone's lasting effect ends once the damage its steps have dealt adds up to `n`. A spell's zone only.
   if (z.budget !== undefined && !(isInt(z.budget) && z.budget >= 1 && z.budget <= 120 && !action)) say('`zone.budget` is a whole number of damage, 1 to 120, on a spell\'s zone');
-  if (!(Array.isArray(z.on) && z.on.length && z.on.every((x) => ['enter', 'step', 'turnStart', 'turnEnd'].includes(x)) && new Set(z.on).size === z.on.length)) say('`zone.on` lists enter, turnStart and/or turnEnd, or step (each 5 feet walked within the area)');
+  if (z.ward === undefined && !(Array.isArray(z.on) && z.on.length && z.on.every((x) => ['enter', 'step', 'turnStart', 'turnEnd'].includes(x)) && new Set(z.on).size === z.on.length)) say('`zone.on` lists enter, turnStart and/or turnEnd, or step (each 5 feet walked within the area)');
   if (z.once !== undefined && !['turn', 'enter'].includes(z.once)) say('`zone.once` is "turn" or left out (or "enter": only entering is held to once a turn)');
   if (z.once === 'enter' && !z.on?.includes?.('enter')) say('`zone.once: "enter"` limits the entering, so the zone goes off on `enter`');
   // `move: n` (Flaming Sphere: "As a Bonus Action, you can move the sphere up to 30 feet"): the caster may roll the zone up to `n` feet as a Bonus Action (the action `moveZone`). A spell's zone, laid out as a sphere.
@@ -379,6 +393,7 @@ function lintChoice(e, say) {
     if (m.types?.includes('chosen')) used.add('damageType');
   });
   walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); if (st.command === 'chosen') used.add('command'); if (st.familiarity === 'chosen') used.add('familiarity'); });
+  if (e.zone?.ward === true) used.add('ward');
   if (c !== undefined) {
     if (!c || !Object.hasOwn(CHOICES, c.of)) return say(`\`choice.of\` is one of ${Object.keys(CHOICES).join(', ')}`);
     if (c.from !== undefined && !(Array.isArray(c.from) && c.from.length > 1 && c.from.every((x) => CHOICES[c.of].includes(x)))) say(`\`choice.from\` lists ${c.of} values`);
@@ -816,6 +831,8 @@ function lintTarget(target, say, nearOk = false, typesOk = false) {
     if (target.area.exceptCaster !== undefined && target.area.exceptCaster !== true) say('`exceptCaster` is true or left out');
     // `placed`: a Line that is a wall put down within the spell's range, centred on the space chosen (the wall spells); `width` is its thickness, `height` how high it stands.
     if (target.area.placed !== undefined && !(target.area.placed === true && target.area.shape === 'line')) say('`placed` is true, on a line');
+    // `space: 'large'` (Conjure Animals: "every space within 10 feet of the pack"): a sphere laid out from the footprint of a space of that size at the point aimed at, not from a point. A spell's zone only.
+    if (target.area.space !== undefined && !(typesOk && target.area.shape === 'sphere' && ['large', 'huge', 'gargantuan'].includes(target.area.space))) say('`space` is large, huge or gargantuan, on a sphere in a spell: the sphere is every space within `size` feet of a space of that size');
     // `types`: only creatures of these types in the area are affected (Turn Undead's Undead).
     if (target.area.types !== undefined && !(allOf(CREATURE_TYPES)(target.area.types) && target.area.types.length)) say('`types` lists creature types');
     // `choose`: up to so many creatures of the caster's choice in the area. `count`: so many of
@@ -994,9 +1011,11 @@ function lintHigher(e, say) {
   if (h.range !== undefined && !byLevel(h.range, (v) => isInt(v) && v % 5 === 0 && v > (typeof e.range === 'number' ? e.range : 0) && v <= 1000)) say('`higher.range` gives a range in feet (a multiple of 5, longer than the spell\'s own) by character level');
   if (h.range !== undefined && typeof e.range !== 'number') say('`higher.range` is for a spell with a range in feet');
   if (h.slot !== undefined) {
-    for (const k of Object.keys(h.slot ?? {})) if (!['damage', 'heal', 'tempHp', 'times', 'targets', 'value'].includes(k)) say(`\`higher.slot.${k}\` is not something a spell can grow by`);
+    for (const k of Object.keys(h.slot ?? {})) if (!['damage', 'heal', 'tempHp', 'times', 'targets', 'value', 'hours'].includes(k)) say(`\`higher.slot.${k}\` is not something a spell can grow by`);
     for (const k of ['damage', 'heal', 'tempHp']) if (h.slot[k] !== undefined && !isDice(h.slot[k])) say(`\`higher.slot.${k}\` must be dice`);
-    for (const k of ['times', 'targets', 'value']) if (h.slot[k] !== undefined && !(isInt(h.slot[k]) && h.slot[k] > 0)) say(`\`higher.slot.${k}\` must be a positive whole number`);
+    for (const k of ['times', 'targets', 'value', 'hours']) if (h.slot[k] !== undefined && !(isInt(h.slot[k]) && h.slot[k] > 0)) say(`\`higher.slot.${k}\` must be a positive whole number`);
+    // `hours` (Magic Circle: "The duration increases by 1 hour for each spell slot level above 3"): hours of duration added for each slot level above the spell's own, on a spell that lasts a whole number of hours.
+    if (h.slot.hours !== undefined && !(/^\d+ hours?$/.test(e.duration) && e.zone?.ward === true)) say('`higher.slot.hours` is for a spell whose duration is a number of hours, and a circle (`zone.ward`)');
     if (h.slot.targets !== undefined && !e.target?.creature && !e.target?.area?.choose) say('`higher.slot.targets` is for a spell aimed at creatures');
   }
 }
@@ -3137,16 +3156,17 @@ const SHAPES = {
   spellMap: { what: 'spells by class level', keys: null },
   hitRider: { what: 'a hit rider', keys: ['with'] },
   target: { what: 'a target', keys: ['self', 'creature', 'area', 'near', 'object', 'wall'] },
-  area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count', 'placed'] },
+  area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count', 'placed', 'space'] },
   creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'] },
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when', 'atLeast'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
   scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool', 'sense', 'surface'] },
   ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged', 'keeps'] },
   higher: { what: 'casting higher', keys: ['level', 'targets', 'slot', 'range'] },
-  slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
+  slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value', 'hours'] },
   choice: { what: 'a choice', keys: ['of', 'from'] },
-  zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move'] },
+  zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'with', 'beside', 'ward'] },
+  beside: { what: 'what a zone gives its caster beside it', keys: ['feet', 'modifier'] },
   terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts', 'silence', 'light', 'globe', 'shell'] },
   reaction: { what: 'a reaction', keys: ['on', 'blocks', 'ac', 'attack', 'manual'] },
   bond: { what: 'a summon bond', keys: SUMMON_BOND_KEYS },
@@ -3194,7 +3214,8 @@ const SHAPES = {
 // The shape of a child: by its parent's shape and its key. A list's items take the shape given for the list.
 const CHILD = {
   spells: { target: 'target', effects: 'steps', higher: 'higher', choice: 'choice', zone: 'zone', terrain: 'terrain', reaction: 'reaction', hit: 'hitRider' },
-  zone: { effects: 'steps' },
+  zone: { effects: 'steps', beside: 'beside' },
+  beside: { modifier: 'modifier' },
   monsters: { speed: 'speedMap', senses: 'senseMap', skills: 'skillMap', saves: 'saveMap', abilities: 'abilities', traits: 'trait[]', actions: 'action[]' },
   items: { attune: 'attune', base: 'base', charges: 'charges', grants: 'grants', activate: 'activate[]' },
   feats: { prerequisite: 'prerequisite', increase: 'increase', proficiencies: 'proficiencies', spellPick: 'spellPick', grants: 'grants' },
@@ -3318,7 +3339,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   // steps and modifiers
   'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 2], 'step.feet': [5, 240], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000], 'step.cut': [5, 10],
   'modifier.value': [-40, 40], 'modifier.atLeast': [1, 20], 'speedModifier.value': [-120, 120], 'senseModifier.value': [5, 240], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
-  'ends.dc': [1, 50], 'zone.budget': [1, 120], 'zone.move': [5, 60],
+  'ends.dc': [1, 50], 'zone.budget': [1, 120], 'zone.move': [5, 60], 'beside.feet': [5, 30], 'slot.hours': [1, 8],
   // items, feats, objects, weapons, armour
   'items.bonus': [1, 3], 'charges.max': [1, 50], 'activate.cost': [1, 20], 'activate.dc': [5, 30], 'activate.level': [1, 9], 'activate.upTo': [1, 9],
   'increase.max': [20, 30], 'increase.points': [1, 2], 'prerequisite.level': [1, 20], 'proficiencies.n': [1, 5], 'spellPick.cantrips': [0, 4], 'spellPick.level1': [0, 2],
@@ -3609,16 +3630,17 @@ export const HOMEBREW_TYPES = Object.freeze({
   requires: { level: 'i', option: 's', spell: 's' },
   spellMap: { '*': 's[]' },
   target: { self: 'b', creature: 'o', area: 'o', near: 'i', object: 'o', wall: 'o' },
-  area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i', placed: 'b' },
+  area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i', placed: 'b', space: 's' },
   creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]', types: 's[]', dead: 'b' },
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', from: 's[]', magic: 'b', when: 's[]', atLeast: 'i' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
   scope: { skill: 's', ability: 's', condition: 's', tool: 's', sense: 's', surface: 's' },
   ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b', keeps: 'b' },
   higher: { level: 'o', targets: 'o', slot: 'o', range: 'o' },
-  slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
+  slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i', hours: 'i' },
   choice: { of: 's', from: 's[]' },
-  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a', move: 'i' },
+  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a', move: 'i', seen: 'b', foes: 'b', with: 's', beside: 'o', ward: 'b' },
+  beside: { feet: 'i', modifier: 'o' },
   terrain: { difficult: 'b', obscured: 's', lasts: 's', silence: 'b', light: 'i', globe: 'b', shell: 'b' },
   reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
   hitRider: { with: 's' },
