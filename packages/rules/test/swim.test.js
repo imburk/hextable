@@ -291,3 +291,29 @@ test("a party swimmer that names a column of water without a height is not sent 
   assert.equal(Math.max(Math.abs(f.q - 2), Math.abs(f.r)), 1, `it stopped beside the creature, at ${JSON.stringify(f)}`);
   assert.equal(goblin.hidden, undefined, "and found it");
 });
+
+test("Water Walk: a creature already under the surface swims like anyone; on the surface it stays on foot", () => {
+  const s = pool({ depth: 20, wizard: true });
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "water-walk", targets: ["fighter"], slot: 3 }, DM));
+  s.entities.fighter.pos = { q: 2, r: 0, z: -10 };
+  const r = reach(s);
+  assert.ok(r.size > 1, "it is not stuck");
+  assert.equal(at(r, 2, -5)?.cost, 10, "up toward the surface: a swimming step, 10 without a Swim Speed");
+  assert.equal(at(r, 2, 0)?.cost, 20, "to the surface");
+  assert.equal(at(r, 3, -10)?.cost, 10);
+  s.entities.fighter.pos = { q: 2, r: 0, z: 0 };
+  assert.ok([...reach(s).values()].every((v) => (v.h.z ?? 0) >= 0), "on the surface it still keeps to it");
+});
+
+test("a grappler may swim with what it holds: each foot costs one more, and it is not stuck in the lake", () => {
+  const s = pool({ depth: 20, swim: 30, foe: true });
+  const g = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 0, r: 1 } }, DM)).events.find((e) => e.type === "spawned").id;
+  Object.assign(s.entities[g], { hp: 500, maxHp: 500 });
+  s.entities.fighter.pos = { q: 2, r: 0, z: 0 };
+  s.entities[g].pos = { q: 1, r: 0, z: 0 };
+  s.entities[g].cond.grappled = { source: "fighter", holds: [{ by: "fighter", with: "hand", escape: 14, range: 5 }] };
+  fight(s); turnOf(s, "fighter");
+  const r = reach(s);
+  assert.ok(r.size > 1, "it is not stuck");
+  assert.equal(at(r, 2, 0, -1)?.cost, 10, "a swimming step is 5 feet and the hold adds 5");
+});

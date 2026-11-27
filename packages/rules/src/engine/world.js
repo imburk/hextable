@@ -368,9 +368,10 @@ export function moveOptions(s, e, opts = {}) {
   // 5 ft from that Speed; without it, 10 ft from the walking Speed (SRD "Swimming": each foot costs 1 extra foot; Difficult Terrain 1 more). It shares the turn's
   // feet with the rest as flying and climbing do (`left`). Not for a creature that stands on water (Water Walk keeps to the surface), nor where only the ground is
   // used (`footing`: a formation's places; a creature that drags another).
-  const swims = !walker && !opts.footing && !grounded;
+  // A creature that drags another may swim (the SRD charges each foot of dragging one more, `toll`); a Water Walker swims only while under the surface (see `steps`).
+  const swimsAny = !opts.footing, swims = swimsAny && !walker;
   const limit = { walk: left(walk), climb: left(climbSpeed > 0 ? climbSpeed : walk), fly: fighting ? left(flySpeed) : Math.max(60, flySpeed), swim: left(swimSpeed > 0 ? swimSpeed : walk) };
-  const budget = Math.max(limit.walk, limit.climb, flying ? limit.fly : 0, swims && swimSpeed > 0 ? limit.swim : 0);
+  const budget = Math.max(limit.walk, limit.climb, flying ? limit.fly : 0, swimsAny && swimSpeed > 0 ? limit.swim : 0);
   // Traps this creature knows of: the party knows the ones it has spotted; everyone else knows them all.
   const hazards = new Set();
   for (const o of map.objects) {
@@ -385,12 +386,18 @@ export function moveOptions(s, e, opts = {}) {
     // A trap the party has spotted can be stepped onto on purpose, but no path runs across it.
     if (here && from !== e.pos && onHazard(here.id, from)) return out;
     // In the water (at the surface or under it): the way on is swimming. Under the surface, there is no walking.
-    const wat = swims ? waterIn(columnOf(from), from.z) : null, sub = !!wat && from.z < wat.z;
+    // Water Walk: on the surface it is on foot; below it (it fell in), it swims like anyone, up to the surface. Standing on the surface again is the DM's (docs/DEBT.md T109).
+    const wsw = swimsAny ? waterIn(columnOf(from), from.z) : null, wat = wsw && (!walker || from.z < wsw.z) ? wsw : null, sub = !!wat && from.z < wat.z;
     // One step through water to `h` (in column `n`, whose water is `w`): what it costs and what it is spent from (see `swims`).
     const swim = (h, n, w, diag, level) => {
       const hard = !easy && (crowded(h) || spelled(h)) ? 1 : 0;
-      if (swimSpeed > 0) out.push({ h, cost: (1 + hard) * FT, max: limit.swim, flat: 1 + hard, extra: 0, diag, level });
-      if (walk > 0) out.push({ h, cost: (2 + hard) * FT, max: limit.walk, flat: 2 + hard, extra: 0, diag, level });
+      let next = null;
+      if (checked) { const d = dragStep(there ?? s, e, h); if (d.blocked) return; next = d.next; }                    // what it holds could not follow
+      const fl = [];
+      if (swimSpeed > 0) fl.push([1 + hard + toll, limit.swim]);
+      if (walk > 0) fl.push([2 + hard + toll, limit.walk]);
+      for (const [flat, max] of fl) out.push({ h, cost: flat * FT, max, flat, extra: 0, diag, level });
+      if (checked && fl.length) { const c = (dist.get(fromKey) ?? 0) + Math.min(...fl.map((f) => f[0])) * FT, k = key(h); if (c < (dist.get(k) ?? Infinity)) { dist.set(k, c); layout.set(k, next); } }
     };
     const wetFits = (h) => !big || footprint(e, h, G).every((f) => waterIn(columnOf(f), h.z));
     if (here && walk > 0 && !sub) {
