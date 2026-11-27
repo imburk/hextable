@@ -9,7 +9,6 @@ import { submerged } from "../src/space.js";
 import { breathOf } from "../src/modifiers.js";
 import { aiStep } from "../src/ai.js";
 import { CONTENT } from "../src/content/index.js";
-import { migrate as migrateGame } from "../src/migrate.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -295,10 +294,17 @@ test("a creature that would run out of breath swims up to the surface when it ca
   assert.ok(s.entities[g].pos.z > before || !submerged(s, s.entities[g]), `it came up: ${before} -> ${s.entities[g].pos.z}`);
 });
 
-test("a saved game takes its clock for `breathAt`, and nothing else changes", () => {
-  const s = pool();
+test("a game with no `breathAt` (a new one, a save from before swimming) counts the first advance of time from what it told, and keeps the field after", () => {
+  const s = pool(), f = s.entities.fighter;
   delete s.breathAt;
-  const m = migrateGame(structuredClone(s));
-  assert.equal(m.breathAt, s.clock);
-  assert.deepEqual(migrateGame(structuredClone(m)), m, "running it again finds nothing to do");
+  dive(s);
+  wait(s, 3.2);                                                   // 12 seconds out of breath
+  assert.equal(exh(f), 2);
+  assert.equal(s.breathAt, s.clock);
+  // A long rest (8 hours) is told too.
+  const t = pool(), g = t.entities.fighter;
+  delete t.breathAt;
+  dive(t);
+  ok(apply(t, { type: "shortRest" }, DM));
+  assert.equal(exh(g) > 0, true, "an hour under water");
 });

@@ -108,11 +108,11 @@ test("an area whose caster picks among those caught: Slow and Mass Cure Wounds",
   assert.deepEqual(heal.events.filter((e) => e.type === "heal").map((e) => e.target), ["fighter", "rogue"]);
 });
 
-test("a manual spell on several creatures tells the DM once, and players never learn of hidden targets", () => {
+test("a manual spell (Water Walk; Water Breathing was the example before #840) on several creatures tells the DM once, and players never learn of hidden targets", () => {
   const s = field();
-  know(s, "water-breathing");
+  know(s, "water-walk");
   for (const [i, id] of ["fighter", "rogue"].entries()) ok(apply(s, { type: "place", actor: id, to: { q: 1, r: i } }, DM));
-  const res = ok(cast(s, "water-breathing", { targets: ["fighter", "rogue", "wizard"] }));
+  const res = ok(cast(s, "water-walk", { targets: ["fighter", "rogue", "wizard"] }));
   assert.equal(res.events.filter((e) => e.type === "manual").length, 1);
   // A creature in a part of the map the players have not been shown stays unnamed in what they are sent.
   const seen = spawn(s, "goblin-warrior", 3, 1), unseen = spawn(s, "goblin-warrior", 3, 0);

@@ -1,4 +1,4 @@
-// Wave 4, part 4, of issue #786: Water Walk (assist, through the `surface` hook), Teleport (assist, the Teleportation Outcome table), Water Breathing (kept manual).
+// Wave 4, part 4, of issue #786: Water Walk (assist, through the `surface` hook), Teleport (assist, the Teleportation Outcome table), Water Breathing (kept manual there; auto since #840, E2).
 // Built to docs/specs/rules-expansion.md, "Build notes: wave 4 part 4". Every test goes through apply().
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -30,10 +30,10 @@ function field(seed = 5) {
 }
 const manualTexts = (r) => r.events.filter((e) => e.type === "manual").map((e) => e.text).join("\n");
 
-test("tiers: Water Walk and Teleport are assist; Water Breathing stays manual; the entries lint and read", () => {
+test("tiers: Water Walk and Teleport are assist; Water Breathing is auto since #840; the entries lint and read", () => {
   assert.equal(SPELLS["water-walk"].def.tier, "assist");
   assert.equal(SPELLS["teleport"].def.tier, "assist");
-  assert.equal(SPELLS["water-breathing"].def.tier, "manual");
+  assert.equal(SPELLS["water-breathing"].def.tier, "auto");
   for (const id of ["water-walk", "teleport", "water-breathing"]) {
     assert.deepEqual(lint(SPELLS[id].def), [], id);
     assert.deepEqual(readEntry("spell", SPELLS[id].def, {}).problems ?? [], [], id);

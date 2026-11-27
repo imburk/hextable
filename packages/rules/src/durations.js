@@ -153,10 +153,13 @@ function expire(s, ev, fx) {
 
 // The world clock moved: end whatever has run out.
 export function tick(s, ev) {
-  // Everyone under water holds its breath through the time that passed since the clock was last looked at (engine/rolls.js `breathe`). `breathAt` is that moment:
-  // a state with none (a game saved before swimming, a new one) takes it as now.
+  // Everyone under water holds its breath through the time that passed since the clock was last looked at (engine/rolls.js `breathe`). `breathAt` is that moment, kept
+  // from one look to the next; a game that has none yet (a new one, a save from before swimming: it is optional, so there is no state version for it) works it out from what
+  // this advance told (`time`, a rest), and from nothing else: a clock moved some other way is counted from now.
   if (Number.isFinite(s.clock)) {
-    const dt = Number.isFinite(s.breathAt) ? s.clock - s.breathAt : 0;
+    const told = ev.findLast?.((x) => x?.type === 'time' || x?.type === 'rest');
+    const from = Number.isFinite(s.breathAt) ? s.breathAt : told?.type === 'time' ? s.clock - told.minutes : told?.short === true ? s.clock - 60 : told ? s.clock - 480 : s.clock;
+    const dt = s.clock - from;
     s.breathAt = s.clock;
     if (dt > EPS) ON.breath?.(s, ev, null, Math.round(dt * 60), false);
   }

@@ -78,6 +78,7 @@ const FIXTURES = [
   base('clear-eyes', 'Clear Eyes', { level: 2, range: 'self', duration: '1 hour', target: { self: true }, tier: 'auto', effects: [{ modifier: { on: 'invisible', op: 'immune' } }] }),
   base('far-eyes', 'Far Eyes', { level: 6, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto', effects: [{ modifier: { on: 'senses', op: 'set', value: 120, scope: { sense: 'truesight' } } }] }),
   base('dry-feet', 'Dry Feet', { level: 3, range: 30, duration: '1 hour', target: { creature: { count: 10 } }, tier: 'assist', effects: [{ modifier: { on: 'surface', op: 'immune', scope: { surface: 'water' } } }] }),
+  base('gill-breath', 'Gill Breath', { level: 3, range: 30, duration: '24 hours', target: { creature: { count: 10 } }, tier: 'auto', effects: [{ modifier: { on: 'breath', op: 'immune' } }] }),
   base('leaping', 'Leaping', { level: 1, range: 'touch', duration: '1 minute', target: { creature: { count: 1 } }, tier: 'auto', effects: [{ modifier: { on: 'leap', op: 'set', value: 30 } }] }),
   base('far-step', 'Far Step', { level: 7, range: 10, target: { self: true }, tier: 'assist', choice: { of: 'familiarity' }, effects: [{ teleport: 1000, familiarity: 'chosen' }] }),
   base('wake-the-fallen', 'Wake the Fallen', { level: 3, school: 'necromancy', range: 'touch', target: { creature: { count: 1, dead: true } }, tier: 'assist', effects: [{ revive: 1, within: 1 }] }),
