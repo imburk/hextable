@@ -172,6 +172,9 @@
     </section>
     <section id="dm" class="tabpanel" role="region" aria-labelledby="drawer-title" data-sec="" data-acc hidden>
   <!-- DM tools (docs/specs/one-token-menu.md, M5): what waits is on top (the to-do tray is under "Waiting for you" on the first level since M6); then a list of seven screens, one tap each (the menu's third level, drawer.js). Every id is kept. -->
+  <ul id="dm-waiting-ul" class="menu-list" aria-label="Waiting for you">
+    <li id="dm-waiting-li" hidden><button type="button" class="menu-row" id="dm-waiting"><span class="mr-name">Waiting for you (<span id="dm-waiting-n"></span>)</span><span class="mr-sum" id="dm-waiting-says"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+  </ul>
   <div id="dm-table"></div>
   <section id="dm-fallen" hidden><h3>The party has fallen</h3>
     <p class="note">Everyone in the party is dead or down and stable. The card with your choices can be brought back.</p>
@@ -182,7 +185,6 @@
     <div class="row"><button type="button" id="dm-rewards-open">Settle the rewards</button></div>
   </section>
   <ul id="dm-index" class="menu-list sec-index" aria-label="DM tools">
-    <li id="dm-waiting-li" hidden><button type="button" class="menu-row" id="dm-waiting"><span class="mr-name">Waiting for you (<span id="dm-waiting-n"></span>)</span><span class="mr-sum" id="dm-waiting-says"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
     <li><button type="button" class="menu-row" data-sec="fight"><span class="mr-name">Undo and the fight</span><span class="mr-sum">Take back a step, call for initiative, the pace</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
     <li><button type="button" class="menu-row" data-sec="creatures"><span class="mr-name">Creatures</span><span class="mr-sum">Add, place, hide, conditions, rests, who plays whom</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
     <li><button type="button" class="menu-row" data-sec="map"><span class="mr-name">Map, sight and light</span><span class="mr-sum">Edit the map, what players are sent, light, places</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>

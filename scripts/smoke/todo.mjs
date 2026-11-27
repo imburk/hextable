@@ -62,7 +62,7 @@ async function solo(browser, url, label, opts) {
         await openMenu(page, ['dm']); await waitShown(page, '#dm-waiting');
         const row = await page.textContent('#dm-waiting');
         if (!/Waiting for you \(1\)/.test(row) || !/a to-do card \(Mage Armor\)/.test(row)) throw new Error(`row: ${row}`);
-        const first = await page.evaluate(() => document.querySelector('#dm-index li:not([hidden]) button')?.id);
+        const first = await page.evaluate(() => document.querySelector('#dm > :first-child button')?.id);
         if (first !== 'dm-waiting') throw new Error(`first row is ${first}`);
         await shot(page, `todo-${tag}-dmrow`);
         await tap(page, touch, '#dm-waiting');
