@@ -38,5 +38,6 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [Prompts](prompts.md) | The DM's call for a roll (a called save, DM-granted Advantage or Disadvantage); later, choices after a roll | Draft; the engine part of "Call for a roll" built (#676) |
 | [Shops and loot](shops.md) | Market pack, shops, purses, haggling | Draft; P1, P2, P3a built |
 | [Adventure modules](adventure-module.md) | A zip the DM prepares and adds to a game | Draft; A0b (the zip library) built |
+| [Legendary actions and Legendary Resistance](legendary.md) | The window after each turn, the DM's one-tap choice, Legendary Resistance asked of the DM, the monster data (DEBT M5) | Draft; nothing built |
 
 Still to write: the rest of prompts (reactions and decisions made after a roll), persistent world and the AI DM interface.

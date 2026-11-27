@@ -90,7 +90,7 @@ test("Phantom Steed (SRD 29404-29428): the Riding Horse block with Speed 100, an
 const LEFT = {
   "mage-hand": "manual", "floating-disk": "manual", "unseen-servant": "manual",
   "conjure-animals": "assist", "faithful-hound": "manual",
-  "arcane-hand": "manual", "conjure-elemental": "manual", "conjure-fey": "manual", "planar-ally": "manual",
+  "arcane-hand": "manual", "conjure-elemental": "manual", "planar-ally": "manual",
   "arcane-sword": "manual", "finger-of-death": "assist", "simulacrum": "manual",
 };
 test("the spells of the group that need a mechanism the vocabulary lacks have no summon step and keep their tiers", () => {
@@ -99,8 +99,8 @@ test("the spells of the group that need a mechanism the vocabulary lacks have no
     assert.equal(sp.tier, tier, id);
     assert.ok(!json(sp.effects).includes('"summon"'), id);
   }
-  // Already entered with a summon step and assist: Find Steed (Life Bond), Animate Dead (bones), Create Undead (night, Ghasts...). Spiritual Weapon (#786) joins them; Guardian of Faith has no summon step and left this list when it went to assist.
-  for (const id of ["find-steed", "animate-dead", "create-undead", "animate-objects", "phantom-steed"]) {
+  // Already entered with a summon step and assist: Find Steed (Life Bond), Animate Dead (bones), Create Undead (night, Ghasts...). Spiritual Weapon (#786) and Conjure Fey (#859) join them; Guardian of Faith has no summon step and left this list when it went to assist.
+  for (const id of ["find-steed", "animate-dead", "create-undead", "animate-objects", "phantom-steed", "conjure-fey"]) {
     assert.equal(CONTENT.spells[id].tier, "assist", id);
     assert.ok(CONTENT.spells[id].effects.some((x) => "summon" in x), id);
   }
