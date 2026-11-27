@@ -45,6 +45,30 @@ async function solo(browser, url, label, opts) {
         if ((await badge(page)) !== 1) throw new Error(`badge ${await badge(page)}`);
         await shot(page, `todo-${tag}-badge`);
       });
+      await run.do('the badge says what it counts (title and aria-label), a long press shows it, and DM tools has a "Waiting for you" row that opens the menu\'s first level (#844)', async () => {
+        const say = '1 waiting: a to-do card (Mage Armor)';
+        const got = await page.evaluate(() => ['menu-badge', 'dm-badge'].map((id) => [document.getElementById(id).title, document.getElementById(id).getAttribute('aria-label')]));
+        for (const [t, a] of got) if (t !== say || a !== say) throw new Error(`badge words: ${JSON.stringify(got)}`);
+        if (touch) {
+          const box = await page.locator('#menu-badge').boundingBox();
+          const cdp = await ctx.newCDPSession(page);
+          const pt = [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }];
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt });
+          await sleep(800);
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await wait(page, (w) => document.getElementById('toast').textContent === w && !document.getElementById('toast').hidden, say);
+          if (await page.evaluate(() => document.body.classList.contains('drawer-open'))) throw new Error('the long press opened the menu');
+        }
+        await openMenu(page, ['dm']); await waitShown(page, '#dm-waiting');
+        const row = await page.textContent('#dm-waiting');
+        if (!/Waiting for you \(1\)/.test(row) || !/a to-do card \(Mage Armor\)/.test(row)) throw new Error(`row: ${row}`);
+        const first = await page.evaluate(() => document.querySelector('#dm-index li:not([hidden]) button')?.id);
+        if (first !== 'dm-waiting') throw new Error(`first row is ${first}`);
+        await shot(page, `todo-${tag}-dmrow`);
+        await tap(page, touch, '#dm-waiting');
+        await waitShown(page, '#todo-mount');
+        await closeMenu(page);
+      });
       await run.do('the DM tab starts with the card: the note, Ria, the tools, and Done', async () => {
         await openMenu(page, []); await waitShown(page, '#todo-mount');      // M6: the tray is under "Waiting for you" on the first level
         const t = await page.textContent('#todo-mount');
