@@ -28,7 +28,6 @@
 // Ending an effect removes its parts. Design: docs/specs/rules-expansion.md.
 import { has, incapacitated } from './modifiers.js';
 import { leaveForm } from './forms.js';
-import { SIZES } from './content/sizes.js';
 import { homebrewBlock, srcOf } from './homebrew.js';
 
 export const ROUND = 0.1;                 // one round is six seconds; the world clock counts minutes
@@ -75,16 +74,10 @@ function endPart(s, ev, fx, p) {
   if (p.hpMax && t && !t.dead) { t.maxHp -= p.hpMax; t.hp = Math.min(t.hp, t.maxHp); ev.push({ type: 'maxHp', id: t.id, maxHp: t.maxHp, hp: t.hp }); }
   // A form it held ends: what the form replaced is put back (forms.js).
   if (p.form && t?.form?.fx === fx.id) {
+    // The size the form puts back (`form.kept.size`) already carries every change of size made under it or before it (engine/world.js `resize`); those changes are in the creature's own size from now on.
     const formSize = t.size;
     leaveForm(t);
-    // A change of size still running (Enlarge/Reduce) was made on the form's size: the creature's own size takes the same step, and what the change goes back to is that.
-    const live = effectsOf(s).flatMap((x) => x.parts).find((q) => q.size && !q.ended && q.target === t.id && q.size.now === formSize);
-    if (live) {
-      const order = Object.keys(SIZES), step = order.indexOf(live.size.now) - order.indexOf(live.size.was), own = SIZES[t.size] ? t.size : 'medium';
-      const to = order[Math.max(0, Math.min(order.length - 1, order.indexOf(own) + step))];
-      live.size = { was: own, now: to };
-      t.size = to;
-    }
+    for (const x of effectsOf(s)) for (const q of x.parts) if (q.under === fx.id) delete q.under;
     ev.push({ type: 'form', id: t.id, form: null });
     if (t.size !== formSize) ev.push({ type: 'size', id: t.id, size: t.size });
   }

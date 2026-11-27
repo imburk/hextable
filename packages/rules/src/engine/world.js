@@ -700,7 +700,7 @@ export function resize(s, t, step, ev, f) {
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   if (!fx || fx.bound) return false;
   if (t.dead || t.object || !t.pos) return true;
-  const name = f.src.name, caster = s.entities[f.actor] ?? null, now = SIZES[t.size] ? t.size : 'medium', at = SIZE_ORDER.indexOf(now);
+  const name = f.src.name, caster = s.entities[f.actor] ?? null, inForm = t.form?.fx, held = inForm ? t.form.kept.size : t.size, now = SIZES[held] ? held : 'medium', at = SIZE_ORDER.indexOf(now);
   const dm = (text) => ev.push({ type: 'manual', actor: f.actor ?? t.id, name, partial: true, text });
   if (effectsOf(s).some((x) => x.parts.some((p) => p.size && !p.ended && p.target === t.id))) {
     dm(`${t.name} is already larger or smaller by a lasting effect, and the engine keeps one change of size for a creature. It did not change ${name}'s: the DM decides the size.`);
@@ -708,22 +708,23 @@ export function resize(s, t, step, ev, f) {
   }
   const to = SIZE_ORDER[at + (step.resize === 'larger' ? 1 : -1)];
   if (!to) { ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: ${t.name} is already ${now}, so it does not get ${step.resize}` }); return true; }
-  if (step.resize === 'larger') {
+  if (step.resize === 'larger' && !inForm) {
     const body = { ...t, size: to }, { found, told } = inTheWay(s, t, body, caster);
     if (found || !roomFor(s, t, body)) { ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: there is no room for ${t.name} to grow, so it stays ${now}` }); return true; }
     if (told.length) dm(`${t.name} grew in ${name}, and ${told.map((o) => o.name).join(', ')} (which the party does not know of) is in its new space. The engine did not count ${told.length === 1 ? 'it' : 'them'}, so as not to tell the players: the DM moves whoever should not be there.`);
   }
-  t.size = to;
-  fx.parts.push({ target: t.id, size: { was: now, now: to } });
-  ev.push({ type: 'size', id: t.id, size: to });
+  // Cast on a creature in a form: the change is made to the size under the form (no room is judged: nothing of it is in the form's space), and is theirs when the form ends.
+  if (inForm) t.form.kept.size = to; else t.size = to;
+  fx.parts.push({ target: t.id, size: { was: now, now: to }, ...(inForm ? { under: inForm } : {}) });
+  if (!inForm) ev.push({ type: 'size', id: t.id, size: to });
   return true;
 }
 // The size a lasting effect gave goes back when it ends (durations.js `ON.sizeEnd`): only if the creature is still the size the effect left it, and there is no change of the effect's own
 // to undo for one that was shrunk back (a creature that cannot have the room is left where it stands and the DM told, alone: a refusal would tell the players what hides there).
 export function sizeEnd(s, ev, t, was, now, name) {
   if (t.dead) return;
-  // In a form (Wild Shape, Polymorph) the size on the creature is the form's, and the one the form puts back is `form.kept.size`: if that is the size this change left, it is that one that goes back.
-  if (t.form?.kept?.size === now && (SIZES[t.size] ? t.size : 'medium') !== now) { t.form.kept.size = was; return; }
+  // In a form (Wild Shape, Polymorph) the size on the creature is the form's and the change was made to the size under it (`form.kept.size`, `under` on the part): that is what goes back, and the live size is left alone.
+  if (t.form) { if (t.form.kept.size === now) t.form.kept.size = was; return; }
   if ((SIZES[t.size] ? t.size : 'medium') !== now) return;
   t.size = was;
   ev.push({ type: 'size', id: t.id, size: was });

@@ -320,36 +320,44 @@ test("Polymorph: a rest that clears the Temporary Hit Points ends the form", () 
   assert.ok(!f.form, "after a rest");
 });
 
-// Enlarge/Reduce and a form on one creature, in both orders and for both kinds of form (Polymorph, Wild Shape).
-const enlarge = (s, id) => { s.entities.cleric.spells.push("enlarge-reduce"); ok(apply(s, { type: "cast", actor: "cleric", spell: "enlarge-reduce", target: id, choice: "enlarge", slot: 2 }, DM)); return s.effects.find((x) => x.name === "Enlarge/Reduce"); };
-const formWith = { polymorph: (s) => { ok(apply(s, { type: "cast", actor: "wizard", spell: "polymorph", target: "fighter", choice: "wolf", slot: 4 }, DM)); return fxOf(s); },
-  wild: (s) => { const f = s.entities.fighter; const tpl = { size: "medium", ac: 12, speed: 40, speeds: {}, abil: { str: 12, dex: 15, con: 12, int: 3, wis: 12, cha: 6 }, hp: 11, prof: 2 };
-    const fx = { id: "fxWS", name: "Wild Shape (Wolf)", parts: [{ target: "fighter", form: true }], source: "fighter", lasts: "1 hour" }; s.effects.push(fx); takeForm(f, "wolf", "Wolf", tpl, [], fx.id); return fx; } };
-for (const kind of ["polymorph", "wild"]) {
-  test(`Enlarge and a ${kind} form: the Enlarge ends first, the creature is its own size when the form ends`, () => {
-    const s = field(); const f = s.entities.fighter;
-    const en = enlarge(s, "fighter"); assert.equal(f.size, "large");
-    formWith[kind](s); assert.equal(f.size, "medium");
-    ok(apply(s, { type: "endEffect", actor: "cleric", effect: en.id }, DM));
-    ok(apply(s, { type: "endEffect", actor: "wizard", effect: (kind === "polymorph" ? fxOf(s) : s.effects.find((x) => x.id === "fxWS")).id }, DM));
-    assert.equal(f.size, "medium");
+// Enlarge/Reduce and a form on one creature: Enlarge or Reduce x a Beast smaller, the same size as, or larger than the change x both end orders x both kinds of form; and the change cast while in the form.
+const roomy = () => { const s = field(); ok(apply(s, { type: "place", actor: "fighter", to: { q: 8, r: 0 } }, DM)); ok(apply(s, { type: "place", actor: "cleric", to: { q: 5, r: 0 } }, DM)); return s; };
+const resizeBy = (s, id, choice) => { s.entities.cleric.spells.push("enlarge-reduce"); ok(apply(s, { type: "cast", actor: "cleric", spell: "enlarge-reduce", target: id, choice, slot: 2 }, DM)); return s.effects.find((x) => x.name === "Enlarge/Reduce"); };
+const BEAST = { smaller: "cat", same: "brown-bear", larger: "giant-ape" };
+const formOf = (kind, s, beast) => {
+  const m = CONTENT.monsters[beast];
+  if (kind === "polymorph") { s.entities.fighter.level = 9; ok(apply(s, { type: "cast", actor: "wizard", spell: "polymorph", target: "fighter", choice: beast, slot: 4 }, DM)); return fxOf(s); }
+  const tpl = { size: m.size, ac: 12, speed: 40, speeds: {}, abil: { str: 12, dex: 15, con: 12, int: 3, wis: 12, cha: 6 }, hp: 11, prof: 2 };
+  const fx = { id: "fxWS", name: "Wild Shape", parts: [{ target: "fighter", form: true }], source: "fighter", lasts: "1 hour" };
+  s.effects.push(fx); takeForm(s.entities.fighter, beast, m.name, tpl, [], fx.id); return fx;
+};
+const end = (s, fx, who = "wizard") => ok(apply(s, { type: "endEffect", actor: who, effect: fx.id }, DM));
+for (const kind of ["polymorph", "wild"]) for (const choice of ["enlarge", "reduce"]) for (const rel of ["smaller", "same", "larger"]) {
+  const beast = rel === "same" ? (choice === "enlarge" ? "brown-bear" : "wolf") : BEAST[rel], formSize = CONTENT.monsters[beast].size, changed = choice === "enlarge" ? "large" : "small";
+  const label = `${choice} and a ${kind} form (${beast}, ${formSize})`;
+  test(`${label}: the change before the form, ended first: the form's size is not touched, and it ends Medium`, () => {
+    const s = roomy(); const f = s.entities.fighter;
+    const ch = resizeBy(s, "fighter", choice); assert.equal(f.size, changed);
+    const fx = formOf(kind, s, beast); assert.equal(f.size, formSize);
+    end(s, ch, "cleric"); assert.equal(f.size, formSize, "still the Beast's size");
+    end(s, fx); assert.equal(f.size, "medium");
   });
-  test(`Enlarge and a ${kind} form: the form ends first, the Enlarge still runs and keeps the creature large; then it ends`, () => {
-    const s = field(); const f = s.entities.fighter;
-    const en = enlarge(s, "fighter");
-    const fx = formWith[kind](s);
-    ok(apply(s, { type: "endEffect", actor: "wizard", effect: fx.id }, DM));
-    assert.equal(f.size, "large");
-    ok(apply(s, { type: "endEffect", actor: "cleric", effect: en.id }, DM));
-    assert.equal(f.size, "medium");
+  test(`${label}: the change before the form, the form ended first: it is ${changed} while the change runs, Medium after`, () => {
+    const s = roomy(); const f = s.entities.fighter;
+    const ch = resizeBy(s, "fighter", choice);
+    const fx = formOf(kind, s, beast);
+    end(s, fx); assert.equal(f.size, changed);
+    end(s, ch, "cleric"); assert.equal(f.size, "medium");
   });
-  test(`Enlarge cast in a ${kind} form, the form ends first: the creature is Large, then back to Medium with the Enlarge`, () => {
-    const s = field(); const f = s.entities.fighter;
-    const fx = formWith[kind](s); assert.equal(f.size, "medium");
-    const en = enlarge(s, "fighter"); assert.equal(f.size, "large");
-    ok(apply(s, { type: "endEffect", actor: "wizard", effect: fx.id }, DM));
-    assert.equal(f.size, "large");
-    ok(apply(s, { type: "endEffect", actor: "cleric", effect: en.id }, DM));
-    assert.equal(f.size, "medium");
+  test(`${label}: the change cast in the form: the Beast's size is left alone; the change is the creature's own when the form ends, in either order`, () => {
+    for (const formFirst of [true, false]) {
+      const s = roomy(); const f = s.entities.fighter;
+      const fx = formOf(kind, s, beast); assert.equal(f.size, formSize);
+      const ch = resizeBy(s, "fighter", choice);
+      assert.equal(f.size, formSize, "the live size is the Beast's");
+      if (formFirst) { end(s, fx); assert.equal(f.size, changed); end(s, ch, "cleric"); }
+      else { end(s, ch, "cleric"); assert.equal(f.size, formSize); end(s, fx); }
+      assert.equal(f.size, "medium");
+    }
   });
 }
