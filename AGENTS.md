@@ -43,7 +43,7 @@ by the engine. Must work on PC, phone and tablet.
   (XP and loot), `rng.js` (seeded dice), `scenario.js` (the starter valley),
   `scenes.js` (scenes with no map), `scores.js` (making ability scores),
   `summons.js` (summon blocks), `terrain.js` (what lasting spells do to the
-  ground and air), `timeline.js` (trimming the timeline), `todo.js` (the DM's to-do tray: a card for each note the engine hands over), `view.js` (what each
+  ground and air), `tides.js` (water that rises and falls: a water level as a reversible change of tiles, and the tides a fight's rounds move), `timeline.js` (trimming the timeline), `todo.js` (the DM's to-do tray: a card for each note the engine hands over), `view.js` (what each
   person at the table may know), `vision.js` (what the party sees and
   remembers), `weapons.js` (what a weapon attack may do) and `worldpack.js`
   (the DM's world pack: atlas, pins, routes), `known.js` (which places of a world players know, and their player ids),

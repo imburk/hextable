@@ -8,6 +8,7 @@ import { FT, landing, overlapAt, regionAt, SQUARE_RANGES, surfaces, under } from
 import { LIGHTS } from '../content/lights.js';
 import { copyPacks, packsProblem } from '../content/packs.js';
 import { lintMap, migrateMap } from '../map.js';
+import { waterChange } from '../tides.js';
 import { arrivalSpots, marchOrder, setPin } from '../places.js';
 import { loadNode, placeIn } from './travel.js';
 import { handoutActions } from '../handouts.js';
@@ -198,6 +199,13 @@ export const handlers = {
     (Array.isArray(a.ops) && a.ops.length > 0 && a.ops.length <= 2000) || fail('Nothing to change.');
     editMap(s, a.ops, ev);                              // the DM's map edit and Stone Shape's cut are one path (engine/world.js)
   },
+  // Change the water of some cells, now or as a tide that moves each round of a fight (tides.js; docs/specs/fly-swim-control.md, E3).
+  // { type: 'water', level, cells | region, surface | by, bed?, rise?: { by, to } } or { type: 'water', tide, stop: true }
+  water(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can change the water.');
+    const problem = waterChange(s, a, ev);
+    problem === null || fail(problem);
+  },
   // Take a creature out of the game. { type: 'remove', actor }
   remove(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can remove a creature.');
@@ -242,6 +250,7 @@ export const handlers = {
     ctx.role === 'dm' || fail('Only the DM can change the map.');
     !s.encounter || fail("The map can't change in the middle of a fight.");
     if (a.node !== undefined) return loadNode(s, a, ctx, ev);
+    delete s.tides;                                     // a tide belongs to the map it was set on (tides.js)
     let map;
     try { map = migrateMap(structuredClone(a.map)); } catch { fail("That map can't be used. It is not a map document."); }
     const problems = lintMap(map);

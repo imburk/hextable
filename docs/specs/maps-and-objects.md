@@ -94,6 +94,8 @@ A creature's position becomes `{ q, r, z }`, with `z` in feet.
 - **Stairs and ramps** are simply tiles whose offsets rise from one level to
   the next. **Ladders, ropes and trapdoors** are objects that connect two
   positions (decision 4).
+- **Water can change** (#849, E3). A tile may carry `dry`, the tile it was before water covered it (`tides.js`; the linter checks it as a tile): a tile's height is
+  still `level.z + tile.h`, but a `water` tile's can rise and fall, and the `water` action rewrites it. Nothing else about the format changed.
 - **Movement modes.** A record has a speed per mode: walk, climb, swim, fly,
   burrow, plus `hover`. Climbing a tree, a wall or a ladder and flying are
   the same mechanism moving through `z`, which is why fighting from a tree
