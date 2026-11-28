@@ -905,17 +905,17 @@ can run in parallel after R2. R10 decides the rest.
 *Decision (owner and lead, 14 Nov).* A fight is still one accelerated state for everyone, but the owner liked "here is the battle area" because in
 a living world something goes on outside it (see `travel.md`, the concurrent places). So the **lighting change stays** (everything outside the
 arena is dimmed and desaturated: `tintOf` and the `locked` colours in `three-build.js`, and in `render.js` until R14 step 2) and the **glowing edge goes by
-default**: the tall light wall, the bright rim on the arena's cells, the brighter grid inside them and the pictured level's lit outline.
+default**: the tall light wall (and, on a pictured level, the lit outline). The arena's cells are not recoloured: they take the same rim and grid as any other floor (#886; before, the edge look also brightened them).
 
-*The preference.* `hextable.arenaEdge` is `"dim"` (default: lighting only, plus the flash below) or `"edge"` (the old look: dim plus the glowing
-edge). It is a look like `floors` and `caves`: `LOOK.arenaEdge` in `themes.js`, copied onto every theme as `theme.arenaEdge` by `setLook`, so both
+*The preference.* `hextable.arenaEdge` is `"dim"` (default: lighting only, plus the flash below) or `"edge"` (dim plus the glowing
+light wall; the cells are the same in both). It is a look like `floors` and `caves`: `LOOK.arenaEdge` in `themes.js`, copied onto every theme as `theme.arenaEdge` by `setLook`, so both
 renderers read it from the theme they were given (`edgeLook(theme)`, exported by `three-build.js`; by `render.js` until R14 step 2). A change in Settings (the "Edge of a fight" control,
 made by `settings.js`, as the Shadows one is) goes through `setLook` and `R.setTheme`, which rebuilds the terrain and the edge. The address does not
-lock it. The `edge` code path is unchanged and is tested (`render-three.test.js`, and the smoke steps below); when the travel spec's concurrent
+lock it. The `edge` code path (the curtain) is unchanged and is tested (`render-three.test.js`, and the smoke steps below); when the travel spec's concurrent
 places arrive it should become the default again: change the fallback in `themes.js` (`'dim'`) and nothing else.
 
 *What is drawn.* In `dim`, `buildEdge` (`three-build.js`; `render.js` had its own until R14 step 2) still runs, because they also find `edgeBase` (the height the
-edge rises from), but the mesh handed to the GPU is empty; the arena's cells take the same rim and grid as any other floor. The turn ring under
+edge rises from), but the mesh handed to the GPU is empty; the arena's cells take the same rim and grid as any other floor in both looks. The turn ring under
 whoever acts keeps `arenaRim`.
 
 *The flash.* A move the arena refuses (the engine's `The arena is locked until the fight ends.`) lights the border cells nearest the hex that was

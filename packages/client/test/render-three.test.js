@@ -219,7 +219,7 @@ test('the default look has no glowing edge; the edge look has it; the dim of the
   assert.equal(edge(off).base, edge(on).base, 'the height the edge sinks and rises from is found in both');
   const terrain = (t) => B.buildTerrain({ map: S.map, enc, sight: null, theme: t, ceiling: Infinity });
   const a = terrain(off), b = terrain(on);
-  assert.notDeepEqual(a.terrain.d, b.terrain.d, 'the bright rim of the arena cells is the edge look only');
+  assert.deepEqual(a.terrain.d, b.terrain.d, 'the edge look leaves the cells alone: the arena takes the same rim and grid as any floor (#886)');
   const none = B.buildTerrain({ map: S.map, enc: null, sight: null, theme: off, ceiling: Infinity });
   assert.notDeepEqual(a.terrain.d, none.terrain.d, 'the dim outside is there in the dim look: a fight changes the floor');
 });
