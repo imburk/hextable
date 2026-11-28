@@ -285,14 +285,15 @@ export function viewPrompt(state, viewer) {
   if (typeof q.target === 'string' && classify(state, q.target) !== 'hidden') out.target = q.target;
   if (q.moment !== undefined) out.moment = q.moment;
   // `dtype`: the damage type its own creature is taking (Superior Hunter's Defense).
-  for (const k of ['attack', 'total', 'ac', 'crit', 'spell', 'dtype']) if (q[k] !== undefined) out[k] = q[k];
+  for (const k of ['attack', 'total', 'ac', 'crit', 'spell', 'dtype', 'left']) if (q[k] !== undefined) out[k] = q[k];
   return structuredClone(out);
 }
 
 // Whether the party can perceive what a waiting question was set off by: the creature that set it
 // off and the creature whose action waits, where each is named, are not hidden from the party.
 function perceived(state, p) {
-  const who = [p.ask?.by, p.action?.actor].filter((x) => typeof x === 'string');
+  // A Legendary Resistance question is about the creature that failed the save: a table that waits on a creature the party does not know of would tell of it.
+  const who = [p.ask?.by, p.action?.actor, ...(p.ask?.trigger === 'save' ? [p.ask.reactor] : [])].filter((x) => typeof x === 'string');
   return who.every((id) => classify(state, id) !== 'hidden');
 }
 

@@ -18,6 +18,7 @@
 // game and never sent to players. Pure: no network, no clock, no randomness.
 import { viewEvents, classify, seenName } from './view.js';
 import { learnShops } from './shopids.js';
+import { RESISTANCE } from './reactions.js';
 
 export const UNDO_LIMIT = 30;
 export const UNDO_BYTES = 8 * 1024 * 1024;       // per game, both lists together
@@ -243,6 +244,10 @@ export function describeStep(action, events, before, after) {
     const p = prior?.pending;
     if (!p) return finish('A reaction was answered');
     const inner = describeStep(p.action, events, { tree: { ...prior, pending: undefined } }, after);
+    // Legendary Resistance (docs/specs/legendary.md, Decision 9): the DM's record says what was answered; players are told nothing of it, only what the action did.
+    if (p.ask?.trigger === 'save' && p.ask.options?.some((o) => o.reaction === RESISTANCE)) {
+      return { label: `${inner.label} (${real(p.ask.reactor)}'s Legendary Resistance ${action.take === RESISTANCE ? 'spent' : 'declined'})`, shown: inner.shown };
+    }
     return { label: `${inner.label} (after ${real(p.ask.reactor)}'s reaction)`, shown: inner.shown && `${inner.shown}, after a reaction` };
   }
   const text = phrase(real), shown = phrase(seen);
