@@ -108,3 +108,90 @@ test('the switches: instruction, lair and show for a legendary creature, in DM t
   assert.doesNotMatch(reactionsHtml(s, s.entities[d.id], { panel: true }), /data-lg-set/, 'the lair switch is the DM\'s');
   assert.match(L.creaturesHtml({ entities: {}, settings: {} }), /No legendary creature/);
 });
+
+test('the pick: the bar marks it first with its words and one button, from the state as it is now', () => {
+  const { s, d } = fight();
+  const p = L.pickOf(s, d.id);
+  assert.ok(p, 'the dragon has a pick');
+  assert.equal(p.action.type, 'legendary');
+  assert.equal('why' in p.action, false, 'the words are not part of the action');
+  assert.ok(apply(structuredClone(s), p.action, DM).ok, 'the engine accepts it');
+  assert.deepEqual(L.pickOf(s, d.id), p, 'same state, same pick');
+  assert.equal(L.pickOf(s, 'fighter'), null, 'not a creature of the window');
+  // The bar's row, drawn through a bare mount (no browser): the first thing under the name is the pick.
+  const doc = { body: { classList: { add() {}, remove() {} } } };
+  globalThis.document = doc;
+  const mount = { hidden: true, textContent: '', innerHTML: '', setAttribute() {}, addEventListener() {}, querySelector: () => null };
+  const bar = L.initLegendary({ mount, state: () => s, isDM: () => true, act() {}, toast() {}, dry: () => '', mode: () => ({}), setMode() {}, move: {}, render() {}, auto: () => false });
+  bar.sync();
+  assert.match(mount.innerHTML, /class="lg-pick"><span class="lg-mark"[^>]*>▸<\/span>/);
+  assert.match(mount.innerHTML, /data-take="[^"]+">Do it</);
+  assert.ok(mount.innerHTML.indexOf('lg-pick') < mount.innerHTML.indexOf('lg-opts'), 'the pick comes before the other options');
+  assert.ok(mount.innerHTML.includes(p.why.replace(/&/g, '&amp;')), 'its words are shown');
+  // Nothing worth taking (every use spent): nothing is marked.
+  ok(apply(s, { type: 'legendarySet', actor: d.id, set: { acts: 3 } }, DM));
+  assert.equal(L.pickOf(s, d.id), null);
+  bar.sync();
+  assert.doesNotMatch(mount.innerHTML, /lg-pick/);
+  delete globalThis.document;
+});
+
+test('the switch: Suggest or By themselves, in DM tools and on the Reactions tab, sent as legendarySet { self }', () => {
+  const { s, d } = fight();
+  assert.match(L.creaturesHtml(s), /data-lg-self[^]*<option value="suggest" selected>Suggest<\/option><option value="self">By themselves<\/option>/);
+  ok(apply(s, { type: 'legendarySet', actor: d.id, set: { self: true } }, DM));
+  assert.match(L.creaturesHtml(s), /<option value="self" selected>By themselves/);
+  assert.match(reactionsHtml(s, s.entities[d.id], { panel: true, dm: true }), /data-lg-self/);
+  assert.doesNotMatch(reactionsHtml(s, s.entities[d.id], { panel: true }), /data-lg-self/, 'the DM\'s alone');
+  const sent = [], handlers = [];
+  const root = { addEventListener: (_, f) => handlers.push(f) };
+  L.bindSwitches(root, (a) => sent.push(a));
+  const target = (v) => ({ closest: () => ({ dataset: { id: d.id } }), matches: (q) => q === '[data-lg-self]', value: v });
+  handlers[0]({ target: target('self') }); handlers[0]({ target: target('suggest') });
+  assert.deepEqual(sent, [{ type: 'legendarySet', actor: d.id, set: { self: true } }, { type: 'legendarySet', actor: d.id, set: { self: false } }]);
+});
+
+test('By themselves: the browser plays a window only with Run monsters automatically on and every creature still to choose set to it (test 14)', () => {
+  const { s, d } = fight();
+  assert.equal(L.selfPlay(s, true), null, 'Suggest, the default: the bar waits for the DM');
+  ok(apply(s, { type: 'legendarySet', actor: d.id, set: { self: true } }, DM));
+  assert.equal(L.selfPlay(s, false), null, 'the device switch off: nothing is sent');
+  assert.equal(L.playsItself(s, false), false);
+  assert.equal(L.playsItself(s, true), true, 'the bar stays shut');
+  const p = L.selfPlay(s, true);
+  assert.equal(p.id, d.id);
+  assert.deepEqual(p.action, L.pickOf(s, d.id).action);
+  assert.ok(p.text.startsWith('Verdigris: '), p.text);
+  // Played, round after round: the window closes each time and the dragon's uses are spent, with no tap.
+  let played = 0;
+  for (let i = 0; i < 40 && played < 3; i++) {
+    while (!s.encounter.between && i++ < 40) ok(apply(s, { type: 'endTurn', actor: current(s) }, DM));
+    const q = L.selfPlay(s, true);
+    if (!q) break;
+    ok(apply(s, q.action, DM)); played++;
+    if (s.encounter.between) ok(apply(s, { type: 'legendary', done: true }, DM));
+  }
+  assert.ok(played >= 1, 'it played at least one window');
+});
+
+test('By themselves: a second creature set to Suggest keeps the window for the DM; a pick that is null becomes a skip', () => {
+  const { s, d } = fight();
+  ok(apply(s, { type: 'legendarySet', actor: d.id, set: { self: true } }, DM));
+  const w = s.encounter.between;
+  const other = { ...s.entities[d.id], id: 'twin', name: 'Twin', legend: { ...s.entities[d.id].legend, self: false } };
+  const s2 = { ...s, entities: { ...s.entities, twin: other }, encounter: { ...s.encounter, between: { ...w, offered: [...w.offered, 'twin'] } } };
+  assert.equal(L.selfPlay(s2, true), null, 'one to choose is on Suggest');
+  assert.equal(L.playsItself(s2, true), false, 'the bar opens');
+  const spent = structuredClone(s);
+  ok(apply(spent, { type: 'legendarySet', actor: d.id, set: { acts: 3 } }, DM));
+  assert.equal(L.pickOf(spent, d.id), null);
+  assert.deepEqual(L.selfPlay(spent, true)?.action, { type: 'legendary', actor: d.id, skip: true });
+});
+
+test("the pick works from the DM's view, which holds no timeline (it was a broken bar in a hosted table)", () => {
+  const { s, d } = fight();
+  const { timeline, ...bare } = s;
+  assert.ok(timeline !== undefined);
+  assert.deepEqual(L.pickOf(bare, d.id), L.pickOf(s, d.id));
+  assert.equal('timeline' in bare, false, 'the state given is not touched');
+});

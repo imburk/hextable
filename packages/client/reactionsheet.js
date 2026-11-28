@@ -51,5 +51,6 @@ export function reactionsHtml(S, e, { panel = false, dm = false } = {}) {
 
 export function bindReactions(root, e, act) {
   for (const c of root.querySelectorAll('[data-lg-set]')) c.onchange = () => act({ type: 'legendarySet', actor: e.id, set: { [c.dataset.lgSet]: c.checked } });
+  for (const sel of root.querySelectorAll('[data-lg-self]')) sel.onchange = () => act({ type: 'legendarySet', actor: e.id, set: { self: sel.value === 'self' } });
   for (const sel of root.querySelectorAll('[data-rx-set]')) sel.onchange = () => act({ type: 'reactions', actor: e.id, set: { [sel.dataset.rxSet]: sel.value } });
 }

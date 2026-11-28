@@ -49,7 +49,7 @@ import { initTodo, waitingWords } from './todo.js';
 import { initPacks } from './packmanager.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
-import { initLegendary, creaturesHtml, bindSwitches } from './legendary.js';
+import { initLegendary, creaturesHtml, bindSwitches, selfPlay } from './legendary.js';
 import { initClasses, formOf, formName, skillBonus, isLent, lentList, nice as niceId } from './classes.js';
 import { createDice, MAX_DICE, titleOf, nextSource } from './dice.js';
 import { createTimeline, paceFor, settle } from './timeline.js';
@@ -689,6 +689,13 @@ function idled() {
   const plays = cur && autoPlays(S, cur.id, { offline });
   // It also waits while a party creature holds movement from an Opportunity Attack (DEBT T93 4b): ending the mover's turn would lapse it before its player can act.
   // The DM's screen says who it waits for and can give the movement up for them (refresh, below).
+  // Legendary actions that play by themselves (legendary.md, Decision 8): between two turns, when every creature still to choose is set to "By themselves", the pick (or the skip)
+  // is sent after the usual pause, worked out from the state as it is then. One set to Suggest: nothing is sent, the bar waits for the DM.
+  if (S.encounter?.between && isDM() && !T.readOnly && !tookBack && selfPlay(S, $('dm-auto').checked)) {
+    clearTimeout(aiTimer);
+    aiTimer = setTimeout(() => { const p = selfPlay(S, $('dm-auto').checked); if (p) { toast(p.text); act(p.action, true); } }, TL.pace === 'wait' ? AI_PAUSE : 800);
+    return;
+  }
   if (plays && isDM() && !T.readOnly && !S.encounter?.between && $('dm-auto').checked && !tookBack && !autoWaits().length) {
     clearTimeout(aiTimer);
     // `wait`: the next step comes a short pause after the picture is still, so monsters act at the pace the DM sees; the
@@ -1938,7 +1945,7 @@ const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, 
 const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: an open scene ends when it starts.', true); } });
 const TC = initTableControls({ act, getState: () => S, isDM, toast });
 const RP = initReactionPrompt({ act, state: () => shownState(S), isDM });
-const LG = initLegendary({ mount: document.body.appendChild(document.createElement('div')), skip: () => skipping(), state: () => S, isDM, act: (a) => act(a), toast: (m) => toast(m), dry, mode: () => mode, setMode: (m) => setMode(m), move: MOVE, render: () => refresh() });      // the DM's legendary window (legendary.js)
+const LG = initLegendary({ mount: document.body.appendChild(document.createElement('div')), skip: () => skipping(), auto: () => $('dm-auto').checked, state: () => S, isDM, act: (a) => act(a), toast: (m) => toast(m), dry, mode: () => mode, setMode: (m) => setMode(m), move: MOVE, render: () => refresh() });      // the DM's legendary window (legendary.js)
 // The cards that come after a fight: the party has fallen (defeat.js). Drawn from the state once the beats that led to it have played.
 const DF = initDefeat({ state: () => S, isDM, solo: () => !!T?.solo, info: () => T?.undoInfo ?? {}, rewind: (to) => T.rewind?.(to) });
 const CC = initConclusion({ act, state: () => S, isDM, solo: () => !!T?.solo, code: () => T?.you?.code ?? 'solo', prefs, levelUp: (id) => QE.levelUp(id) });
