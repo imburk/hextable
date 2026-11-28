@@ -229,8 +229,8 @@ export const CURE_WORDS = ['exhaustionLevel', 'curse', 'curses'];
 export const RESIZES = ['enlarge', 'reduce'];
 // `water` (Control Water): the four effects of the spell. A step with `ifChoice` is part of the cast only for the values it lists (effects.js reads the choice from the cast).
 export const WATERS = ['flood', 'part', 'redirect', 'whirlpool'];
-// `ward` (Magic Circle): the kinds of creature a circle may be set against, one or more of them (the cast's `choice` is a list of these; `reverse: true` turns the circle round).
-export const WARDS = ['celestial', 'elemental', 'fey', 'fiend', 'undead'];
+// `ward` (Magic Circle, Hallow): the kinds of creature a circle may be set against, one or more of them (the cast's `choice` is a list of these; `reverse: true` turns the circle round). A spell may list the kinds it offers (`choice.from`): Magic Circle's five, Hallow's six.
+export const WARDS = ['aberration', 'celestial', 'elemental', 'fey', 'fiend', 'undead'];
 // `beast` (Polymorph): the id of an SRD Beast stat block the caster may turn the target into (every Beast of the SRD pack; a test holds the list to the pack). Whether its Challenge Rating suits the target is the engine's, at the cast.
 export const BEASTS = ["allosaurus","ankylosaurus","ape","archelon","baboon","badger","bat","black-bear","blood-hawk","boar","brown-bear","camel","cat","constrictor-snake","crab","crocodile","deer","dire-wolf","draft-horse","eagle","elephant","elk","frog","giant-ape","giant-badger","giant-bat","giant-boar","giant-centipede","giant-constrictor-snake","giant-crab","giant-crocodile","giant-fire-beetle","giant-frog","giant-goat","giant-hyena","giant-lizard","giant-octopus","giant-rat","giant-scorpion","giant-seahorse","giant-shark","giant-spider","giant-toad","giant-venomous-snake","giant-wasp","giant-weasel","giant-wolf-spider","goat","hawk","hippopotamus","hunter-shark","hyena","jackal","killer-whale","lion","lizard","mammoth","mastiff","mule","owl","panther","piranha","plesiosaurus","polar-bear","pony","pteranodon","rat","raven","reef-shark","rhinoceros","riding-horse","saber-toothed-tiger","scorpion","seahorse","spider","tiger","triceratops","tyrannosaurus-rex","venomous-snake","vulture","warhorse","weasel","wolf"];
 // `form` (Shapechange; a `polymorph` step with `not`; docs/specs/rules-expansion.md, "Build notes: manual spells B4"): every stat block of the SRD pack, which the spell's step narrows (its `types`, `not`, `size` and `cr`: Animal Shapes, Shapechange). A test holds the list to the pack.
@@ -358,7 +358,8 @@ function lintZone(e, say, action = false) {
   if (!z || typeof z !== 'object' || Array.isArray(z)) return say('`zone` must be an object');
   for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'with', 'beside', 'ward'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
   // `ward: true` (Magic Circle): the zone is a barrier, not something that goes off: it has no `on`, and the cast's `choice` is the types it works against (docs/specs/rules-expansion.md, "Build notes: wave 5 part 3").
-  if (z.ward !== undefined && !(z.ward === true && !action && e.target?.area?.shape === 'cylinder' && e.choice?.of === 'ward' && z.on === undefined && Object.keys(z).length === 1)) say('`zone.ward` is true, alone, on a spell whose area is a cylinder and whose `choice` is of `ward`');
+  // `ward: 'bar'` (Hallow): a barrier only: the chosen kinds cannot willingly enter (teleporting in is refused with no save) or give a target inside the Charmed or Frightened condition; no Disadvantage on attack rolls, and it has no reverse. A sphere or a cylinder.
+  if (z.ward !== undefined && !((z.ward === true ? e.target?.area?.shape === 'cylinder' : z.ward === 'bar' && ['sphere', 'cylinder'].includes(e.target?.area?.shape)) && !action && e.choice?.of === 'ward' && z.on === undefined && Object.keys(z).length === 1)) say('`zone.ward` is true (a cylinder) or "bar" (a sphere or a cylinder), alone, on a spell whose `choice` is of `ward`');
   // `seen: true` ("a creature you can see") and `foes: true` (the caster forces only creatures that are not on its side): a spell's zone, which goes off only on such creatures. `with: "move"` (Conjure Animals): the zone may be moved when its caster moves, on its turn, and not with an action;
   // `beside: { feet, modifier }`: while the caster is within `feet` of the zone's own space it has that modifier (Advantage on Strength saves); only on a zone that is laid out from a space (`area.space`).
   for (const k of ['seen', 'foes']) if (z[k] !== undefined && !(z[k] === true && !action && z.ward === undefined)) say(`\`zone.${k}\` is true or left out, on a spell's zone`);
@@ -430,7 +431,7 @@ function lintChoice(e, say) {
     if (m.types?.includes('chosen')) used.add('damageType');
   });
   walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); if (st.command === 'chosen') used.add('command'); if (st.polymorph === 'chosen') used.add(Array.isArray(st.not) ? 'form' : 'beast'); if (st.familiarity === 'chosen') used.add('familiarity'); });
-  if (e.zone?.ward === true) used.add('ward');
+  if (e.zone?.ward === true || e.zone?.ward === 'bar') used.add('ward');
   if (c !== undefined) {
     if (!c || !Object.hasOwn(CHOICES, c.of)) return say(`\`choice.of\` is one of ${Object.keys(CHOICES).join(', ')}`);
     if (c.from !== undefined && !(Array.isArray(c.from) && c.from.length > 1 && c.from.every((x) => CHOICES[c.of].includes(x)))) say(`\`choice.from\` lists ${c.of} values`);
@@ -3822,7 +3823,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   higher: { level: 'o', targets: 'o', slot: 'o', range: 'o' },
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i', hours: 'i' },
   choice: { of: 's', from: 's[]' },
-  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a', move: 'i', seen: 'b', foes: 'b', with: 's', beside: 'o', ward: 'b' },
+  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a', move: 'i', seen: 'b', foes: 'b', with: 's', beside: 'o', ward: 'b|s' },
   beside: { feet: 'i', modifier: 'o' },
   terrain: { difficult: 'b|s', obscured: 's', lasts: 's', silence: 'b', light: 'i', globe: 'b', shell: 'b', size: 'i' },
   reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
