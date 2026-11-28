@@ -18,7 +18,7 @@
 // Thunderwave) waits in `s.zoneQueue` until that one is done, so the effect stack is never run
 // from inside itself. Design: docs/specs/rules-expansion.md, build notes.
 import { gridOf, col, boxOf, squareAround } from './grid.js';
-import { begin, run } from './effects.js';
+import { begin, run, walk } from './effects.js';
 import { effectsOf, endEffect, thisTurn, turnKey } from './durations.js';
 import { FT, footprint, gap, ground, hasColumn, rise, sizeOf } from './space.js';
 
@@ -125,6 +125,12 @@ export function turnInZones(s, ev, kit, e, when) {
   for (const fx of zonesOf(s)) if (fx.zone.on.includes(when) && holds(s, fx, e)) trigger(s, ev, kit, fx, e, when);
 }
 
+// A zone that `hold`s one creature (`zone.hold`, Conjure Elemental: "if the spirit has no creature Restrained"): its steps Restrain a creature and a `release` step lets it go. The zone record has no key
+// for it (view-fields.js says what every key of it is to a player), so it is read from the steps.
+const holding = (fx) => { let yes = false; walk(fx.zone.steps, (st) => { if ('release' in st) yes = true; }); return yes; };
+// Does a creature the zone Restrained, and still living, hold it now? Then the zone goes off on no one else.
+const holdsOne = (s, fx) => fx.parts.some((p) => p.cond === 'restrained' && !p.ended && s.entities[p.target] && !s.entities[p.target].dead);
+
 // One zone goes off on one creature, at most once a turn if it says so. Returns whether it did.
 function trigger(s, ev, kit, fx, t, why, pre = () => {}) {
   const z = fx.zone, now = turnKey(s);
@@ -137,6 +143,8 @@ function trigger(s, ev, kit, fx, t, why, pre = () => {}) {
     const c = s.entities[fx.source];
     if (!c || c.dead || (z.foes && t.side === c.side) || (z.seen && !kit.seen(s, c, t))) return false;
   }
+  // `hold`: while the zone has a creature Restrained it forces no one else. Counted as nothing: no event, no turn used (a hidden creature that is held changes nothing a player is sent, bar that the zone is quiet).
+  if (holding(fx) && holdsOne(s, fx)) return false;
   if (z.once === 'turn' && now !== null && thisTurn(s, z.last[t.id])) return false;
   // `once: 'enter'` (Wall of Fire: "when it enters the wall for the first time on a turn or ends its turn there"): only entering is held to the one go; the end of a turn is its own.
   if (z.once === 'enter' && why === 'enter') {

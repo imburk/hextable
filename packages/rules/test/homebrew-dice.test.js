@@ -113,8 +113,8 @@ test("#408 part 3: the estimate counts what the engine counts, kind by kind", ()
   for (const kind of HOMEBREW_ENTRY_KINDS) for (const e of SRD[kind] ?? []) most[kind] = Math.max(most[kind] ?? 0, dice(kind, e));
   const noZone = Math.max(...SRD.spells.filter((e) => !e.zone).map((e) => dice("spells", e)));
   if (process.env.HB_PRINT) console.log(most, { noZone });
-  // Conjure Celestial (#859) is the dearest spell: a zone that goes off on entering, its 6d12 and 4d12 with two slot levels more each, for 30 creatures (420; before it, 300).
-  assert.deepEqual([most.spells, noZone, most.monsters, most.items, most.objects], [420, 54, 26, 10, 2]);
+  // Conjure Celestial (#859) is the dearest spell: a zone that goes off on entering, its 6d12 and 4d12 with two slot levels more each, for 30 creatures (420; before it, 300). Conjure Elemental (#921) is dearer still: its 8d8 and 4d8 with four slot levels more each, for 30 creatures (480).
+  assert.deepEqual([most.spells, noZone, most.monsters, most.items, most.objects], [480, 54, 26, 10, 2]);
   assert.ok(HOMEBREW_WORK.dice >= most.spells, "every SRD entry fits");
 });
 

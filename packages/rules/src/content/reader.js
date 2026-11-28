@@ -280,7 +280,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], release: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when', 'atLeast', 'fades'];
 
@@ -690,7 +690,7 @@ class Reading {
   zone(aim) {
     const z = this.def.zone;
     if (!isObj(z) || (z.ward !== true && !Array.isArray(z.on))) return this.bad('The zone is not an object with a list `on`.');
-    this.odd(z, ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'with', 'beside', 'ward'], 'The zone');
+    this.odd(z, ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'hold', 'with', 'beside', 'ward'], 'The zone');
     if (z.move !== undefined && !isInt(z.move)) this.bad('The zone\'s `move` is not a whole number of feet.');
     if (z.budget !== undefined && !isInt(z.budget)) this.bad('The zone\'s `budget` is not a whole number.');
     const a = this.def.target?.area;
@@ -714,6 +714,7 @@ class Reading {
     if (z.spare === true) this.line('When casting it, the caster may name creatures the area leaves alone.');
     if (z.foes === true) this.line('It never goes off on a creature on the caster\'s side (the caster would not force it), whether it was there when the spell was cast or came later; a creature that is not on the caster\'s side, newcomers included, is made to save unless the caster named it as spared.');
     if (z.seen === true) this.line('It goes off only on a creature the caster can see: not one that is Invisible to the caster, hiding from it, out of its sight, or one the DM has hidden. Nothing is rolled, said or sent of a creature it leaves alone.');
+    if (z.hold === true) this.line('While a creature is Restrained by the spell it goes off on no one else: the steps wait until that creature is let go (or dies). A creature it Restrained and let go is the zone\'s no more, and the zone may take another.');
     if (isInt(z.move) && z.with === 'move') { this.num('zone.move', z.move, 'feet'); this.line(`The area is not rolled with an action: when the caster has moved at least 5 feet on its own turn, it may move the area up to ${z.move} feet, once that turn, to an unoccupied space it can see (outside a fight there is no turn: only the distance limits it). The area goes there at once. A creature newly inside it as it moves is made to save as one that entered it; one already inside is not made to save again by the move.`); }
     else if (isInt(z.move)) { this.num('zone.move', z.move, 'feet'); this.line(`As a Bonus Action the caster may roll the area up to ${z.move} feet along the ground. It stops in the first space a creature stands in, and the steps run on that creature at once.`); }
     if (z.beside !== undefined && isObj(z.beside)) {
@@ -811,9 +812,11 @@ class Reading {
         if (!f) { this.line(`The entry adds ${s[key]} ${word} per slot level, but it has no ${key} step: nothing grows.`); continue; }
         const sides = (x) => (/d(\d+)/.exec(x)?.[1] ?? null);
         const ok = !sides(f.st[key]) || !sides(s[key]) || sides(f.st[key]) === sides(s[key]);
-        let steps = 0; this.walk((st) => { if (key in st) steps++; });
+        // What an `eachTurn` does at the start of a turn grows with the slot as well (effects.js `scaleSteps`): it is not one of the steps left as written.
+        let steps = 0, turns = 0; this.walk((st, at) => { if (key in st) { if (key === 'damage' && String(at).includes('eachTurn')) turns++; else steps++; } });
         const only = steps > 1 ? ` It grows only the first ${key === 'damage' ? 'damage' : key === 'heal' ? 'healing' : 'Temporary Hit Points'} step (${f.st[key]}${key === 'damage' && DAMAGE_TYPES.includes(f.st.type) ? ` ${f.st.type}` : ''}); the other ${steps - 1} stay${steps === 2 ? 's' : ''} as written.` : '';
-        if (ok) this.line(`Cast with a higher slot, ${signed(s[key])}${key === 'heal' ? ' healing' : key === 'tempHp' ? ' Temporary Hit Points' : ''} ${per}.${only}`);
+        const turn = turns && ok ? ' The damage it does at the start of a turn grows by the same dice.' : '';
+        if (ok) this.line(`Cast with a higher slot, ${signed(s[key])}${key === 'heal' ? ' healing' : key === 'tempHp' ? ' Temporary Hit Points' : ''} ${per}.${only}${turn}`);
         else { this.line(`Cast with a higher slot, the entry adds ${s[key]} per slot level to ${f.st[key]}, but those are different dice: the engine does not add them, the DM does.`); this.dm(`The extra ${s[key]} per slot level: different dice from ${f.st[key]}.`); }
       }
       if (s.times !== undefined) { if (isInt(s.times)) { this.num('higher.slot.times', s.times, 'rolls'); this.line(`Cast with a higher slot, the first damage step is rolled ${s.times} more time${s.times > 1 ? 's' : ''} ${per}.`); } else this.bad('`higher.slot.times` is not a whole number.'); }
@@ -1225,6 +1228,12 @@ export const STEP_SENTENCES = {
     if (st.endSpell !== true) this.bad(`Step ${at}: \`endSpell\` is true.`);
     if (!this.inTurn) this.bad(`Step ${at}: an endSpell step goes inside an eachTurn.`);
     say('The spell ends, and with it everything it put on any creature.');
+  },
+  // durations.js `release`, inside an `eachTurn` (Conjure Elemental).
+  release({ st, at, say, who }) {
+    if (st.release !== true) this.bad(`Step ${at}: \`release\` is true.`);
+    if (!this.inTurn) this.bad(`Step ${at}: a release step goes inside an eachTurn.`);
+    say(`The spell lets go of ${who}: what it put on ${who} (a condition, the steps it runs at the start of each turn) ends, and the spell goes on. A zone that holds one creature may then take another.`);
   },
   // engine/rolls.js `command` (Command): what the creature does on its next turn, and the part of it the engine does.
   command({ st, at, Who, say, depth }) {

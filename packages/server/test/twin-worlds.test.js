@@ -2537,3 +2537,44 @@ test("telekinesis: a seen foe moved onto a hidden creature's space is sent the s
   });
   assert.ok(/did not know of/.test(JSON.stringify(hidden.raw.dm)), "the DM is told");
 });
+
+// ---- Conjure Elemental (#921): a zone that holds one creature, and a held creature the party does not know of ----
+// The spirit forces no one while a creature is Restrained by it. If that creature is one the party does not know of (hidden by the DM after it was held), the spirit holds it all the same
+// (the rule does not ask who knows), and a creature the party sees that starts its turn beside the spirit is simply not forced. The players are sent no event, so what they could tell is only that
+// the spirit did nothing to a creature it could have forced. The twin finds that difference (the plain world sends the save and the damage, the hidden one only the turn), so the test is a `todo`: the engine keeps
+// the rule (a hidden held creature still holds) and the gap is reported, not closed here (zones.js `holdsOne`).
+test("conjure elemental: a hidden creature held by the spirit changes what the party is sent: a seen foe beside the spirit is forced in one world and not in the other (a known gap, #921)", { todo: "a known gap of #921, issue to be filed by the lead: a held creature the party does not know of keeps the spirit from forcing a seen foe, so the players are sent no save where the plain world sends one" }, () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", -3, 0], ["rogue", -3, 1], ["cleric", 0, 0], ["wizard", -3, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.cleric, { owner: w.ids.Pat, ownerName: "Pat", spells: [...s.entities.cleric.spells, "conjure-elemental"], slots: { ...s.entities.cleric.slots, 5: 1 }, slotsMax: { ...s.entities.cleric.slotsMax, 5: 1 } });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 0 }, name: "Seen" });
+      byName(w, "Seen").saveBonus = { dex: -100 };
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 });
+      turnOf(w, "cleric");
+    },
+    steps: [
+      { by: "Pat", act: { type: "cast", actor: "cleric", spell: "conjure-elemental", slot: 5, choice: "fire", hex: { q: 4, r: 0 } } },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+    ],
+  }, {
+    at: 1,
+    // A creature outside the arena that the spirit has Restrained, and the DM has hidden since.
+    hide: (w) => {
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -9, r: -3 }, name: "Ghost", hidden: true });
+      const g = byName(w, "Ghost"), fx = w.state.effects.find((x) => x.name === "Conjure Elemental");
+      g.cond.restrained = { effect: fx.id };
+      fx.parts.push({ target: g.id, cond: "restrained" });
+    },
+    plain: (w) => { burn(w, { q: -9, r: -3 }); },
+  });
+});
