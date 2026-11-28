@@ -2763,6 +2763,25 @@ export const monsters = [
         text: "Swallows a creature it has Grappled."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "storm-bolt", name: "Storm Bolt", use: ["lightning-strike"],
+            text: "Uses Lightning Strike." },
+          { id: "toxic-ink", name: "Toxic Ink", again: "nextTurn", move: { speed: "full", after: true },
+            target: { area: { shape: "emanation", size: 15 } },
+            effects: [{ save: "con", dc: 23, half: false, onFail: [
+              { condition: "blinded", ends: { on: "turnEnd", of: "source" } },
+              { condition: "poisoned", ends: { on: "turnEnd", of: "source" } }] }],
+            manual: "Only while the kraken is underwater. It then moves up to its Speed, whether or not anyone failed the save.",
+            text: "While underwater: each creature in a 15-foot emanation makes a Constitution save or is Blinded and Poisoned until the end of its next turn; then it moves up to its Speed. Not again before its next turn." },
+        ],
+      },
+      resistance: { day: 4 },
+      lair: { uses: 4, resistance: 5, xp: 62000 },
+    },
     tier: "assist",
     checked: true,
     text: "A colossal tentacled titan of the deep."
@@ -5121,6 +5140,23 @@ export const monsters = [
         text: "A glare at one creature within 60 feet that Paralyzes it until the end of the mummy's next turn."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "dread-command", name: "Dread Command", again: "nextTurn",
+            manual: "Casts Command (level 2 version), using the same spellcasting ability as its Spellcasting (Wisdom, spell save DC 17).",
+            text: "Casts Command (level 2 version). Not again before its next turn." },
+          { id: "glare", name: "Glare", again: "nextTurn", use: ["dreadful-glare"],
+            text: "Uses Dreadful Glare. Not again before its next turn." },
+          { id: "necrotic-strike", name: "Necrotic Strike", use: ["rotting-fist", "channel-negative-energy"],
+            text: "Makes one Rotting Fist or Channel Negative Energy attack." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 15000 },
+    },
     tier: "assist",
     checked: true,
     text: "An ancient undead priest-king with command of sand and curses."
