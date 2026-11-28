@@ -2341,3 +2341,57 @@ test("legendary resistance: a dragon the party does not know of is sent the same
   for (const bad of ["Verdigris", "\"waiting\"", "Legendary Resistance", "legendary-resistance", "\"resisted\"", "\"legend\"", "reactionAsked"]) assert.ok(!raw.includes(bad), `${bad} was sent: ${raw.slice(Math.max(0, raw.indexOf(bad) - 150), raw.indexOf(bad) + 100)}`);
   for (const x of r.diffs) assert.fail(describe([x]));
 });
+
+// A question put to the DM about a dragon the party does not know of bumps the table's question counter (`s.asked`), so the next question a player is asked carries a number one
+// higher than in a world where that dragon is on `never` (#878: the proper fix is in engine.js, `apply`, and is its own issue). Left as a todo, not hidden.
+test("legendary resistance: a player's question after the DM was asked about a dragon they do not know of is numbered the same as with it on `never`", { todo: "#878: s.asked counts the DM's question about an unknown dragon" }, () => {
+  const dragon = (how) => (w) => {
+    const d = byName(w, "Verdigris");
+    d.hidden = true;
+    lrDragon({ bonus: -90, how, spent: 0 })(w);
+  };
+  const decline = (w) => ({ type: "react", prompt: w.state.pending?.n ?? 0, take: null });
+  const r = twinRun({
+    players: ["Pat", "Sam"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      w.must({ type: "setting", key: "legendaryResistance", value: true });
+      for (const [id, q, r] of [["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      const sheet = { name: "Ka", class: "paladin", level: 5, subclass: "devotion", abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 16 }, skills: ["athletics", "religion"], choices: { "fighting-style": "defense" }, armour: "chain-mail", weapons: ["longsword"] };
+      s.entities.fighter = makeEntity(derive(sheet).record, { id: "fighter", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: w.ids.Pat, ownerName: "Pat" });
+      Object.assign(s.entities.fighter, { hp: 500, maxHp: 500 });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0 }, name: "Seen" });
+      Object.assign(byName(w, "Seen"), { hp: 500, maxHp: 500, ac: 1 });
+      w.must({ type: "spawn", monster: "adult-green-dragon", at: { q: 6, r: 3 }, name: "Verdigris" });
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 4 });
+      turnOf(w, "fighter");
+    },
+    steps: [
+      { by: "dm", act: (w) => ({ type: "save", who: byName(w, "Verdigris").id, ability: "wis", dc: 14, condition: "paralyzed" }) },
+      { by: "dm", act: decline, allowError: true },
+      { by: "Pat", act: () => ({ type: "hitChoices", actor: "fighter", set: { "divine-smite": "ask" } }) },
+      { by: "Pat", act: (w) => ({ type: "attack", actor: "fighter", attack: "longsword", target: byName(w, "Seen").id }) },
+      { by: "Pat", act: (w) => ({ type: "react", prompt: w.state.pending.n, take: "divine-smite", slot: 2 }) },
+      { by: "Pat", send: { t: "history", limit: 200 } },
+    ],
+  }, { hide: dragon("ask"), plain: dragon("never") });
+  for (const x of r.diffs) assert.fail(describe([x]));
+});
+
+// The same, for a dragon the party can see: asked and declined, or on `never`. The table is seen to wait for the one and not the other (Decision 9, "what a pause tells":
+// accepted), so the scenario compares what the players are sent apart from that: the waiting prompt and the seq it takes.
+test("legendary resistance: a visible dragon asked and declined, or on `never`: the players differ only by the table waiting", () => {
+  const r = twinRun({ setup: lrSetup, steps: [
+    { by: "dm", act: (w) => ({ type: "save", who: byName(w, "Verdigris").id, ability: "wis", dc: 14, condition: "paralyzed" }) },
+    { by: "dm", act: (w) => ({ type: "react", prompt: w.state.pending?.n ?? 0, take: null }), allowError: true },
+    { by: "Pat", act: { type: "say", as: "fighter", text: "Well?" } },
+  ], final: false }, { hide: lrDragon({ bonus: -90, how: "ask", spent: 0 }), plain: lrDragon({ bonus: -90, how: "never", spent: 0 }) });
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes('"waiting":true'), "the table was seen to wait in the asked world");
+  assert.ok(!JSON.stringify(r.plain.raw.Pat).includes('"waiting":true'));
+  const raw = JSON.stringify(r.hidden.raw.Pat);
+  for (const bad of ["Legendary Resistance", "legendary-resistance", "\"resisted\"", "\"legend\"", "reactionAsked"]) assert.ok(!raw.includes(bad), `${bad} was sent`);
+  const d = byName(r.hidden.w, "Verdigris");
+  assert.ok(d.cond.paralyzed && d.legend.resisted === 0, "declined, so it applied, as on `never`");
+});

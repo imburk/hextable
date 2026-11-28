@@ -285,7 +285,7 @@ export function viewPrompt(state, viewer) {
   if (typeof q.target === 'string' && classify(state, q.target) !== 'hidden') out.target = q.target;
   if (q.moment !== undefined) out.moment = q.moment;
   // `dtype`: the damage type its own creature is taking (Superior Hunter's Defense).
-  for (const k of ['attack', 'total', 'ac', 'crit', 'spell', 'dtype', 'left']) if (q[k] !== undefined) out[k] = q[k];
+  for (const k of ['attack', 'total', 'ac', 'crit', 'spell', 'dtype', 'left', ...(q.trigger === 'save' ? ['dc'] : [])]) if (q[k] !== undefined) out[k] = q[k];
   return structuredClone(out);
 }
 

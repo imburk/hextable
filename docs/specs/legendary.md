@@ -424,7 +424,7 @@ aim and one line of why, or `null` (skip). Same state, same pick; no die, no clo
 legendary creature could act, and does not wait once it has no use left; a player who counts can
 tell a fourth use (a lair) when it comes, or that a question was asked. A player who counts the
 "shrugs it off" lines may guess the trait, as at a real table. At a real table a DM's
-pause tells as much. The `twin()` tests below hold the rest: worlds that differ only in uses left
+pause tells as much. One thing a player can work out that they should not: a question put to the DM about a creature the party does not know of bumps the question number the next player question carries (#878, DEBT W71; a `todo` twin scenario shows it). The `twin()` tests below hold the rest: worlds that differ only in uses left
 (both above 0), the lair mark, the instruction, or the options the DM did not take send every player
 the same bytes.
 

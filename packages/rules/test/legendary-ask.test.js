@@ -169,3 +169,14 @@ test("12: the answer is told to nobody but the DM's record; players' record says
   assert.match(step.label, /Legendary Resistance spent/);
   assert.ok(!/Legendary|reaction/.test(step.shown ?? ""), `shown: ${step.shown}`);
 });
+
+test("12: a player who runs a party legendary creature is asked with the DC of the save, and the total and the uses left; others are not", () => {
+  const { s, d } = game();
+  s.entities[d.id].side = "party"; s.entities[d.id].owner = "pat";
+  const r = ok(s, { type: "save", who: d.id, ability: "wis", dc: 14, condition: "paralyzed" }, { role: "dm", userId: "dm" });
+  assert.ok(s.pending, `asked: ${JSON.stringify(r)}`);
+  const own = viewPrompt(s, PAT);
+  assert.equal(own.dc, 14); assert.equal(own.left, 3); assert.equal(typeof own.total, "number");
+  assert.equal(viewPrompt(s, { role: "player", userId: "sam" })?.dc, undefined);
+  assert.equal(viewPrompt(s, DM).dc, 14);
+});
