@@ -90,6 +90,7 @@ export function migrate(state) {
   // whole is dropped, and the table simply is not waiting: the action it held never happened.
   if (state.pending !== undefined && !validPending(state.pending)) delete state.pending;
   if (state.asked !== undefined && !(Number.isInteger(state.asked) && state.asked >= 0)) delete state.asked;
+  if (state.askedDM !== undefined && !(Number.isInteger(state.askedDM) && state.askedDM >= 0)) delete state.askedDM;      // the DM's own count (#878), kept the same way
   // Version 16: `rng` may be a keyed generator, { key, n } (rng.js). An integer seed is kept as it
   // is and rolls as it always did, so the game replays exactly; the rules cannot make a key, so the
   // table server gives a table a new one when it loads it (packages/server/src/tables.js).

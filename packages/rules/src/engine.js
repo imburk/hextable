@@ -297,9 +297,15 @@ function applyInner(s, action, ctx) {
       // the DM are told (view.js).
       thaw(s, snap);
       const t = s.entities[err.ask.reactor];
-      s.asked = (s.asked ?? 0) + 1;
-      s.pending = { n: s.asked, action: structuredClone(RUN.action), ctx: { ...RUN.ctx }, answers: structuredClone(RUN.answers), ask: structuredClone(err.ask) };
-      ev = [{ type: 'reactionAsked', id: t.id, n: s.asked, to: ownerOf(s, t), ask: structuredClone(err.ask) }];
+      // Two counters (#878): `asked` numbers only the questions put to a player, the only ones a player is ever sent a number of, so a question
+      // put to the DM alone (Legendary Resistance, or any creature with no player controller) cannot be counted by one. Those take
+      // their number from `askedDM`, negative, so the two never meet and the answer check in `react` (`a.prompt === pending.n`) is unchanged.
+      const to = ownerOf(s, t);
+      let n;
+      if (to) n = s.asked = (s.asked ?? 0) + 1;
+      else n = -(s.askedDM = (s.askedDM ?? 0) + 1);
+      s.pending = { n, action: structuredClone(RUN.action), ctx: { ...RUN.ctx }, answers: structuredClone(RUN.answers), ask: structuredClone(err.ask) };
+      ev = [{ type: 'reactionAsked', id: t.id, n, to, ask: structuredClone(err.ask) }];
       setRun(null);
       return safe(() => record(s, ev));
     }
