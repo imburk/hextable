@@ -152,12 +152,20 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         if (!spot) throw new Error('no spot the engine accepts for Noxious Miasma near the fighter');
         await tapSpot(spot, 'the spot');
         await wait(dm, () => window.hextable.mode.hex);
+        // #895: the DM's selected creature down (the Pounce before can drop the fighter) and an update arriving while the aim is armed must not put the aim down.
+        const hp0 = await state(dm, (S) => ({ fighter: S.entities.fighter.hp, rogue: S.entities.rogue.hp }));
+        await dm.evaluate(() => window.hextable.act({ type: 'setHp', actor: 'fighter', hp: 0 }));
+        await wait(dm, () => window.hextable.state.entities.fighter.hp === 0);
+        await dm.evaluate((hp) => window.hextable.act({ type: 'setHp', actor: 'rogue', hp: Math.max(1, hp - 1) }), hp0.rogue);
+        await wait(dm, (hp) => window.hextable.state.entities.rogue.hp !== hp || hp <= 1, hp0.rogue); await idle(dm);
+        if ((await dm.evaluate(() => window.hextable.mode.kind)) !== 'legendary' || !(await dm.evaluate(() => window.hextable.mode.hex))) throw new Error('an update while the selected creature is down put the aim down');
         await waitShown(dm, '#lg .lg-go');
         await shot(dm, 'aim-area');
         await idle(dm); await wait(dm, () => !window.hextable.timeline.busy());      // a tap while the beats still play only skips them (legendary.js, as every control): wait for the picture to be still
         await tapIt(dm.locator('#lg .lg-go'));
         try { await wait(dm, () => !window.hextable.state.encounter.between); }      // paid and done: the dragon's own turn has begun, which gives its uses back
-        catch (err) { throw new Error(`${err.message.slice(0, 80)} -- ${await dm.evaluate((p) => JSON.stringify({ spot: p, err: document.querySelector('#lg .lg-err')?.textContent, hint: document.querySelector('#hint-text')?.textContent, mode: window.hextable.mode, toast: document.querySelector('#toast')?.textContent, between: window.hextable.state.encounter?.between, acts: Object.values(window.hextable.state.entities).filter((e) => e.legend).map((e) => [e.id, e.legend.acts, e.pos]), turn: window.hextable.state.encounter?.order?.[window.hextable.state.encounter.turn]?.id }), spot)}`); }
+        catch (err) { throw new Error(`${err.message.slice(0, 80)} -- ${await dm.evaluate((p) => JSON.stringify({ spot: p, err: document.querySelector('#lg .lg-err')?.textContent, hint: document.querySelector('#hint-text')?.textContent, mode: window.hextable.mode, toast: document.querySelector('#toast')?.textContent, hp: [window.hextable.state.entities.fighter?.hp, window.hextable.state.entities.rogue?.hp], between: window.hextable.state.encounter?.between, acts: Object.values(window.hextable.state.entities).filter((e) => e.legend).map((e) => [e.id, e.legend.acts, e.pos]), turn: window.hextable.state.encounter?.order?.[window.hextable.state.encounter.turn]?.id }), spot)}`); }
+        await dm.evaluate((hp) => { const h = window.hextable; h.act({ type: 'setHp', actor: 'fighter', hp: Math.max(hp.fighter, 1) }); h.act({ type: 'setHp', actor: 'rogue', hp: hp.rogue }); }, hp0); await idle(dm);      // back as they were (the fighter at least up), for the steps after
       });
 
       await run.do('a failed save asks for Legendary Resistance: the card, one tap, a success; the player is told nothing of it', async () => {

@@ -29,7 +29,21 @@ async function run1(browser, url, label, opts) {
         return pt;
       };
       let cleric, fen, rae;
-      const dbl = async (pt) => { await tapOn(pt); await sleep(60); await tapOn(pt); };
+      // A double-tap is two taps within DOUBLE_MS (350 ms) of each other, measured in the page when each is handled. Two awaited page.touchscreen.tap / mouse.click calls
+      // are two round trips, and on a slow runner they land further apart than that (#892). So all four events (down, up, down, up) go to the browser through CDP in one
+      // burst, nothing awaited between them: it handles them in order, back to back. The page notes when each tap arrived, so a failure can say what the gap was.
+      let cdp = null;
+      const dbl = async (pt) => {
+        cdp ??= await ctx.newCDPSession(page);
+        await page.evaluate(() => { window.__taps = []; if (!window.__tapWatch) { window.__tapWatch = true; addEventListener('pointerup', () => window.__taps.push(Math.round(performance.now())), true); } });
+        const ev = touch
+          ? [['touchStart', 'touchPoint'], ['touchEnd'], ['touchStart', 'touchPoint'], ['touchEnd']].map(([type, pts]) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts ? [{ x: pt.x, y: pt.y }] : [] }))
+          : [['mousePressed'], ['mouseReleased'], ['mousePressed'], ['mouseReleased']].map(([type], i) => cdp.send('Input.dispatchMouseEvent', { type, x: pt.x, y: pt.y, button: 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: i < 2 ? 1 : 2 }));
+        await Promise.all(ev);
+      };
+      const tapGap = () => page.evaluate(() => window.__taps ?? []);
+      const gone = async (what) => { const v = await view(), t = await tapGap(); return `${what}: picked ${JSON.stringify(v.picked)}, note ${JSON.stringify(v.note)}, the two taps arrived at ${JSON.stringify(t)} ms (gap ${t.length === 2 ? t[1] - t[0] : 'unknown'}, limit 350)`; };
+      const dblWait = async (n, what) => { try { await wait(page, (k) => window.hextable.mode.picked?.length === k, n); } catch (err) { throw new Error(`${await gone(what)}; ${err.message}`); } };
       const tapOn = (pt) => (touch ? page.touchscreen.tap(pt.x, pt.y) : page.mouse.click(pt.x, pt.y));
 
       await run.do('a cleric with Bless and two friends beside her', async () => {
@@ -79,16 +93,16 @@ async function run1(browser, url, label, opts) {
         await shot('2-two-chosen');
         await sleep(500);                                          // a pause: the next taps are a pair of their own
         await dbl(await pointOf(fen));
-        await wait(page, () => window.hextable.mode.picked?.length === 1);
+        await dblWait(1, 'a double-tap takes one off');
         const w = await view();
         if (w.note !== '1 of 3 targets' || w.picked.join() !== rae || w.label !== 'Confirm Bless' || (await casts()) !== n) throw new Error(`one taken off: ${JSON.stringify(w)}`);
         await sleep(500);
         await dbl(await pointOf(fen));                             // a double-tap on one that is not chosen chooses it once
-        await wait(page, () => window.hextable.mode.picked?.length === 2);
+        await dblWait(2, 'a double-tap on a new target');
         if ((await view()).picked.join() !== `${rae},${fen}`) throw new Error(`a double-tap on a new target: ${JSON.stringify(await view())}`);
         await sleep(500);
         await dbl(await pointOf(fen));
-        await wait(page, () => window.hextable.mode.picked?.length === 1);
+        await dblWait(1, 'the second double-tap');
         if ((await view()).note !== '1 of 3 targets') throw new Error('the second double-tap did not take it off');
       });
 

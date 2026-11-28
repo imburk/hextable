@@ -644,7 +644,7 @@ function onUpdate(state, events, fresh) {
     selId = own?.id ?? null;
   }
   if (confirming) { confirming = 0; mode = MOVE; }       // #750: the table took the confirm
-  if (mode !== MOVE && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;
+  if (mode !== MOVE && mode.kind !== 'legendary' && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;      // #895: the DM's legendary aim is the window's, not the selected creature's (legendary.js puts it down when the window moves on)
   if (mode.kind === 'owed' && !offerOf(S, S.entities[selId])) mode = MOVE;
   if (mode.kind === 'leap' && (!S.entities[selId] || leapState(S, S.entities[selId]).why || (mode.spell && !leapState(S, S.entities[selId]).spellFree))) mode = MOVE;      // #818: the leap is put down when it can't be made now
   // A player is shown the movement an Opportunity Attack gave as soon as it comes: their creature is selected and looked at (the DM keeps their own choice; solo is both).
