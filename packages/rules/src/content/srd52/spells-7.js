@@ -57,7 +57,7 @@ export const spells7 = [
     kinds: ["damage", "control"],
     roll: "save:cha",
     tier: "assist", checked: true,
-    text: "Chosen creatures in a 30-foot aura make a Charisma save; a failure with 50 hit points or fewer kills, or blinds, deafens or stuns, by how hurt the creature is, which the engine applies. The DM ends the conditions on time and sends outsiders home.",
+    text: "Chosen creatures in a 30-foot aura (up to 20 here; the spell sets no cap) make a Charisma save; a failure with 50 hit points or fewer kills, or blinds, deafens or stuns, by how hurt the creature is, which the engine applies. The DM ends the conditions on time and sends outsiders home.",
   },
   {
     id: "etherealness", name: "Etherealness", source: "SRD 5.2.1",

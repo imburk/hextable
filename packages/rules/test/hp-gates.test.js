@@ -72,7 +72,7 @@ test("Power Word Kill: 100 or fewer dies, 101 takes 12d12 Psychic, Temporary Hit
     const s = table(wizard, "wen"), g = foe(s, hp, temp);
     const r = cast(s, "wen", "power-word-kill", { target: g.id });
     assert.equal(manuals(r).length, 0, "nothing is left to the DM");
-    if (dies) assert.ok(g.dead || g.hp === 0 && g.dying !== undefined || g.hp <= 0, `hp ${hp} temp ${temp} dies`);
+    if (dies) assert.equal(g.dead, true, `hp ${hp} temp ${temp} dies`);
     else { assert.ok(!g.dead); assert.ok(r.events.some((e) => e.type === "damage" && e.target === g.id && e.dtype === "psychic" && e.amount >= 12), "12d12 Psychic"); }
   }
 });
@@ -83,7 +83,7 @@ test("Power Word Kill: a creature at 101 Hit Points with 5 Temporary is not kill
   assert.ok(!g1.dead);
   const s2 = table(wizard, "wen"), g2 = foe(s2, 100, 500);
   cast(s2, "wen", "power-word-kill", { target: g2.id });
-  assert.ok(g2.dead || g2.hp === 0);
+  assert.equal(g2.dead, true);
 });
 
 test("Power Word Stun: 150 or fewer is Stunned (a Constitution save at the end of its turns ends it), more has Speed 0 until the caster's next turn", () => {
@@ -110,7 +110,7 @@ test("Divine Word: each band, Temporary Hit Points ignored, above 50 nothing", (
     const s = table(cleric, "pia"), g = foe(s, hp, temp);
     cast(s, "pia", "divine-word", { targets: [g.id] });
     const w = want(hp);
-    if (w === "dead") { assert.ok(g.dead || g.hp === 0, `hp ${hp} dies`); continue; }
+    if (w === "dead") { assert.equal(g.dead, true, `hp ${hp} dies`); continue; }
     assert.ok(!g.dead && g.hp === hp, `hp ${hp} lives`);
     assert.deepEqual(["blinded", "deafened", "stunned"].filter((c) => g.cond[c]), w, `hp ${hp} temp ${temp}`);
   }
