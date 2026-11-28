@@ -152,12 +152,20 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         if (!spot) throw new Error('no spot the engine accepts for Noxious Miasma near the fighter');
         await tapSpot(spot, 'the spot');
         await wait(dm, () => window.hextable.mode.hex);
+        // #895: the DM's selected creature down (the Pounce before can drop the fighter) and an update arriving while the aim is armed must not put the aim down.
+        const hp0 = await state(dm, (S) => ({ fighter: S.entities.fighter.hp, rogue: S.entities.rogue.hp }));
+        await dm.evaluate(() => window.hextable.act({ type: 'setHp', actor: 'fighter', hp: 0 }));
+        await wait(dm, () => window.hextable.state.entities.fighter.hp === 0);
+        await dm.evaluate((hp) => window.hextable.act({ type: 'setHp', actor: 'rogue', hp: Math.max(1, hp - 1) }), hp0.rogue);
+        await wait(dm, (hp) => window.hextable.state.entities.rogue.hp !== hp || hp <= 1, hp0.rogue); await idle(dm);
+        if ((await dm.evaluate(() => window.hextable.mode.kind)) !== 'legendary' || !(await dm.evaluate(() => window.hextable.mode.hex))) throw new Error('an update while the selected creature is down put the aim down');
         await waitShown(dm, '#lg .lg-go');
         await shot(dm, 'aim-area');
         await idle(dm); await wait(dm, () => !window.hextable.timeline.busy());      // a tap while the beats still play only skips them (legendary.js, as every control): wait for the picture to be still
         await tapIt(dm.locator('#lg .lg-go'));
         try { await wait(dm, () => !window.hextable.state.encounter.between); }      // paid and done: the dragon's own turn has begun, which gives its uses back
-        catch (err) { throw new Error(`${err.message.slice(0, 80)} -- ${await dm.evaluate((p) => JSON.stringify({ spot: p, err: document.querySelector('#lg .lg-err')?.textContent, hint: document.querySelector('#hint-text')?.textContent, mode: window.hextable.mode, toast: document.querySelector('#toast')?.textContent, between: window.hextable.state.encounter?.between, acts: Object.values(window.hextable.state.entities).filter((e) => e.legend).map((e) => [e.id, e.legend.acts, e.pos]), turn: window.hextable.state.encounter?.order?.[window.hextable.state.encounter.turn]?.id }), spot)}`); }
+        catch (err) { throw new Error(`${err.message.slice(0, 80)} -- ${await dm.evaluate((p) => JSON.stringify({ spot: p, err: document.querySelector('#lg .lg-err')?.textContent, hint: document.querySelector('#hint-text')?.textContent, mode: window.hextable.mode, toast: document.querySelector('#toast')?.textContent, hp: [window.hextable.state.entities.fighter?.hp, window.hextable.state.entities.rogue?.hp], between: window.hextable.state.encounter?.between, acts: Object.values(window.hextable.state.entities).filter((e) => e.legend).map((e) => [e.id, e.legend.acts, e.pos]), turn: window.hextable.state.encounter?.order?.[window.hextable.state.encounter.turn]?.id }), spot)}`); }
+        await dm.evaluate((hp) => { const h = window.hextable; h.act({ type: 'setHp', actor: 'fighter', hp: Math.max(hp.fighter, 1) }); h.act({ type: 'setHp', actor: 'rogue', hp: hp.rogue }); }, hp0); await idle(dm);      // back as they were (the fighter at least up), for the steps after
       });
 
       await run.do('a failed save asks for Legendary Resistance: the card, one tap, a success; the player is told nothing of it', async () => {
@@ -179,6 +187,42 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await wait(dm, (id) => window.hextable.state.entities[id].legend.resisted >= 1 && !window.hextable.state.pending, drake);
         await wait(pl, () => document.querySelector('#rp-wait').hidden);
         await waitShown(dm, '#lg');
+      });
+
+      await run.do('the pick leads the bar; By themselves plays the window with no tap, Suggest waits, Off sends nothing', async () => {
+        const auto = (on) => dm.evaluate((v) => { const c = document.getElementById('dm-auto'); c.checked = v; c.dispatchEvent(new Event('change')); }, on);
+        const idleStill = async () => { await idle(dm); await wait(dm, () => !window.hextable.timeline.busy()); };
+        await waitShown(dm, '#lg');
+        // The pick: marked first, its words under it, one button; the other options stay.
+        const row = await dm.$eval('#lg .lg-row', (r) => ({ pick: r.querySelector('.lg-pick')?.innerText ?? '', first: r.children[1]?.className, opts: r.querySelectorAll('.lg-opt').length }));
+        if (!/\u25b8/.test(row.pick) || !/Do it/.test(row.pick) || !/\./.test(row.pick)) throw new Error(`the pick row does not say what it should: ${JSON.stringify(row)}`);
+        if (row.first !== 'lg-pick' || row.opts < 3) throw new Error(`the pick is not first or the options are gone: ${JSON.stringify(row)}`);
+        const bh = await dm.$eval('#lg .lg-take', (b) => b.getBoundingClientRect().height);
+        if (bh < 56) throw new Error(`Do it is under 56 px: ${bh}`);
+        await shot(dm, 'pick');
+        // The switch, sent from DM tools.
+        await dm.evaluate(() => { document.getElementById('dm-auto').checked = false; });
+        await dm.evaluate((id) => window.hextable.act({ type: 'legendarySet', actor: id, set: { self: true } }), drake);
+        await wait(dm, (id) => window.hextable.state.entities[id].legend.self === true, drake);
+        await dm.evaluate(() => { window.__toasts = []; new MutationObserver(() => window.__toasts.push(document.querySelector('#toast')?.textContent ?? '')).observe(document.querySelector('#toast'), { childList: true, characterData: true, subtree: true, attributes: true }); });
+        // Off: nothing is sent, and the bar is there for the DM.
+        await idleStill(); await sleep(2500);
+        if (!(await state(dm, (S) => !!S.encounter.between))) throw new Error('the window was played with Run monsters automatically off');
+        await waitShown(dm, '#lg');
+        // On: it plays by itself after the pause, with no tap, and the bar does not open.
+        await auto(true);
+        await wait(dm, () => !window.hextable.state.encounter.between, null, 20000);
+        if (!(await dm.evaluate(() => window.__toasts.some((t) => /^Verdigris: /.test(t))))) throw new Error(`no toast said what was done: ${await dm.evaluate(() => JSON.stringify(window.__toasts))}`);
+        await auto(false); await idleStill();
+        // Suggest, on: nothing is sent while a creature set to Suggest is still to choose.
+        await toWindow();
+        await dm.evaluate((id) => window.hextable.act({ type: 'legendarySet', actor: id, set: { self: false } }), drake);
+        await wait(dm, (id) => window.hextable.state.entities[id].legend.self === false, drake);
+        await auto(true); await idleStill(); await sleep(2500);
+        if (!(await state(dm, (S) => !!S.encounter.between))) throw new Error('a creature on Suggest was played by itself');
+        await waitShown(dm, '#lg');
+        await auto(false);
+        await dm.evaluate((id) => window.hextable.act({ type: 'legendarySet', actor: id, set: { self: false } }), drake);
       });
 
       await run.do("Turns counts the dragon's uses; DM tools has its switches and the two table settings", async () => {

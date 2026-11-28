@@ -17,6 +17,7 @@ import { moveOptions, areaHexes, areaTargets, actionSpent, hostile, targetsFor, 
 import { actionProfile } from './shared/effects.js';
 import { speedOf } from './shared/modifiers.js';
 import { key as cellKey, col as cellCol } from './shared/grid.js';
+import { legendaryPick } from './shared/ai.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export const RESISTANCE = 'legendary-resistance';
@@ -88,6 +89,30 @@ export function armedOf(S, m) {
   return e && opt ? { e, opt } : null;
 }
 
+// ---------- the pick, and the creatures that play by themselves (Decision 8) ----------
+// `legendaryPick` (ai.js) as an action ready to send, with its words apart; null when nothing is worth taking. Always worked out from the state given: never kept across updates.
+export function pickOf(S, id) {
+  // The DM's view holds no timeline, which the engine writes to when it runs an action on a copy (as `dry` in app.js does); a pick that cannot be worked out is no pick, never a broken bar.
+  let p = null;
+  try { p = legendaryPick({ ...S, timeline: S.timeline ?? [] }, id); } catch { p = null; }
+  if (!p) return null;
+  const { why, ...action } = p;
+  return { action, why };
+}
+export const selfOf = (e) => e?.legend?.self === true;
+// What the DM's browser sends next with no tap: the window's first creature's pick (or its skip), when the device switch "Run monsters automatically" is on, a window
+// is open, no question waits, and every creature still to choose plays by itself. One set to Suggest still to choose: null, the bar waits for the DM.
+export function selfPlay(S, auto) {
+  const w = S?.encounter?.between;
+  if (!auto || !w || typeof w !== 'object' || S.pending) return null;
+  const rows = windowRows(S);
+  if (!rows.length || !rows.every(selfOf)) return null;
+  const e = rows[0], p = pickOf(S, e.id);
+  return p ? { id: e.id, action: p.action, text: `${e.name}: ${p.why}` } : { id: e.id, action: { type: 'legendary', actor: e.id, skip: true }, text: `${e.name}: nothing worth doing, it passes.` };
+}
+// Whether the bar stays shut: the whole window is played by the browser.
+export const playsItself = (S, auto) => { const r = windowRows(S); return !!auto && r.length > 0 && r.every(selfOf); };
+
 // ---------- the switches of DM tools > Creatures ----------
 export const INSTRUCTION = { matters: 'Only when it matters', ask: 'Ask me every time', always: 'Every failed save', never: 'Never' };
 const ORDER = ['matters', 'ask', 'always', 'never'];
@@ -96,7 +121,8 @@ export function creatureRows(S) {
   return Object.values(S?.entities ?? {}).filter((e) => isLegendary(e) && !e.dead && !e.object);
 }
 // The lair and show switches of one creature (the DM's: `legendarySet`), without the instruction. Drawn in DM tools and on the creature's own Reactions tab.
-export const lairShowHtml = (e) => `<label class="check"><input type="checkbox" data-lg-set="lair"${e.legend.lair ? ' checked' : ''}${e.legendary.lair ? '' : ' disabled'}> In its lair${e.legendary.lair ? '' : ' (it has no lair numbers)'}</label>
+export const lairShowHtml = (e) => `<label class="assign">Legendary actions <select data-lg-self aria-label="Legendary actions of ${esc(e.name)}"><option value="suggest"${selfOf(e) ? '' : ' selected'}>Suggest</option><option value="self"${selfOf(e) ? ' selected' : ''}>By themselves</option></select></label>
+      <label class="check"><input type="checkbox" data-lg-set="lair"${e.legend.lair ? ' checked' : ''}${e.legendary.lair ? '' : ' disabled'}> In its lair${e.legendary.lair ? '' : ' (it has no lair numbers)'}</label>
       <label class="check"><input type="checkbox" data-lg-set="show"${e.legend.show ? ' checked' : ''}${e.legendary.actions ? '' : ' disabled'}> Show its legendary uses to the players</label>`;
 export function creaturesHtml(S) {
   const rows = creatureRows(S);
@@ -115,12 +141,13 @@ export function bindSwitches(root, act) {
     const row = ev.target.closest('[data-id]'), id = row?.dataset.id;
     if (!id) return;
     if (ev.target.matches('[data-lg-rx]')) act({ type: 'reactions', actor: id, set: { [RESISTANCE]: ev.target.value } });
+    else if (ev.target.matches('[data-lg-self]')) act({ type: 'legendarySet', actor: id, set: { self: ev.target.value === 'self' } });
     else if (ev.target.matches('[data-lg-set]')) act({ type: 'legendarySet', actor: id, set: { [ev.target.dataset.lgSet]: ev.target.checked } });
   });
 }
 
 // ---------- the bar ----------
-// ctx: { mount, state(), isDM(), act(a), toast(m), dry(a), mode(), setMode(m), move (the idle mode), render(), skip() (true when the tap only skipped the beats) }
+// ctx: { mount, auto() (the DM's "Run monsters automatically" is on), state(), isDM(), act(a), toast(m), dry(a), mode(), setMode(m), move (the idle mode), render(), skip() (true when the tap only skipped the beats) }
 export function initLegendary(ctx) {
   const { mount } = ctx;
   mount.id = 'lg'; mount.hidden = true; mount.setAttribute('role', 'region'); mount.setAttribute('aria-label', 'Legendary actions');
@@ -132,18 +159,28 @@ export function initLegendary(ctx) {
     const st = optionState(e, opt), cost = opt.cost ?? 1;
     return `<button type="button" class="lg-opt${st.ok ? '' : ' off'}" data-opt="${esc(opt.id)}" ${st.ok ? '' : `aria-disabled="true" data-why="${esc(st.why)}"`} title="${esc(opt.text ?? '')}"><span class="lg-oname">${esc(opt.name)}${cost > 1 ? ` <i>(${cost} uses)</i>` : ''}</span><small>${esc(st.ok ? (opt.manual && !opt.use && !opt.effects && !opt.move ? 'You run it' : opt.text ?? '') : st.why)}</small></button>`;
   };
-  const rowHtml = (e) => `<div class="lg-row" data-id="${esc(e.id)}"><div class="lg-who"><b>${esc(e.name)}</b><span class="lg-count">Legendary ${usesLeft(e)}/${usesMax(e)}</span></div>
+  // The brain's pick first, marked, with its words under it and one button. Worked out afresh at every draw.
+  const pickHtml = (s, e) => {
+    const p = pickOf(s, e.id);
+    if (!p) return '';
+    const opt = e.legendary.actions.options.find((o) => o.id === p.action.option);
+    return `<div class="lg-pick"><span class="lg-mark" aria-hidden="true">\u25b8</span><div class="lg-pick-t"><b>${esc(opt?.name ?? p.action.option)}</b><small>${esc(p.why)}</small></div><button type="button" class="lg-take" data-take="${esc(e.id)}">Do it</button></div>`;
+  };
+  const rowHtml = (s, e) => `<div class="lg-row" data-id="${esc(e.id)}"><div class="lg-who"><b>${esc(e.name)}</b><span class="lg-count">Legendary ${usesLeft(e)}/${usesMax(e)}</span></div>
+    ${pickHtml(s, e)}
     <div class="lg-opts">${e.legendary.actions.options.map((o) => optionHtml(e, o)).join('')}</div>
     <button type="button" class="lg-skip" data-skip="${esc(e.id)}">Skip</button></div>`;
 
   function draw() {
-    const s = S(), rows = ctx.isDM() && s && !s.pending ? windowRows(s) : [];      // a question waiting (a reaction, Legendary Resistance) is answered first
+    const s = S();
+    let rows = ctx.isDM() && s && !s.pending ? windowRows(s) : [];      // a question waiting (a reaction, Legendary Resistance) is answered first
+    if (s && ctx.auto?.() && rows.length && playsItself(s, true)) rows = [];      // every creature still to choose plays by itself: the browser plays the window (app.js idled), no bar
     const m = armed();
     if (m && !s?.pending && (!rows.some((e) => e.id === m.actor) || !ctx.isDM())) ctx.setMode(ctx.move);      // the window moved on without it
     if (!rows.length) { mount.hidden = true; mount.textContent = ''; sig = ''; document.body.classList.remove('lg-open'); return; }
     const am = armed();
     if (am) return drawArmed(s, am);
-    const html = `<div class="lg-head"><b>Legendary actions</b><span>${esc(afterWords(s))}</span><button type="button" class="lg-done" data-done>Done</button></div>${rows.map(rowHtml).join('')}<p class="lg-err" role="alert" hidden></p>`;
+    const html = `<div class="lg-head"><b>Legendary actions</b><span>${esc(afterWords(s))}</span><button type="button" class="lg-done" data-done>Done</button></div>${rows.map((e) => rowHtml(s, e)).join('')}<p class="lg-err" role="alert" hidden></p>`;
     mount.hidden = false; document.body.classList.add('lg-open');
     if (html !== sig) { sig = html; mount.innerHTML = html; }
   }
@@ -162,6 +199,7 @@ export function initLegendary(ctx) {
     if (m && b.dataset.do === 'send') return sendArmed(m);
     if (m && b.dataset.pick) { m.pick = b.dataset.pick; m.steps = m.steps.filter((x) => x !== 'aim'); const h = here(m); if (h && actionProfile(defNow(h.e, h.opt, m)).aim !== 'self') m.steps.push('aim'); return goOn(m); }
     if (b.hasAttribute('data-done')) return send({ type: 'legendary', done: true });
+    if (b.dataset.take) { const p = pickOf(s, b.dataset.take); return p ? send(p.action) : ctx.toast('Nothing is worth taking now.'); }      // the pick as the state is now, not as the bar was drawn
     if (b.dataset.skip) return send({ type: 'legendary', actor: b.dataset.skip, skip: true });
     if (b.dataset.opt) {
       if (b.getAttribute('aria-disabled') === 'true') return ctx.toast(b.dataset.why || 'Not now.');
