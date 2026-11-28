@@ -1235,6 +1235,23 @@ DM: Step effects.0: whether the wall is stone, large enough to hold the caster a
 DM: "Whether the wall is stone is the DM's."
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-thick-growth
+"Thick Growth" (level 3 transmutation, 150 feet, action, instant).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: control.
+Its roll: the entry does not say, and the steps cannot tell, so the list shows no roll for it.
+Once for the cast, every grass and forest tile of the area (the sphere, on any level whose ground lies within 100 feet above or below the point aimed at) becomes overgrown, but for the cells the caster names as left out when casting; players are told only that the plants become thick and overgrown, the DM how many tiles changed. A creature on foot (walking or climbing) then spends 4 feet of movement for every 1 foot in an overgrown tile; this does not add to Difficult Terrain (the dearer of the two holds), a flying or swimming creature is not slowed, and Freedom of Movement does not remove it. The change is of the map, not a lasting effect: nothing ends it but the DM's map edit.
+The engine does not do this; the DM does this: "A plant the map holds no tile for is the DM's."
+The sphere is centred on a point the caster picks within 150 feet; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
+It is instant: nothing it does is kept as a lasting effect.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Step effects.0: a plant that is not a grass or forest tile (a crop, a hedge, a tree held as an object), the caster's exclusions when the cast named no cells, and putting the ground back.
+DM: "A plant the map holds no tile for is the DM's."
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-howling-pack
 "Howling Pack" (level 3 conjuration, 60 feet, action, 10 minutes, concentration).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

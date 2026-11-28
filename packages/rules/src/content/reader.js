@@ -280,7 +280,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], overgrow: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when', 'atLeast', 'fades'];
 
@@ -1304,6 +1304,12 @@ export const STEP_SENTENCES = {
     if (st.meld !== true) this.bad(`Step ${at}: the meld step is not true.`);
     say('The caster steps into the wall the cast aimed at and is held there for as long as the spell lasts (the effect it makes; no Concentration). While it is: it fills no space (others may stand where it stood) and is not seen by any creature, so it cannot be targeted, attacked, pushed, caught in an area or found by a Search, and to a player who does not run it the table is exactly as if it were not there. It sees nothing: the party gets no sight from it. It may cast spells aimed at itself; everything else it would do (move, attack, any other action, a spell aimed at another) is refused with one message, except leaving: `unmeld`, which costs 5 feet of movement in a fight, ends the spell and puts it back where it entered, or in the nearest unoccupied space if that is taken. When the spell ends by time it comes out the same way. A Stone Shape cut whose removed stretch is within 2.5 feet of where it entered expels it: 6d6 Force damage, the nearest unoccupied space, and the Prone condition, and the spell ends.');
     return this.dm(`Step ${at}: whether the wall is stone, large enough to hold the caster and its gear (the engine does not know), Truesight and any other sense that could find the caster, and any damage or destruction of the stone other than a Stone Shape cut (partial damage expels it with 6d6 Force damage, destruction with 50 Force damage).`);
+  },
+  // resolve.js `overgrowTiles`, map.js `overgrow`: a change of the map once for the cast, as a tide is; engine/world.js prices a step into it.
+  overgrow({ st, at, say }) {
+    if (st.overgrow !== true) this.bad(`Step ${at}: the overgrow step is not true.`);
+    say('Once for the cast, every grass and forest tile of the area (the sphere, on any level whose ground lies within 100 feet above or below the point aimed at) becomes overgrown, but for the cells the caster names as left out when casting; players are told only that the plants become thick and overgrown, the DM how many tiles changed. A creature on foot (walking or climbing) then spends 4 feet of movement for every 1 foot in an overgrown tile; this does not add to Difficult Terrain (the dearer of the two holds), a flying or swimming creature is not slowed, and Freedom of Movement does not remove it. The change is of the map, not a lasting effect: nothing ends it but the DM\'s map edit.');
+    return this.dm(`Step ${at}: a plant that is not a grass or forest tile (a crop, a hedge, a tree held as an object), the caster\'s exclusions when the cast named no cells, and putting the ground back.`);
   },
   // engine/world.js `sense`: the DM alone is told.
   sense({ st, at, say }) {

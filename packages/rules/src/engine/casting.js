@@ -673,6 +673,7 @@ function castSpell(s, a, ctx, ev, item) {
     const range = typeof (mm.range ?? grown) === 'number' && spear ? (mm.range ?? grown) + spear : mm.range ?? grown;
     const most = targetCount(sp.def, casterLevel, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
     let targets = [], hexes = null, areaOrigin = null, object = null, wall = null, spaceBody = null;
+    let except = null;       // Plant Growth: the cells of its area the caster leaves out ("The caster can exclude areas of any size"), as keys
     // Globe of Invulnerability: a spell of a level below the Globe's (its slot level less one; a spell cast with a higher slot "takes on the higher level for that casting", SRD, so the slot counts) cast from outside it cannot affect anything within it. A spell
     // aimed at creatures may target one inside, and has no effect on it (as an invalid target: `warded`, below); the inside is left out of the area of one aimed at an area. What the caster stands in is judged by where it stands, never by who is hidden in it.
     const globes = globesOf(s).filter((fx) => Math.max(slot, sp.level) <= fx.level - 1 && !inGlobe(s, fx, e)), globed = (x) => globes.some((fx) => inGlobe(s, fx, x));
@@ -695,6 +696,14 @@ function castSpell(s, a, ctx, ev, item) {
       // A pack or a circle goes off on nobody as it appears (it has no `atCast`): nobody is named as caught, which would only list the creatures near it.
       if (sp.area.space || zoneDef?.ward) targets = [];
       if (sp.area.choose) targets = chosen(e, sp.name, targets, a.targets, most);
+      // `except`: cells of the area left out of what the spell does to the ground. Only a spell with an `overgrow` step has the choice; every cell must lie in the area (the cast event's own cells).
+      if (a.except !== undefined) {
+        sp.def.effects.some((st) => 'overgrow' in st) || fail(`${sp.name} has no part of its area to leave out.`);
+        const inside = new Set(hexes.map(col));
+        (Array.isArray(a.except) && a.except.length <= 2000 && a.except.every((c) => c && Number.isInteger(c.q) && Number.isInteger(c.r))) || fail(`Name the cells ${sp.name} leaves out as a list of { q, r }.`);
+        a.except.every((c) => inside.has(col(c))) || fail(`${sp.name} can only leave out cells within its area.`);
+        except = [...new Set(a.except.map(col))];
+      }
     } else if (sp.aim === 'creature') {
       targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true, dead: sp.dead === true }, a);
     } else if (sp.aim === 'self') targets = [e];
@@ -879,7 +888,7 @@ function castSpell(s, a, ctx, ev, item) {
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : sp.aim === 'object' || sp.aim === 'wall' ? [e.id] : hit.map((t) => t.id),
       src: { name: sp.name, ...(object ? { object: object.id } : {}), ...(wall ? { wall } : {}), dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod, ...(fx ? { fx: fx.id } : {}),
-        ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
+        ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(except ? { except } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
         ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}),
         spell: sp.id, slot: Math.max(slot, sp.level), ...(wardDone ? { wardDone: true } : {}), ...(weapon ? { weapon } : {}), ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),
         ...(summoning ? { summon: { ...summoning, slot: Math.max(slot, sp.level), caster: summonCaster(s, e, sp.id) } } : {}), ...(toucher ? { via: toucher.id } : {}) },

@@ -88,7 +88,11 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   // `water: { mode: 'flood', by: 5..20, size }` or `{ mode: 'part', size }` (Control Water): the water in the spell's area (a cube, `size` feet a side, the spell's own) is raised by `by` feet (a multiple of 5, default 20), or parted down to its bed, for as long as the
   // lasting effect holds, and put back when it ends (tides.js `controlWater`, `endWater`). It acts once for the cast, on the cells, not on a creature. A spell with a duration and an area only.
   // docs/specs/fly-swim-control.md, "Build notes (E4, #853)".
-  'water'];
+  'water',
+  // `overgrow: true` (Plant Growth): once for the cast, every tile of vegetation (`VEGETATION`, map.js) in the area, within 100 feet above or below where it was aimed, becomes `overgrown`: a creature on the
+  // ground spends 4 feet of movement for every 1 foot it moves there (engine/world.js). It is a change of the map, as a tide is, not a lasting effect: nothing ends it but the DM's map edit. A spell aimed at a
+  // sphere within range. docs/specs/rules-expansion.md, "Build notes: Plant Growth (#923)".
+  'overgrow'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -674,6 +678,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       if (!seen.eachOk) say('a `water` step is for a spell that lasts: the water goes back when it ends');
       seen.water = true;
     }
+    if (kind === 'overgrow') { if (step.overgrow !== true) say('`overgrow` is true'); seen.overgrow = true; }
     if (kind === 'modifier') {
       lintModifier(step.modifier ?? {}, say, seen.rolledOk === true, true);
       if (seen.inAttack && isRolled(step.modifier?.value)) say(ROLLED_IN_ATTACK);
@@ -1028,6 +1033,8 @@ function lintSpell(e, say) {
   // A `water` step works on the cells of a cube laid out from a point within range: the spell is aimed at a cube, with a range.
   if (seen.water && !(e.target?.area?.shape === 'cube' && Number.isInteger(e.range) && e.range > 0)) say('a `water` step is for a spell whose target is a cube aimed at a point within its range');
   else if (seen.water) walkSteps(e.effects, (st) => { if (st.water && st.water.size !== e.target.area.size) say('`water.size` is the spell\'s own cube: the same feet a side as `target.area.size`'); });
+  // An `overgrow` step works on the cells of a sphere laid out from a point within range, once, for a spell that does not last (the change is the map's, not an effect's).
+  if (seen.overgrow && !(e.target?.area?.shape === 'sphere' && Number.isInteger(e.range) && e.range > 0 && e.duration === 'instant')) say('an `overgrow` step is for an instant spell whose target is a sphere aimed at a point within its range');
   // A spell aimed at the dead has a revive step, and a revive step is for a spell aimed at the dead (a creature that is up has nothing to revive).
   if (e.target?.creature?.dead === true && !seen.revive) say('a spell aimed at a dead creature (`target.creature.dead`) needs a `revive` step');
   if (seen.revive && e.target?.creature?.dead !== true) say('a `revive` step is for a spell whose creature target says `dead: true`');
@@ -3283,7 +3290,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [], water: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], overgrow: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3876,7 +3883,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's', from: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a', familiarity: 's' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.polymorph': { polymorph: 's', cr: 'n', types: 's[]', not: 's[]', size: 's', keep: 's[]', early: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i|s', within: 'i', unit: 's' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.water': { water: 'o' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.polymorph': { polymorph: 's', cr: 'n', types: 's[]', not: 's[]', size: 's', keep: 's[]', early: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i|s', within: 'i', unit: 's' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.water': { water: 'o' }, 'step.overgrow': { overgrow: 'b' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's', range: 'i' },
   water: { mode: 's', by: 'i', size: 'i' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },

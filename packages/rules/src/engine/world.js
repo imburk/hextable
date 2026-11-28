@@ -9,7 +9,7 @@ import { apart, apartAt, concealed, footprint, FT, gap, ground, hasColumn, HEADR
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, inShell, shellsOf, terrainsOf } from '../terrain.js';
 import { objectKnown, regionsInSight, sightRule, tileSent, unknown } from '../vision.js';
-import { EDITS, lintMap } from '../map.js';
+import { EDITS, lintMap, OVERGROWN_COST } from '../map.js';
 import { hiddenFrom } from '../sight.js';
 import { holds, zonesOf } from '../zones.js';
 import { barriers, clipWall, distToSegment, objectDef, objectHexes, objectSegment, reachOf, SQUARE_CLIP } from '../walls.js';
@@ -415,7 +415,10 @@ export function moveOptions(s, e, opts = {}) {
             swim(h, n, sf, diag, up_ <= STEP_FREE);
             continue;
           }
-          const water = (acrobat || walker) && sf.tile.t === 'water', terrain = water || (easy && TILES[sf.tile.t].cost !== Infinity) ? 1 : TILES[sf.tile.t].cost;
+          const water = (acrobat || walker) && sf.tile.t === 'water', ground_ = water || (easy && TILES[sf.tile.t].cost !== Infinity) ? 1 : TILES[sf.tile.t].cost;
+          // Plant Growth: overgrown ground costs 4 feet for every 1 (a walking or climbing step; a flyer is not here). It is not Difficult Terrain, so it neither stacks with it (the dearer holds: 4, not 8) nor
+          // does Freedom of Movement, which frees a creature of Difficult Terrain only (SRD), take it off.
+          const terrain = sf.tile.overgrown === true && ground_ !== Infinity ? Math.max(ground_, OVERGROWN_COST) : ground_;
           if (terrain === Infinity || B.solid(sf.level.id, n)) continue;
           const h = { q: n.q, r: n.r, z: sf.z };
           if (water && !walker) wet.add(key(h));

@@ -940,6 +940,39 @@
       "tier": "assist",
       "checked": false,
       "text": "Standing water in a small cube rises ten feet for a minute and sinks back when the spell ends."
+    },
+    {
+      "id": "hb-sample-tangling-green",
+      "name": "Tangling Green",
+      "source": "homebrew:sample",
+      "level": 3,
+      "school": "transmutation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": 120,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "area": {
+          "shape": "sphere",
+          "size": 60
+        }
+      },
+      "effects": [
+        {
+          "overgrow": true
+        }
+      ],
+      "tier": "assist",
+      "checked": false,
+      "text": "Grass and forest in a wide sphere grow thick, so walking there costs four feet for every foot until the DM clears it."
     }
   ]
 }
