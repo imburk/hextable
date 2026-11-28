@@ -181,7 +181,7 @@ export const canReact = (e) => !!e && !e.dead && e.hp > 0 && !e.reactionUsed && 
 // feature itself so that this stays cheap; no other reaction has a default of `ask`.
 // Legendary Resistance (docs/specs/legendary.md, Decision 6): while the table setting is on, a creature in play with a use left that is set to `ask`, or to `matters` (which asks
 // when it cannot tell), could stop an action to ask the DM, so a copy is taken. With the setting off this is false at once: no extra copy, nothing changes.
-export const mayAskLegendary = (s) => s.settings?.legendaryResistance === true && Object.values(s.entities).some((e) => !e.dead && e.legendary?.resistance && resistLeft(e) > 0
+export const mayAskLegendary = (s) => s.settings?.legendaryResistance !== false && Object.values(s.entities).some((e) => !e.dead && e.legendary?.resistance && resistLeft(e) > 0
   && !['always', 'never'].includes(e.reactions?.[RESISTANCE]));
 export const mayAsk = (s) => mayAskHit(s) || mayAskLegendary(s) || Object.values(s.entities).some((e) => ((e.reactions && Object.values(e.reactions).includes('ask'))
   || (e.feats ?? []).some((f) => f.invest?.ward && !e.reactions?.[f.id])) && ownerOf(s, e));

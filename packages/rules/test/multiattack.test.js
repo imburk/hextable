@@ -23,6 +23,7 @@ function field(seed = 5) {
   for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
   for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
   s.settings.autoEngage = false;
+  s.settings.legendaryWindows = false;          // these play whole turns, not the window (on by default since L4b)
   return s;
 }
 const put = (s, id, q, r) => ok(apply(s, { type: "place", actor: id, to: { q, r } }, DM));

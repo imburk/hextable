@@ -235,3 +235,20 @@ test("an assist spell with work left for the DM and no manual step (Haste, Charm
   ok(apply(m, { type: "cast", actor: "wyn", spell: "light", target: "wyn" }, DM));
   assert.deepEqual(cards(m), [], "applied whole, nothing for the DM");
 });
+
+test("L4b: a creature with a legendary block is run by the engine: its card lists only the manual options and Spellcasting, no trait", async () => {
+  const { runsOf } = await import("../src/todo.js");
+  const { CONTENT } = await import("../src/content/index.js");
+  const aboleth = runsOf({ id: "x", tpl: "aboleth", side: "foe" });
+  assert.deepEqual(aboleth.map((x) => x.name), ["Psychic Drain"], "the manual option, not the Lash (which the engine plays) and not the traits");
+  assert.ok(aboleth[0].text.length > 10);
+  for (const tpl of ["kraken", "tarrasque", "balor"]) assert.deepEqual(runsOf({ id: "x", tpl, side: "foe" }), [], `${tpl}: no manual option and no Spellcasting: no card`);
+  assert.ok(CONTENT.monsters["kraken"].legendary);
+  assert.ok(runsOf({ id: "x", tpl: "adult-green-dragon", side: "foe" }).some((x) => /Spellcasting/.test(x.name)), "Spellcasting is still text");
+  assert.ok(!runsOf({ id: "x", tpl: "lich", side: "foe" }).some((x) => /^Legendary/.test(x.name)));
+  // A trait still written as text, with no block, keeps today's card.
+  const orig = CONTENT.monsters["goblin-warrior"], old = structuredClone(orig);
+  old.traits = [...old.traits, { id: "legendary-actions", name: "Legendary Actions", modifiers: [], text: "3 uses." }];
+  CONTENT.monsters["goblin-warrior"] = old;
+  try { assert.deepEqual(runsOf({ id: "x", tpl: "goblin-warrior", side: "foe" }).map((x) => x.name), ["Legendary Actions"]); } finally { CONTENT.monsters["goblin-warrior"] = orig; }
+});

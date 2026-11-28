@@ -40,6 +40,7 @@ function field(monster) {
   for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
   for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
   apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
+  s.settings.legendaryWindows = false;          // these play whole turns, not the window (on by default since L4b)
   apply(s, { type: "place", actor: "wizard", to: { q: 0, r: 0 } }, DM);
   apply(s, { type: "place", actor: "fighter", to: { q: -6, r: 0 } }, DM);
   Object.assign(s.entities.wizard, { hp: 900, maxHp: 900 });

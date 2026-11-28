@@ -18,7 +18,7 @@ function game({ on = true, how = "ask", monster = "adult-green-dragon" } = {}) {
   ok(s, { type: "setting", key: "autoEngage", value: false });
   const f = s.entities.fighter.pos;
   ok(s, { type: "spawn", monster, at: { q: f.q + 3, r: f.r }, name: "Verdigris" });
-  if (on) ok(s, { type: "setting", key: "legendaryResistance", value: true });
+  ok(s, { type: "setting", key: "legendaryResistance", value: on });                   // L4b: absent means on, so `on: false` sets it to false
   const d = Object.values(s.entities).find((e) => e.name === "Verdigris");
   d.saveBonus = { str: -60, dex: -60, con: -60, int: -60, wis: -60, cha: -60 };
   const w = s.entities.wizard;

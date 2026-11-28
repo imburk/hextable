@@ -797,12 +797,6 @@ export const monsters = [
         text: "While not Incapacitated, an enemy that starts its turn within 20 feet makes a Wisdom save (DC 21) or is Frightened until the start of its next turn; a success makes it immune to this aura for 24 hours. The DM applies this."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day. The DM tracks the uses."
-      },
-      {
         id: "magic-resistance",
         name: "Magic Resistance",
         modifiers: [],
@@ -3695,12 +3689,6 @@ export const monsters = [
         text: "If it dies outside Mount Celestia, it gets a new body at once, with all its Hit Points, somewhere in Mount Celestia."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day. The DM tracks the uses."
-      },
-      {
         id: "magic-resistance",
         name: "Magic Resistance",
         modifiers: [],
@@ -3711,12 +3699,6 @@ export const monsters = [
         name: "Divine Aid",
         modifiers: [],
         text: "Bonus Action (3/Day): Casts Cure Wounds (level 2 version), Lesser Restoration or Remove Curse, with its Spellcasting ability. The DM applies this."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "Has legendary actions, 3 uses a round. Blinding Gaze: one creature it can see within 120 feet makes a Constitution save (DC 25) or is Blinded for 1 minute (it cannot repeat this until the start of its next turn). Radiant Teleport: teleports up to 60 feet to a free space it can see, and each creature within 10 feet of the destination makes a Dexterity save (DC 25) or takes 11 (2d10) radiant damage, half on a success. The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -4084,18 +4066,6 @@ export const monsters = [
         name: "Inscrutable",
         modifiers: [],
         text: "No magic can observe it remotely or read its thoughts without its leave, and Insight checks to judge its intent or sincerity have Disadvantage."
-      },
-      {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "Has legendary actions, 3 uses a round (4 in its lair). Arcane Prowl: teleports up to 30 feet to a free space it can see and makes one Claw attack. Weight of Years: one creature it can see within 120 feet makes a Constitution save (DC 16) or gains 1 Exhaustion level and looks 3d10 years older while exhausted (it cannot repeat this until the start of its next turn). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -4251,22 +4221,10 @@ export const monsters = [
         text: "No magic can observe it remotely or read its thoughts without its leave, and Insight checks to judge its intent or sincerity have Disadvantage."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "multiattack",
         name: "Multiattack",
         modifiers: [],
         text: "Makes two Claw attacks and uses Roar."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "Has legendary actions, 3 uses a round (4 in its lair). Arcane Prowl: teleports up to 30 feet to a free space it can see and makes one Claw attack. Weight of Years: one creature it can see within 120 feet makes a Constitution save (DC 16) or gains 1 Exhaustion level and looks 3d10 years older while exhausted (it cannot repeat this until the start of its next turn). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -5407,12 +5365,6 @@ export const monsters = [
         text: "Immune to the Charmed, Deafened, Frightened, Paralyzed, Poisoned condition(s). The engine applies this."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 6 times a day. The DM tracks the uses."
-      },
-      {
         id: "magic-resistance",
         name: "Magic Resistance",
         modifiers: [],
@@ -5435,12 +5387,6 @@ export const monsters = [
         name: "Swallow",
         modifiers: [],
         text: "Bonus Action: A Large or smaller creature it has Grappled makes a Strength save (DC 27) or is swallowed (up to six at once): Blinded, Restrained, unable to teleport, with total cover from outside, and takes 56 (16d6) acid damage at the start of each of the tarrasque's turns. If it takes 60 or more damage in a turn from inside, it makes a Constitution save (DC 20) at the end of that turn or regurgitates everyone, Prone, within 10 feet. If it dies, swallowed creatures can leave using 20 feet of movement. The DM applies this."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "Has legendary actions, 3 uses a round. Onslaught: moves up to half its Speed and makes one Claw or Tail attack. World-Shaking Movement: moves up to its Speed, then sends a shock wave through a 60-foot emanation: creatures in it lose Concentration and, if Medium or smaller, fall Prone (it cannot repeat this until the start of its next turn). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -6112,12 +6058,6 @@ export const monsters = [
         text: "Immune to the Charmed, Paralyzed, Poisoned condition(s). The engine applies this."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day. The DM tracks the uses."
-      },
-      {
         id: "magic-resistance",
         name: "Magic Resistance",
         modifiers: [],
@@ -6128,12 +6068,6 @@ export const monsters = [
         name: "Unicorn’s Blessing",
         modifiers: [],
         text: "Bonus Action (3/Day): Touches another creature with its horn and casts Cure Wounds or Lesser Restoration on it, with its Spellcasting ability. The DM applies this."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "Has legendary actions, 3 uses a round. Charging Horn: moves up to half its Speed without provoking Opportunity Attacks and makes one Radiant Horn attack. Shimmering Shield: it or a creature it can see within 60 feet gains 10 (3d6) Temporary Hit Points and +2 AC until the end of the unicorn's next turn (it cannot repeat this until the start of its next turn). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -6535,12 +6469,6 @@ export const monsters = [
     immune: [],
     traits: [
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "misty-escape",
         name: "Misty Escape",
         modifiers: [],
@@ -6587,12 +6515,6 @@ export const monsters = [
         name: "Shape-Shift",
         modifiers: [],
         text: "Bonus Action: If not in sunlight or running water, becomes a Tiny bat (Speed 5, Fly 30) or a Medium cloud of mist (Speed 5, Fly 20, hover), or returns to vampire form; clothing goes with it. Statistics other than size and Speed are unchanged, and a bat cannot speak. In mist form it cannot take actions, speak or handle objects, is weightless, can enter an enemy's space, can pass anywhere air can (not liquid), and resists all damage except sunlight. The DM applies this."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "Has legendary actions, 3 uses a round (4 in its lair). Beguile: casts Command (Charisma, save DC 17, no components); it cannot repeat this until the start of its next turn. Deathless Strike: moves up to half its Speed and makes one Grave Strike attack. The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [

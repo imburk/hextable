@@ -27,6 +27,7 @@ test("an adult red dragon makes three Rends on its turn, and the AI uses them", 
   for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
   for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
   s.settings.autoEngage = false;
+  s.settings.legendaryWindows = false;          // these play whole turns, not the window (on by default since L4b)
   const d = s.entities[ok(apply(s, { type: "spawn", monster: "adult-red-dragon", at: { q: 3, r: 0 } }, DM)).events[0].id];
   for (const e of Object.values(s.entities)) e.hp = e.maxHp = 500;
   d.spent = { "fire-breath": true };
