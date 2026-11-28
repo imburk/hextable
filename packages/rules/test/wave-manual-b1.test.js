@@ -68,8 +68,8 @@ test("Raise Dead on a body dead for longer than 10 days: nothing happens to it, 
   const before = structuredClone(s);
   const r = ok(cast(s, "raise-dead"));
   assert.ok(r.events.some((e) => e.type === "note" && /more than 10 days ago/.test(e.text)));
-  // The slot is spent and the clock may move with the casting time; everything else is as it was.
-  const norm = (x) => { const y = structuredClone(x); delete y.clock; delete y.seq; delete y.log; delete y.timeline; delete y.history; delete y.undo; delete y.redo; if (!y.effects?.length) delete y.effects; delete y.entities.pia.slots; delete y.entities.pia.spent; delete y.entities.pia.concentrating; return y; };
+  // The slot is spent, the clock may move with the casting time and the DM gets a card for the manual step; everything else is as it was.
+  const norm = (x) => { const y = structuredClone(x); delete y.clock; delete y.seq; delete y.log; delete y.timeline; delete y.todo; delete y.history; delete y.undo; delete y.redo; if (!y.effects?.length) delete y.effects; delete y.entities.pia.slots; delete y.entities.pia.spent; delete y.entities.pia.concentrating; return y; };
   const a = norm(before), b = norm(s);
   for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) if (json(a[k]) !== json(b[k])) assert.fail(`differs at ${k}`);
   assert.equal(s.entities.fighter.dead, true);

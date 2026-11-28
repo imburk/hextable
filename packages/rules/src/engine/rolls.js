@@ -623,10 +623,12 @@ export const agoWords = (step) => (step.within === 1 ? `a ${step.unit ?? 'minute
 const hitPointsWords = (step) => (step.revive === 'max' ? 'all its Hit Points' : `${step.revive} Hit Point${step.revive === 1 ? '' : 's'}`);
 export function revive(s, t, step, ev, f) {
   const name = f.src.name, actor = f.actor ?? t.id, limit = step.within * (MINUTES_IN[step.unit ?? 'minute'] ?? 1);
+  f.unrevived = true;                                         // until it has brought the creature back: the steps after this one then do nothing to a body that is still dead
   if (!t.dead) return ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${t.name} is not dead, so ${name} does nothing.` });
   if (!Number.isFinite(t.diedAt)) return ev.push({ type: 'manual', actor, name, text: `${name} was cast on ${t.name}, but the engine does not know when ${t.name} died (it died before the engine kept the time), so it did not revive it. If it died within the last ${lastWords(step)} and not of old age, the DM brings it back with ${hitPointsWords(step)} (setHp).` });
   const ago = s.clock - t.diedAt;
   if (!(ago <= limit + 1e-6)) return ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${t.name} died more than ${agoWords(step)} ago, so ${name} does nothing to it.` });
+  delete f.unrevived;
   t.dead = false; delete t.diedAt; t.hp = 0;
   ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: ${t.name} returns to life` });
   heal(s, t, step.revive === 'max' ? t.maxHp : Math.min(step.revive, t.maxHp), ev, null, f);
