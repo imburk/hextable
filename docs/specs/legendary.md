@@ -297,7 +297,7 @@ monsters share initiative is out of scope here.
 { type: 'legendary', actor, option, to?, target?, targets?, hex?, pick? }   // take one option
 { type: 'legendary', actor, skip: true }                                    // pass for this window
 { type: 'legendary', done: true }                                           // close the window
-{ type: 'legendarySet', actor, set: { acts?, resisted?, lair?, show? } }   // the DM's adjustments
+{ type: 'legendarySet', actor, set: { acts?, resisted?, lair?, show?, self? } }   // the DM's adjustments
 ```
 
 - `legendary` is sent by whoever controls the creature: the DM for nearly every one; a player who

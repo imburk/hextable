@@ -769,7 +769,7 @@ export function legendaryPick(s, id) {
           if (!caught) continue;
           if (most) caught = order.filter((t) => caught.includes(t) && up(t) && inFight(s, t.id)).slice(0, most);
           else if (caught.some((t) => !hostile(t, e))) continue;
-          const n = caught.filter((t) => up(t) && inFight(s, t.id)).length;
+          const n = caught.filter((t) => order.some((o) => o.id === t.id) && up(t) && inFight(s, t.id)).length;      // only the foes it knows of count: never one hidden from it
           if (n && (!best || n > best.n)) best = { n, extra: { ...(hex ? { hex: { q: hex.q, r: hex.r, z: hex.z } } : {}), ...(most ? { targets: caught.map((t) => t.id) } : {}) } };
         }
         if (best) tries.push({ cls: limited ? 1 : best.n >= 2 ? 2 : 3, n: best.n, i, action: { ...base, ...best.extra }, why: `${opt.name}, which catches ${best.n === 1 ? 'one foe' : `${best.n} foes`}.` });
