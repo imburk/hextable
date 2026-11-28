@@ -22,7 +22,7 @@ import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, incapacitatedBy, judge, modifiers, speedOf, untrainedGear, warded } from '../modifiers.js';
 import { fitsHit, freeHitCasts, hitChoicesOf, hitInstruction } from '../hitchoices.js';
-import { ARENA_RADIUS, ask, blocked, unblocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
+import { ARENA_RADIUS, ask, blocked, unblocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RUN, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { circlesFor, cutWall, resize, sizeEnd, aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, sense, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, eachTurn, endSpell, arm, ward, command, confuse, COMMAND_WORDS, imbue, bestType, recharge, renew, rerollSave, rescue, resistFailure, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { died, dispel, revive, shine, stabilise } from './rolls.js';       // `stabilize`, `light` and `dispel` steps (KIT)
@@ -2498,12 +2498,25 @@ ON.sizeEnd = sizeEnd;
 // The Challenge Rating a creature counts as for Polymorph: its stat block's, or its level (a character's total level) where it has none.
 const crOf = (t) => { const m = Object.hasOwn(CONTENT.monsters, t.tpl ?? '') ? CONTENT.monsters[t.tpl] : null; return m && typeof m.cr === 'number' ? m.cr : (t.level ?? 0); };
 const crWord = (n) => ({ 0.125: '1/8', 0.25: '1/4', 0.5: '1/2' })[n] ?? String(n);
-// Why the Beast `id` is not one Polymorph may turn `t` into (null if it is). Reads the target's Challenge Rating or level, so a cast must not say it to a player about a creature that is not of the party.
-export function beastWhy(t, id) {
+// Why the form `id` is not one a `polymorph` step may turn `t` into: `rule` is what the table may be told whatever the target is (not a stat block of the pack, a type the step does not allow, a size above its `size`, a Challenge Rating above a
+// fixed `cr`), `cr` what the target's own Challenge Rating or level says (its level, for a creature with none), which a player must not be told of a creature that is not of the party. Both null: it may. `step` is the `polymorph` step (none: Polymorph's own, a Beast).
+export function formWhy(t, id, step = {}) {
   const m = Object.hasOwn(CONTENT.monsters, id) ? CONTENT.monsters[id] : null;
-  if (!m || m.type !== 'beast') return `${id} is not a Beast.`;
+  if (!m) return { rule: `${id} is not a creature the engine has a stat block for.`, cr: null };
+  const types = Array.isArray(step.types) ? step.types : Array.isArray(step.not) ? null : ['beast'];
+  if (types ? !types.includes(m.type) : step.not.includes(m.type)) return { rule: types ? (types.length === 1 && types[0] === 'beast' ? `${id} is not a Beast.` : `The ${m.name} is a ${m.type}: it must be a ${types.join(' or ')}.`) : `The ${m.name} is a ${m.type}, which this spell cannot turn a creature into.`, cr: null };
+  const order = Object.keys(SIZES);
+  if (typeof step.size === 'string' && order.indexOf(m.size) > order.indexOf(step.size)) return { rule: `The ${m.name} is ${m.size}: this spell allows ${step.size} or smaller.`, cr: null };
+  if (typeof step.cr === 'number') return { rule: m.cr <= step.cr ? null : `The ${m.name} has Challenge Rating ${crWord(m.cr)}: this spell allows ${crWord(step.cr)} or lower.`, cr: null };
   const cap = crOf(t);
-  return m.cr <= cap ? null : `The ${m.name} has Challenge Rating ${crWord(m.cr)}, and ${t.name}'s is ${crWord(cap)}${Object.hasOwn(CONTENT.monsters, t.tpl ?? '') ? '' : ' (its level)'}: Polymorph turns a creature only into a Beast of its own Challenge Rating or lower.`;
+  return { rule: null, cr: m.cr <= cap ? null : `The ${m.name} has Challenge Rating ${crWord(m.cr)}, and ${t.name}'s is ${crWord(cap)}${Object.hasOwn(CONTENT.monsters, t.tpl ?? '') ? '' : ' (its level)'}: Polymorph turns a creature only into a Beast of its own Challenge Rating or lower.` };
+}
+// Polymorph's own check (engine/casting.js reads it at the cast): a Beast of the creature's Challenge Rating or lower. Reads the target's Challenge Rating or level, so a cast must not say it to a player about a creature that is not of the party.
+// The step it is asked about is the cast's own (`RUN.action`, a cast of a spell with a `polymorph` step): Animal Shapes' fixed Challenge Rating 4 is not the target's.
+export function beastWhy(t, id) {
+  const a = RUN?.action, def = a?.type === 'cast' && typeof a.spell === 'string' && Object.hasOwn(SPELLS, a.spell) ? SPELLS[a.spell].def : null;
+  const w = formWhy(t, id, def?.effects.find((st) => 'polymorph' in st) ?? {});
+  return w.rule ?? w.cr;
 }
 // The largest size, no bigger than the Beast's own, that `t` fits in where it stands, judged on what the caster's side knows: a creature the DM keeps hidden or the party cannot know of is never counted (a refusal or a smaller size would tell the
 // players it is there), and the DM is told of it instead (`told`). The same rule as Enlarge's (world.js `inTheWay`), over every size down from the Beast's.
@@ -2526,18 +2539,22 @@ export function polymorph(s, t, step, f, ev) {
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   if (!fx || fx.bound) return false;
   if (t.dead || t.object || !t.pos) return true;
-  const id = step.polymorph, tpl = MONSTERS[id], m = CONTENT.monsters[id], name = f.src.name;
+  // `chosen`: put in by the cast for a `beast` choice (casting.js); a `form` choice (Shapechange) is read from the cast itself.
+  const id = step.polymorph === 'chosen' && RUN?.action?.type === 'cast' ? RUN.action.choice : step.polymorph, tpl = Object.hasOwn(MONSTERS, id) ? MONSTERS[id] : undefined, m = Object.hasOwn(CONTENT.monsters, id) ? CONTENT.monsters[id] : undefined, name = f.src.name;
   if (!tpl || !m) return false;
   const dm = (text) => ev.push({ type: 'manual', actor: f.actor ?? t.id, name, partial: true, text });
-  const why = beastWhy(t, id);
-  if (why) { dm(`${why} ${name} did nothing to ${t.name}.`); return true; }
+  // What the table may know is a refusal (nothing is changed, the cast is not made). A Challenge Rating above the target's own is too, where the number is the caster's own (a spell on itself) or the step's; a player is not told it of a creature that is not
+  // of the party (Polymorph): it does nothing and the DM alone is told.
+  const w = formWhy(t, id, step);
+  if (w.rule) fail(w.rule);
+  if (w.cr) { if (f.actor === t.id) fail(w.cr); dm(`${w.cr} ${name} did nothing to ${t.name}.`); return true; }
   const { size, told } = fitFor(s, t, m.size);
   // Already in a form (Wild Shape, or another Polymorph): the new one takes its place.
   const holding = t.form ? effectsOf(s).find((x) => x.id === t.form.fx) : null;
   if (holding) endEffect(s, ev, holding, `${t.name} took another form`); else if (t.form) leaveForm(t);
   const was = t.size;
   fx.parts.push({ target: t.id, form: true });
-  takeForm(t, id, m.name, tpl, MONSTER_ACTIONS[id] ?? [], fx.id, { whole: true, size });
+  takeForm(t, id, m.name, tpl, MONSTER_ACTIONS[id] ?? [], fx.id, { whole: true, size, ...(step.early === false ? { lasting: true } : {}), ...(Array.isArray(step.keep) ? { keep: step.keep, ...(step.keep.includes('spellcasting') ? { spells: true } : {}) } : {}) });
   ev.push({ type: 'form', id: t.id, form: id, name: m.name });
   if (t.size !== was) ev.push({ type: 'size', id: t.id, size: t.size });
   if (size !== m.size) ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: there is no room for ${t.name} as a ${m.name} (${m.size}), so it takes the largest size that fits (${size})` });

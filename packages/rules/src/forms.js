@@ -27,8 +27,11 @@ const both = (a, b) => [...new Set([...(a ?? []), ...(b ?? [])])];
 export function takeForm(e, block, name, tpl, actions, fx, opts = {}) {
   const whole = opts.whole === true, kept = {}, absent = [];
   for (const k of whole ? [...FORM_FIELDS, ...WHOLE_FIELDS] : FORM_FIELDS) { if (e[k] === undefined) absent.push(k); else kept[k] = structuredClone(e[k]); }
-  e.form = { block, name, fx, kept, absent, ...(whole ? { whole: true } : {}) };
-  if (whole) return wholeForm(e, tpl, actions, opts.size ?? tpl.size);
+  // `opts.lasting` (Animal Shapes, Shapechange): `form.whole` is 'lasting', not true: the form does not end when its Temporary Hit Points do (durations.js and `damage` end only a `true` one), and it still cannot speak or cast spells
+  // (engine/casting.js, rolls.js read it as truthy) unless `opts.spells` (Shapechange: "if you have the Spellcasting feature, you retain it too") sets `form.spells`, which nothing reads yet (DEBT). `opts.keep`: 'mental' (the
+  // creature's own Intelligence, Wisdom and Charisma) and 'proficiencies' (its skills, saves, tools and Proficiency Bonus, the stat block's number used where it is higher, as Wild Shape's layer does).
+  e.form = { block, name, fx, kept, absent, ...(whole ? { whole: opts.lasting === true ? 'lasting' : true } : {}), ...(whole && opts.spells === true ? { spells: true } : {}) };
+  if (whole) return wholeForm(e, tpl, actions, opts.size ?? tpl.size, opts.keep ?? [], kept);
   const abil = { ...e.abil, str: tpl.abil.str, dex: tpl.abil.dex, con: tpl.abil.con };
   const saveBonus = {};
   for (const a of Object.keys(abil)) saveBonus[a] = Math.max(mod(abil[a]) + ((e.saveProf ?? []).includes(a) ? e.prof : 0), tpl.saveBonus?.[a] ?? -Infinity);
@@ -52,13 +55,23 @@ export function takeForm(e, block, name, tpl, actions, fx, opts = {}) {
 }
 
 // Lay the whole stat block over `e` (`kept` and `form` are already set by takeForm).
-function wholeForm(e, tpl, actions, size) {
-  const abil = { ...tpl.abil }, saveBonus = {};
-  for (const a of Object.keys(abil)) saveBonus[a] = tpl.saveBonus?.[a] ?? mod(abil[a]);
+function wholeForm(e, tpl, actions, size, keep = [], kept = {}) {
+  const abil = { ...tpl.abil }, saveBonus = {}, mental = keep.includes('mental'), prof = keep.includes('proficiencies');
+  if (mental) for (const a of ['int', 'wis', 'cha']) if (kept.abil?.[a] !== undefined) abil[a] = kept.abil[a];
+  const pb = prof ? kept.prof ?? e.prof : tpl.prof ?? e.prof, saves = prof ? kept.saveProf ?? [] : [];
+  for (const a of Object.keys(abil)) {
+    const own = mod(abil[a]) + (saves.includes(a) ? pb : 0), block = tpl.saveBonus?.[a];
+    saveBonus[a] = prof ? Math.max(own, block ?? -Infinity) : mental && ['int', 'wis', 'cha'].includes(a) ? own : block ?? own;
+  }
+  const skillBonus = structuredClone(tpl.skillBonus ?? {});
+  if (prof) for (const [k, n] of Object.entries(tpl.skillBonus ?? {})) {
+    const have = mod(abil[SKILLS[k]]) + ((kept.skills ?? []).includes(k) ? pb * ((kept.expertise ?? []).includes(k) ? 2 : 1) : 0);
+    if (n <= have) delete skillBonus[k];
+  }
   Object.assign(e, {
     size, ac: tpl.ac, speed: tpl.speed, speeds: structuredClone(tpl.speeds ?? {}), senses: structuredClone(tpl.senses ?? {}), abil,
     attacks: [], actions: structuredClone(actions), resist: [...(tpl.resist ?? [])], vuln: [...(tpl.vuln ?? [])], immune: [...(tpl.immune ?? [])],
-    skillBonus: structuredClone(tpl.skillBonus ?? {}), saveBonus, skills: [], expertise: [], saveProf: [], tools: [], prof: tpl.prof ?? e.prof,
+    skillBonus, saveBonus, skills: prof ? structuredClone(kept.skills ?? []) : [], expertise: prof ? structuredClone(kept.expertise ?? []) : [], saveProf: prof ? structuredClone(kept.saveProf ?? []) : [], tools: prof ? structuredClone(kept.tools ?? []) : [], prof: pb,
   });
   if (tpl.hover) e.hover = true; else delete e.hover;
   if (tpl.conditionImmune?.length) e.conditionImmune = [...tpl.conditionImmune]; else delete e.conditionImmune;
@@ -76,5 +89,5 @@ export function leaveForm(e) {
 
 // Is a saved form whole enough to be put back? (migrate.js)
 export const validForm = (f) => !!f && typeof f === 'object' && typeof f.block === 'string' && typeof f.fx === 'string'
-  && !!f.kept && typeof f.kept === 'object' && Array.isArray(f.absent) && Object.keys(f.kept).every((k) => FORM_FIELDS.includes(k) || (f.whole === true && WHOLE_FIELDS.includes(k))) && f.absent.every((k) => FORM_FIELDS.includes(k) || (f.whole === true && WHOLE_FIELDS.includes(k)))
-  && (f.whole === undefined || f.whole === true);
+  && !!f.kept && typeof f.kept === 'object' && Array.isArray(f.absent) && Object.keys(f.kept).every((k) => FORM_FIELDS.includes(k) || (!!f.whole && WHOLE_FIELDS.includes(k))) && f.absent.every((k) => FORM_FIELDS.includes(k) || (!!f.whole && WHOLE_FIELDS.includes(k)))
+  && (f.whole === undefined || f.whole === true || f.whole === 'lasting') && (f.spells === undefined || (f.spells === true && !!f.whole));
