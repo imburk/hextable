@@ -2197,3 +2197,83 @@ for (const [how, spawn] of [["behind a wall", { at: { q: 4, r: -3 } }], ["hidden
     for (const x of r.diffs) assert.fail(describe([x]));
   });
 }
+
+// ---- Legendary Resistance, L2a (docs/specs/legendary.md, Decision 9 and test 12) ----
+// A save that is resisted is sent as any foe's successful save: its id, ability, outcome and DC, never the words "Legendary Resistance", a count or a roll.
+// Worlds that differ only in the dragon's saves, its instruction and its uses left send every player the same bytes.
+const lrSetup = (w) => {
+  for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  w.must({ type: "setting", key: "legendaryResistance", value: true });
+  w.must({ type: "spawn", monster: "adult-green-dragon", at: { q: -3, r: 2 }, name: "Verdigris" });
+  w.must({ type: "startEncounter", center: { q: -6, r: 2 }, radius: 8 });
+  for (const e of Object.values(w.state.entities)) if (e.side === "party") e.hp = e.maxHp = 900;
+};
+// The dragon's saves are all the way up (it succeeds on its own) or all the way down (it fails), whatever the dice say.
+const lrDragon = ({ bonus, how, spent }) => (w) => {
+  const d = byName(w, "Verdigris");
+  d.saveBonus = { str: bonus, dex: bonus, con: bonus, int: bonus, wis: bonus, cha: bonus };
+  w.must({ type: "reactions", actor: d.id, set: { "legendary-resistance": how } });
+  d.legend.resisted = spent;
+};
+const lrSteps = [
+  { by: "dm", act: (w) => ({ type: "save", who: byName(w, "Verdigris").id, ability: "dex", dc: 14, damage: { dice: "4d6", type: "fire" } }) },
+  { by: "dm", act: (w) => ({ type: "save", who: byName(w, "Verdigris").id, ability: "wis", dc: 14, condition: "paralyzed" }) },
+  (w) => { for (let i = 0; i < 12 && current(w.state) !== "cleric"; i++) w.must({ type: "endTurn", actor: current(w.state) }); },
+  { by: "Sam", act: (w) => ({ type: "cast", actor: "cleric", spell: "sacred-flame", target: byName(w, "Verdigris").id }) },
+  { by: "Pat", act: { type: "say", as: "fighter", text: "It shrugged that off." } },
+  { by: "dm", send: { t: "undo" } }, { by: "dm", send: { t: "redo" } },
+  { by: "Pat", send: { t: "history", limit: 200 } },
+];
+
+test("legendary resistance: a dragon that succeeds on its own, with 2 or 3 uses left and `always` or `never`, is sent the same", () => {
+  const r = twinRun({ setup: lrSetup, steps: lrSteps }, { hide: lrDragon({ bonus: 90, how: "always", spent: 1 }), plain: lrDragon({ bonus: 90, how: "never", spent: 0 }) });
+  const raw = JSON.stringify(r.hidden.raw.Pat);
+  assert.ok(raw.includes('"type":"save"') && raw.includes('"success":true'), "the players were told the dragon's saves");
+  for (const x of r.diffs) assert.fail(describe([x]));
+});
+
+test("legendary resistance: a resisted save is sent as any foe's success, with none of its words, its count or its roll", () => {
+  // The dragon fails every save by the dice and spends a use each time (`always`); in the other world it succeeds on its own and spends nothing.
+  const r = twinRun({ setup: lrSetup, steps: lrSteps }, { hide: lrDragon({ bonus: -90, how: "always", spent: 0 }), plain: lrDragon({ bonus: 90, how: "never", spent: 0 }) });
+  const d = byName(r.hidden.w, "Verdigris");
+  assert.ok(d.legend.resisted >= 2, `the dragon resisted in the hidden world (${d.legend.resisted})`);
+  const raw = JSON.stringify(r.hidden.raw.Pat);
+  assert.ok(raw.includes('"type":"save"') && raw.includes('"success":true'), "sent as a success");
+  for (const bad of ["Legendary Resistance", "legendary-resistance", "\"resisted\"", "shrugs", "\"legend\""]) assert.ok(!raw.includes(bad), `${bad} was sent`);
+  for (const x of r.diffs) assert.fail(describe([x]));
+});
+
+test("legendary resistance: a dragon the party does not know of, resisting a called save, is sent the same as a goblin there", () => {
+  const putIn = (monster) => (w) => {
+    w.must({ type: "spawn", monster, at: { q: 4, r: -3 }, name: "Verdigris" });
+    const e = byName(w, "Verdigris");
+    e.abil = { ...e.abil, dex: 12 }; e.initBonus = 1;
+    if (e.legendary) lrDragon({ bonus: -90, how: "always", spent: 0 })(w);
+    else e.saveBonus = { dex: 90, wis: 90 };
+  };
+  const setup = (w) => {
+    for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
+    w.must({ type: "loadMap", map: wallMap() });
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    w.must({ type: "setting", key: "sight", value: "los" });
+    w.must({ type: "setting", key: "legendaryResistance", value: true });
+    w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 2 }, name: "Foe" });
+    w.putIn();
+  };
+  const r = twinRun({
+    setup,
+    steps: [
+      { by: "dm", act: { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 } },
+      { by: "dm", act: (w) => ({ type: "save", who: byName(w, "Verdigris").id, ability: "dex", dc: 14, damage: { dice: "4d6", type: "fire" } }) },
+      { by: "dm", act: (w) => ({ type: "save", who: byName(w, "Verdigris").id, ability: "wis", dc: 14, condition: "paralyzed" }) },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } },
+      { by: "Pat", send: { t: "history", limit: 200 } },
+    ],
+  }, { hide: putIn("adult-green-dragon"), plain: putIn("goblin-warrior") });
+  const d = byName(r.hidden.w, "Verdigris");
+  assert.ok(d.legendary && d.legend.resisted === 2, `the dragon resisted twice for the DM (${d.legend?.resisted})`);
+  const raw = JSON.stringify(r.hidden.raw.Pat);
+  for (const bad of ["Verdigris", "Legendary Resistance", "legendary-resistance", "\"resisted\"", "\"legend\""]) assert.ok(!raw.includes(bad), `${bad} was sent: ${raw.slice(Math.max(0, raw.indexOf(bad) - 150), raw.indexOf(bad) + 100)}`);
+  for (const x of r.diffs) assert.fail(describe([x]));
+});

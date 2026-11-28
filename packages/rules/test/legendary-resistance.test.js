@@ -9,6 +9,7 @@ import { newGame } from "../src/scenario.js";
 const DM = { role: "dm", userId: "dm" };
 const ok = (s, a, ctx = DM) => { const r = apply(s, a, ctx); assert.ok(r.ok, `${a.type}: ${r.error}`); return r; };
 const clone = (s) => structuredClone(s);
+const PAT = { role: "player", userId: "pat" };
 
 // A game with an adult green dragon "Verdigris" (3 uses of Legendary Resistance a day, immune to poison) and the party, no fight; `on`: the table setting.
 function game({ on = true, monster = "adult-green-dragon" } = {}) {
@@ -285,4 +286,17 @@ test("11: Legendary Resistance comes back only when the DM's Long Rest names the
   assert.equal(d.legend.resisted, 2, "the party's rest does not name it");
   ok(s, { type: "rest", ids: [d.id] });
   assert.equal(d.legend.resisted, 0);
+});
+
+// ---------- 12: what players are sent ----------
+import { viewEvents } from "../src/view.js";
+
+test("12: a resisted save is sent as a foe's success: id, ability, outcome and DC; never `resisted`, a roll or the words", () => {
+  const { s, d } = game(); weak(d);
+  instruct(s, d, "always"); fight(s, "cleric");
+  const r = ok(s, { type: "cast", actor: "cleric", spell: "sacred-flame", target: d.id });
+  assert.equal(saves(r).find((e) => e.id === d.id).resisted, true, "the DM has it");
+  const sent = JSON.stringify(viewEvents(r.events, s, PAT));
+  assert.ok(sent.includes('"type":"save"') && sent.includes('"success":true'));
+  for (const bad of ["resisted", "Legendary", "legendary", "total", "legend"]) assert.ok(!sent.includes(bad), `${bad} was sent: ${sent}`);
 });

@@ -823,6 +823,7 @@ function viewEventsOf(events, state, viewer) {
         if (ev.called) {
           if (cls(ev.id) === 'open') {
             const e = structuredClone(ev);
+            delete e.resisted;                           // Legendary Resistance spent on it (engine/rolls.js): sent as the success it is, never as that (docs/specs/legendary.md, Decision 9)
             if (e.secret) { delete e.dc; delete e.success; delete e.reroll; delete e.rescued; }
             out.push(e);
           } else if (cls(ev.id) !== 'hidden' && !ev.secret) out.push(pick(ev, ['type', 'id', 'abil', 'dc', 'success', 'called']));
@@ -833,6 +834,7 @@ function viewEventsOf(events, state, viewer) {
         const told = ev.src !== undefined ? runs(ev.src) : null;
         if (cls(ev.id) === 'open') {
           const e = structuredClone(ev);
+          delete e.resisted;                             // as above
           if (e.by !== undefined && cls(e.by) === 'hidden') delete e.by;
           if (told === false) delete e.dc;
           if (e.src !== undefined && cls(e.src) === 'hidden') delete e.src;
@@ -973,7 +975,7 @@ function viewEventsOf(events, state, viewer) {
         if (typeof viewer?.userId === 'string' && ev.to === viewer.userId && cls(ev.id) === 'open' && cls(ev.by) === 'open') out.push(pick(ev, ['type', 'id', 'by', 'order', 'text']));
         break;
       case 'concentration':
-        if (cls(ev.id) === 'open') out.push(structuredClone(ev));
+        if (cls(ev.id) === 'open') { const e = structuredClone(ev); delete e.resisted; out.push(e); }
         break;
       case 'tempHp':                                   // Temporary Hit Points gained or lost: hit points of a creature not theirs are private
         if (cls(ev.id) === 'open') {
