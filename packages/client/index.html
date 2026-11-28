@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="./feedback.css">
 <link rel="stylesheet" href="./companions.css">
 <link rel="stylesheet" href="./todo.css">
+<link rel="stylesheet" href="./legendary.css">
 </head>
 <body>
 <canvas id="gl" aria-label="Game world"></canvas>
@@ -214,6 +215,7 @@
     <div class="row"><button type="button" id="dm-refresh-party" title="Make each party character again from its saved sheet, so it picks up what the content has gained since">Refresh the party</button></div>
     <p class="note">Refresh the party makes every character that has a saved sheet again from it. A character typed in by hand has none and is skipped.</p>
   </section>
+  <section id="dm-legendary-box"><h3>Legendary creatures</h3><div id="dm-legendary"></div></section>
   <section id="dm-chars-box" hidden><h3>Who plays whom</h3><div id="dm-chars"></div></section>
   <section id="dm-bring-box" hidden><h3>Characters people bring</h3>
     <label class="assign">Players may <select id="dm-characters"></select></label>
@@ -255,6 +257,8 @@
     <label class="assign">Cover from walls and objects <select id="dm-cover"><option value="on">On</option><option value="off">Off</option></select></label>
     <label class="check"><input type="checkbox" id="dm-creature-cover" checked> Creatures give cover to those behind them</label>
     <label class="check"><input type="checkbox" id="dm-climb" checked> Creatures can climb faces too high to step up</label>
+    <label class="check"><input type="checkbox" id="dm-legendary-windows"> Legendary actions: pause after each turn for a legendary creature that could act</label>
+    <label class="check"><input type="checkbox" id="dm-legendary-resistance"> Legendary Resistance: spend it, or ask you, when a legendary creature fails a save</label>
   </section>
   <section id="dm-square" hidden><h3>Table rules on squares</h3>
     <p class="note">This map is on squares. The SRD gives no one way to count a diagonal, a range or the squares of an area, so these are the table's to choose. They change nothing on a hex map.</p>

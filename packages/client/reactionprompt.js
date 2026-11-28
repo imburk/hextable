@@ -6,6 +6,7 @@
 // This file draws that and sends the answer, { type: 'react', prompt: n, take: reactionId | null, slot? }, through `act`.
 // It decides nothing: what is offered, what it costs and whether the answer is allowed are the engine's; a refusal is shown as it came.
 import { SPELLS } from './shared/content/index.js';
+import { resistMax, RESISTANCE } from './legendary.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const ARM_MS = 600;      // a tap meant for the map, a moment before the question came, must not answer it
@@ -49,8 +50,25 @@ export function initReactionPrompt({ act, state, isDM }) {
     act({ type: 'react', prompt: n, take, ...(slot !== undefined ? { slot } : {}) });
   }
 
+  // The Legendary Resistance question (docs/specs/legendary.md, Decision 6; `trigger: 'save'`): the save as the question gives it, what the answers do, how many uses are left.
+  // Only what the question carries is said: the roll and the DC when they are sent, and that a failed save takes its effect. Never a guess at what the effect is.
+  function lrCard(q, who, dm) {
+    const e = S()?.entities[q.reactor], max = e ? resistMax(e) : 0, left = typeof q.left === 'number' ? q.left : null;
+    const rolled = q.total !== undefined ? `${who} rolled ${q.total}${q.dc !== undefined ? ` against DC ${q.dc}` : ''} and failed the saving throw.` : `${who} failed a saving throw${q.dc !== undefined ? ` against DC ${q.dc}` : ''}.`;
+    const uses = left === null ? '' : `Legendary Resistance: ${left}${max >= left && max > 0 ? ` of ${max}` : ''} left.`;
+    return `<div class="rp-card rp-lr" role="alertdialog" aria-modal="false" aria-labelledby="rp-title" aria-describedby="rp-why">
+      <h2 id="rp-title">${esc(who)}: use Legendary Resistance?</h2>
+      <p id="rp-why" class="rp-why">${esc(rolled)}</p>
+      <p class="note">If it fails, the effect applies. If it uses Legendary Resistance, it succeeds instead.</p>
+      ${uses ? `<p class="rp-uses">${esc(uses)}</p>` : ''}
+      <button type="button" class="rp-take" data-take="${RESISTANCE}"${sent || left === 0 ? ' disabled' : ''}>Use it</button>
+      <button type="button" class="rp-no" data-take=""${sent ? ' disabled' : ''}>Let it fail</button>
+      <p class="rp-err" id="rp-err" role="alert"${error ? '' : ' hidden'}>${esc(error)}</p></div>`;
+  }
+
   // The sheet that asks. `q` has n, trigger, options; `dm` is whether it is the DM answering for a player.
   function card(q, who, dm) {
+    if (q.trigger === 'save') return lrCard(q, who, dm);
     const opts = q.options.map((o, i) => {
       const slots = o.slots ?? [], pick = slots.includes(slotPick[`${q.n}:${o.reaction}`]) ? slotPick[`${q.n}:${o.reaction}`] : slots[0];
       const pickers = slots.length > 1 ? `<div class="rp-slots" role="group" aria-label="Spell slot level">${slots.map((l) => `<button type="button" data-slot="${l}" data-for="${esc(o.reaction)}" aria-pressed="${l === pick}">Level ${l}</button>`).join('')}</div>` : '';
@@ -71,7 +89,7 @@ export function initReactionPrompt({ act, state, isDM }) {
     if (!st) { modal.hidden = bar.hidden = true; key = ''; return; }
     const dm = isDM(), pend = dm ? st.pending : null, q = dm ? (pend ? { n: pend.n, ...pend.ask } : null) : st.prompt;
     const waiting = !dm && q?.waiting;
-    const k = !q ? '' : waiting ? 'w' : JSON.stringify([dm, q.n, q.reactor, q.trigger, q.options, q.by, q.total, q.ac, q.spell]);
+    const k = !q ? '' : waiting ? 'w' : JSON.stringify([dm, q.n, q.reactor, q.trigger, q.options, q.by, q.total, q.ac, q.spell, q.left, q.dc]);
     if (!again && k === key) return;
     if (k !== key) { key = k; sent = false; error = ''; slotPick = {}; armedAt = performance.now() + (q && !waiting ? ARM_MS : 0); }
     bar.hidden = !waiting;

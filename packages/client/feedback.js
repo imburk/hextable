@@ -59,7 +59,7 @@ export function createScrubber(monsterName = (tpl) => MONSTERS[tpl]?.name) {
 // A type that is not here is not recorded. packages/client/test/feedback.test.js reads the describe functions of app.js, handouts.js
 // and scenes.js and fails until every type they draw is listed; docs/specs/feedback.md has the same table.
 export const LINE_KINDS = {
-  encounterStart: 'engine', encounterEnd: 'engine', turn: 'engine', joined: 'engine', attack: 'engine', damage: 'engine', heal: 'engine', cast: 'engine', act: 'engine',
+  encounterStart: 'engine', encounterEnd: 'engine', turn: 'engine', joined: 'engine', attack: 'engine', damage: 'engine', heal: 'engine', cast: 'engine', act: 'engine', legendary: 'engine',
   recharge: 'engine', save: 'engine', down: 'engine', died: 'engine', deathSave: 'engine', std: 'engine', cond: 'engine', condEnd: 'engine', manual: 'engine',
   effectStart: 'engine', zoneMoved: 'engine', effectEnd: 'engine', concentration: 'engine', stood: 'engine', time: 'engine', rest: 'engine', tempHp: 'engine', spawned: 'engine',
   summoned: 'engine', bonded: 'engine', unbonded: 'engine', companion: 'engine', vanished: 'engine', fell: 'engine', size: 'engine', speed: 'engine',

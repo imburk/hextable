@@ -49,6 +49,7 @@ import { initTodo, waitingWords } from './todo.js';
 import { initPacks } from './packmanager.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
+import { initLegendary, creaturesHtml, bindSwitches } from './legendary.js';
 import { initClasses, formOf, formName, skillBonus, isLent, lentList, nice as niceId } from './classes.js';
 import { createDice, MAX_DICE, titleOf, nextSource } from './dice.js';
 import { createTimeline, paceFor, settle } from './timeline.js';
@@ -462,6 +463,7 @@ function words(ev) {
     case 'heal': return [`${n(ev.target)} regains ${ev.amount} Hit Points.`, 'good'];
     case 'cast': return [`${n(ev.actor)} casts ${ev.name}.`];
     case 'act': return [`${n(ev.actor)} uses ${ev.name}.`];
+    case 'legendary': return [`${n(ev.actor)} takes a legendary action: ${ev.name}.`];
     case 'recharge': return [`${n(ev.id)} rolls ${ev.roll} for ${ev.name}: ${ev.ready ? 'ready again' : 'not yet'}.`];
     case 'save': {
       const cv = behind(ev.cover);       // half or three-quarters cover helps a Dexterity save
@@ -624,7 +626,7 @@ function onUpdate(state, events, fresh) {
   for (const ev of events) if (ev.type === 'note' && ev.why === 'joinFight') toast(String(ev.text), true);      // a hero who could not get into the fight (`joinFight`)
   TL.setPace(pace());
   if (first) {
-    LV.reset(); selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); AP.fresh(); CP.fresh(); DF.fresh(); CC.fresh(); D.reset();
+    LV.reset(); selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); LG.fresh(); AP.fresh(); CP.fresh(); DF.fresh(); CC.fresh(); D.reset();
     splashDone();
     QE.fresh();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
@@ -687,7 +689,7 @@ function idled() {
   const plays = cur && autoPlays(S, cur.id, { offline });
   // It also waits while a party creature holds movement from an Opportunity Attack (DEBT T93 4b): ending the mover's turn would lapse it before its player can act.
   // The DM's screen says who it waits for and can give the movement up for them (refresh, below).
-  if (plays && isDM() && !T.readOnly && $('dm-auto').checked && !tookBack && !autoWaits().length) {
+  if (plays && isDM() && !T.readOnly && !S.encounter?.between && $('dm-auto').checked && !tookBack && !autoWaits().length) {
     clearTimeout(aiTimer);
     // `wait`: the next step comes a short pause after the picture is still, so monsters act at the pace the DM sees; the
     // server never waits. Otherwise as before, 800 ms after the update. The table's homebrew is installed around the call (standin.js).
@@ -857,13 +859,13 @@ function hintWords(offer, waits) {
 }
 // The turn line (tracker.js `screenTurnLine`): one line above the token in a fight, with End turn on the viewer's own turn.
 function showTurnLine() {
-  const tl = screenTurnLine(S, plays), box = $('turnline');      // the DM's foes are not "yours" in the words, though the DM may end their turns
+  const tl = screenTurnLine(S, plays, { dm: isDM() }), box = $('turnline');      // the DM's foes are not "yours" in the words, though the DM may end their turns
   box.hidden = !tl;
   if (!tl) return;
   if ($('turn-text').textContent !== tl.text) $('turn-text').textContent = tl.text;
   box.classList.toggle('mine', tl.mine); box.classList.toggle('down', !!tl.down);
   const now = S.entities[current(S)];
-  $('btn-end').hidden = !(now && mine(now) && !T.readOnly);
+  $('btn-end').hidden = !(now && mine(now) && !T.readOnly && !S.encounter.between);
 }
 // ---------- M6: the states of Decision 7 (docs/specs/one-token-menu.md) ----------
 // Offline: the link to the table is lost (linkquality.js). A bar across the top, the token greyed and crossed, the rows greyed with the sentence, and nothing is sent.
@@ -1161,7 +1163,9 @@ function refresh() {
   if (mode.kind === 'encounter') hint = gridWords('Tap the hex where the fight breaks out', gridOf(S.map));
   if (mode.kind === 'follow') hint = `Tap the party member ${name(selId)} should follow`;
   if (mode.kind === 'recall' || mode.kind === 'famAttack') hint = CP.hintFor(mode);
+  if (mode.kind === 'legendary') hint = LG.hintFor(mode);
   { const h = CP.render(); if (h) { hl.area = h.area; hl.targets = h.targets; hl.allies = h.allies; } }
+  { const h = LG.render(); if (h) { hl.move = h.move; hl.moveBand = h.moveBand; hl.area = h.area; hl.targets = h.targets; } }
   if (mode.kind === 'fly') go = !!(mode.marked && mode.point);
   // #750: what waits for the die. Not the movement an Opportunity Attack gave: that keeps its own two buttons.
   waitFor = hint && !owedUi && (go || multi) ? { name: mode.kind === 'fly' ? 'move' : mode.kind === 'action' ? e.actions.find((x) => x.id === mode.id)?.name ?? 'action' : mode.kind === 'spell' ? SPELLS[mode.id].name : mode.name ?? 'action', ...(multi ?? {}) } : null;
@@ -1189,7 +1193,7 @@ function refresh() {
   tracker.render();
   TC.sync(S);
   if (isDM()) renderDM();
-  TD.sync(); TD.waiting();
+  TD.sync(); TD.waiting(); LG.sync();
   HO.refresh();
   renderWaiting(); renderPick();
   SC.refresh();
@@ -1256,7 +1260,7 @@ function renderSheet() {
     ${featuresHtml(e, mine(e))}
     ${Object.keys(e.features).length && !e.feats?.length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
     ${mine(e) ? pocketHtml(e) : ''}
-    ${mine(e) ? reactionsHtml(S, e) : ''}`)}
+    ${mine(e) ? reactionsHtml(S, e, { dm: isDM() }) : ''}`)}
     ${sec('spells', 'Spells known', `
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
@@ -1276,6 +1280,8 @@ function renderDM() {
   $('dm-end').disabled = !S.encounter; $('dm-start').disabled = !!S.encounter;
   $('dm-engage').checked = S.settings.autoEngage; $('dm-passive').value = S.settings.passiveFind ?? 'off'; $('dm-engage-range').value = String(S.settings.engageRange ?? 10);
   renderMarch();
+  { const box = $('dm-legendary'), html = creaturesHtml(S); if (box.dataset.sig !== html && !box.contains(document.activeElement)) { box.dataset.sig = html; box.innerHTML = html; } }
+  $('dm-legendary-windows').checked = S.settings.legendaryWindows === true; $('dm-legendary-resistance').checked = S.settings.legendaryResistance === true;
   $('dm-sight').value = S.settings.sight ?? 'rooms';
   $('dm-unseen-turns').value = S.settings.unseenTurns ?? 'say';
   $('dm-foe-health').value = S.settings.foeHealth ?? 'rough';
@@ -1517,6 +1523,7 @@ R.onTap = (hit) => {
   if (inZone.length && mode.kind === 'move') toast(inZone.join(', '), true);      // a lasting zone's name, for a tap (hover shows it on a mouse)
   if (WT.tap(hex)) return;
   if (CP.tap(mode, hex, id)) return;
+  if (LG.tap(mode, hex, id)) return;
   if (mode.kind === 'spawn') { FIND.note(mode.monster); return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked }); }
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
   if (mode.kind === 'encounter') { act({ type: 'startEncounter', center: hex }); return setMode(MOVE); }
@@ -1764,6 +1771,9 @@ $('dm-engage').onchange = (ev) => act({ type: 'setting', key: 'autoEngage', valu
 $('dm-vertical').onchange = (ev) => act({ type: 'setting', key: 'vertical', value: ev.target.value });
 $('dm-cover').onchange = (ev) => act({ type: 'setting', key: 'cover', value: ev.target.value });
 $('dm-creature-cover').onchange = (ev) => act({ type: 'setting', key: 'creatureCover', value: ev.target.checked ? 'on' : 'off' });
+bindSwitches($('dm-legendary'), (a) => act(a));
+$('dm-legendary-windows').onchange = (ev) => act({ type: 'setting', key: 'legendaryWindows', value: ev.target.checked });
+$('dm-legendary-resistance').onchange = (ev) => act({ type: 'setting', key: 'legendaryResistance', value: ev.target.checked });
 $('dm-climb').onchange = (ev) => act({ type: 'setting', key: 'climbing', value: ev.target.checked ? 'on' : 'off' });
 $('dm-size').onchange = (ev) => { if (S.entities[selId]) act({ type: 'setSize', actor: selId, size: ev.target.value }); };
 // The DM's Bond control (companions.md, Decision 1): bind the selected creature to a master as a familiar, steed, pet and so on, or free it.
@@ -1830,7 +1840,7 @@ const LEAVE_NOTE = 'Leaving forgets this table on this device.';
 const leaveNote = () => (T?.solo ? SOLO_LEAVE_NOTE : isDM() ? `${LEAVE_NOTE} Your players stay, but nobody can let new players in.` : LEAVE_NOTE);
 function leaveTable(btn) { twoTap(btn, 'Tap again to leave', leaveNote(), reallyLeave); }
 function reallyLeave() {
-  TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
+  TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); LG.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
   $('btn-leave').hidden = $('set-sec-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true;
@@ -1928,6 +1938,7 @@ const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, 
 const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: an open scene ends when it starts.', true); } });
 const TC = initTableControls({ act, getState: () => S, isDM, toast });
 const RP = initReactionPrompt({ act, state: () => shownState(S), isDM });
+const LG = initLegendary({ mount: document.body.appendChild(document.createElement('div')), skip: () => skipping(), state: () => S, isDM, act: (a) => act(a), toast: (m) => toast(m), dry, mode: () => mode, setMode: (m) => setMode(m), move: MOVE, render: () => refresh() });      // the DM's legendary window (legendary.js)
 // The cards that come after a fight: the party has fallen (defeat.js). Drawn from the state once the beats that led to it have played.
 const DF = initDefeat({ state: () => S, isDM, solo: () => !!T?.solo, info: () => T?.undoInfo ?? {}, rewind: (to) => T.rewind?.(to) });
 const CC = initConclusion({ act, state: () => S, isDM, solo: () => !!T?.solo, code: () => T?.you?.code ?? 'solo', prefs, levelUp: (id) => QE.levelUp(id) });
