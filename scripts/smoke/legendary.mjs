@@ -125,11 +125,11 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         if (await state(dm, (S) => !S.encounter.between)) throw new Error('the window closed on arming');
         await shot(dm, 'aim-move');
         const start = await state(dm, (S, id) => S.entities[id].pos, drake);
-        // A place the engine accepts for the move (the dragon is Huge: it needs room), within two hexes of the fighter and the nearest to the dragon.
+        // A place the engine accepts for the move (the dragon is Huge: it needs room), within four hexes of the fighter (the engine judges reach) and the nearest to the dragon.
         const where = await dm.evaluate(async (id) => {
           const { apply } = await import('./shared/engine.js'), S = window.hextable.state;
           const f = S.entities.fighter.pos, d = S.entities[id].pos, dist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
-          const ring = []; for (let q = -2; q <= 2; q++) for (let r = -2; r <= 2; r++) { const p = { q: f.q + q, r: f.r + r, z: f.z }; if (dist(p, f) <= 2 && dist(p, f) >= 1) ring.push(p); }
+          const ring = []; for (let q = -4; q <= 4; q++) for (let r = -4; r <= 4; r++) { const p = { q: f.q + q, r: f.r + r, z: f.z }; if (dist(p, f) <= 4 && dist(p, f) >= 1) ring.push(p); }      // #906: up to four hexes (a Huge dragon needs room, and the valley's trees differ each run); the engine says which it accepts
           ring.sort((a, b) => dist(a, d) - dist(b, d));
           return ring.find((p) => apply(structuredClone({ ...S, timeline: [] }), { type: 'legendary', actor: id, option: 'pounce', to: p, target: 'fighter' }, { role: 'dm', userId: 'dm' }).ok) ?? null;
         }, drake);
