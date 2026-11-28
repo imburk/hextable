@@ -297,7 +297,7 @@ monsters share initiative is out of scope here.
 { type: 'legendary', actor, option, to?, target?, targets?, hex?, pick? }   // take one option
 { type: 'legendary', actor, skip: true }                                    // pass for this window
 { type: 'legendary', done: true }                                           // close the window
-{ type: 'legendarySet', actor, set: { acts?, resisted?, lair?, show? } }   // the DM's adjustments
+{ type: 'legendarySet', actor, set: { acts?, resisted?, lair?, show?, self? } }   // the DM's adjustments
 ```
 
 - `legendary` is sent by whoever controls the creature: the DM for nearly every one; a player who
@@ -522,6 +522,8 @@ Every stage that changes a creature's fields must keep the replays pinned to mai
 | L2 | **Legendary Resistance**: `resistFailure` at every save site, `askDM`, the instruction and `matters`, `failureMatters`, the `resisted` save, the called save's note replaced | engine M | `engine/shared.js`, `engine/rolls.js`, `effects.js`, `durations.js`, `engine/dm.js`, `engine/resolve.js`, `reactions.js`, `view.js`, tests, a `twin()` scenario (test 12's Legendary Resistance part). `engine.js` is not named unless `react` needs a change for `take: 'legendary-resistance'`; if it does, the issue names it | L1a (L1d for the `twin()` file). #694 is merged | Tests 8 to 11 pass, and test 12's resisted-save and instruction part. It may be split in two if the save sites are many: `resistFailure` at the sites first, `askDM` and `matters` after |
 | L3 | **The AI**: `legendaryPick`; the browser loop plays windows under "By themselves"; the pick feeds dm-helper's `advise` when H7 exists (dm-helper is PR #681, still open) | rules M, client S | `ai.js`, `packages/client/app.js` (`idled`, line 676 today), tests | L1c (L2 for `failureMatters`) | Tests 13 and 14 pass |
 | L4 | **The DM's screen**: the window bar and sheet, the Legendary Resistance card, the counters in Turns, the creature switches, "In its lair", "Show its uses", the players' "Waiting for the DM"; a smoke pass at 390 x 844 and wide | client M | `packages/client/legendary.js` (new), its CSS, `tracker.js`, `reactionprompt.js` (the card beside the reaction question), the DM tools' Creatures section, `scripts/smoke/` and both places the smoke pass is registered (`scripts/smoke.mjs`, `.github/workflows/smoke.yml`) | L1d, L2 (L3 for the pick) | A DM plays a dragon's windows with one tap each and answers a Legendary Resistance question with one tap, on a phone; a player in the same smoke pass sees the events and "Waiting for the DM", nothing else |
+
+**Built so far:** L3a (`legendaryPick` in `ai.js`, test 13, and the per-creature switch `self` of `legendarySet`, kept in `legend.self`, DM only: stage L3b is the client half).
 
 **Order.** L1a, L1b, L1c, L1d in turn (each needs the one before; L1a and L1e's data are the only content). Then L2 (the owner's party will meet saves against dragons before anything else), then L3 and L4 side by side, L1e whenever a content hand is free. Then DEBT M6, which turns the `manual` cast options into the engine's (recommended next: leg-9, which the owner accepted).
 

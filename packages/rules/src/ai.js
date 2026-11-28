@@ -5,7 +5,7 @@
 // It is called again after each action until it ends the turn. It is simple and deterministic:
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
-import { moveOptions as ways, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, partRefusal, areaTargets, aimArea, castAbilOf, dying, mod, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack, shelledReach } from './engine.js';
+import { moveOptions as ways, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, partRefusal, areaTargets, aimArea, castAbilOf, dying, mod, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack, shelledReach, apply } from './engine.js';
 import { attackRefusal, spareStrike, steadiest } from './weapons.js';
 import { SPELLS } from './content/index.js';
 import { actionProfile, scaleSteps, stepKind, targetCount, walk } from './effects.js';
@@ -14,6 +14,7 @@ import { submerged, waterAt } from './space.js';
 import { apart, apartAt, ground } from './space.js';
 import { canSee, hiddenFrom } from './sight.js';
 import { silentAt } from './terrain.js';
+import { gridOf } from './grid.js';
 import { unknown } from './vision.js';
 
 // Does this creature know where that one is? Not if it is hiding from it, unless Tremorsense
@@ -713,4 +714,72 @@ function protect(s, e, m, foes) {
   }
   if (b.action > 0 && !e.cond?.dodging) return { type: 'dodge', actor: id };
   return end;
+}
+
+// ---------- legendary actions (docs/specs/legendary.md, Decision 8; stage L3a) ----------
+// The option a legendary creature would take now in the window that is open, or null (skip). Pure: it reads the state, rolls nothing and keeps no clock; the same state
+// gives the same pick. It prefers, as the SRD's "as quickly and as often as possible" asks: an option that can be taken only so often (`again`, or a `use` action that
+// recharges or has a limited number of uses), then an area that catches two or more foes, then an attack at the foe the brain would attack on its turn (after the move part,
+// if the option moves). It never picks for a creature at 0 Hit Points or one the window does not offer, and never a `manual` option (the DM's: shown, never sent by the AI).
+// Every pick was tried through `apply()` on a copy of the state and was accepted, so it can be sent as it stands. `why` is one plain line for the card.
+const LEGEND_DM = Object.freeze({ role: 'dm', userId: 'dm' });
+const MOVE_TRIES = 6;                                              // places beside a foe it tries to move to, at most, for one option and one foe
+export function legendaryPick(s, id) {
+  const w = s?.encounter?.between, e = s?.entities?.[id];
+  if (!w || !e || !w.offered.includes(id) || w.done.includes(id)) return null;
+  const lg = e.legendary?.actions;
+  if (!lg || !up(e) || e.hp <= 0 || e.away || e.melded || incapacitatedBy(e)) return null;
+  const max = (e.legend?.lair && e.legendary.lair?.uses) || lg.uses || 0, left = Math.max(0, max - (e.legend?.acts ?? 0));
+  if (left < 1) return null;
+  const k = knownTo(s, e);
+  const foes = Object.values(k.entities).filter((o) => up(o) && !o.melded && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));
+  if (!foes.length) return null;
+  const order = [...foes].sort((x, y) => apart(s, e, x) - apart(s, e, y) || byHp(e, x, y) || idOrder(x, y));
+  const tries = [];                                                 // every candidate: { cls, n, i, action, why }
+  (lg.options ?? []).forEach((opt, i) => {
+    if (opt.manual || (opt.cost ?? 1) > left || e.legend?.again?.[opt.id]) return;
+    // What it runs: each of the creature's own actions the option names (`pick` where it names two), or the option's own steps as an action.
+    const defs = [];
+    if (opt.use?.length) { for (const aid of opt.use) { const def = (e.actions ?? []).find((x) => x.id === aid && !x.multiattack); if (def && !actionSpent(e, def)) defs.push({ def, pick: opt.use.length > 1 ? def.id : undefined }); } }
+    else if (opt.effects) defs.push({ def: { id: opt.id, name: opt.name, target: opt.target ?? { self: true }, effects: opt.effects }, pick: undefined });
+    for (const { def, pick } of defs) {
+      let p; try { p = actionProfile(def); } catch (err) { if (err instanceof TypeError) continue; throw err; }
+      if (!p.harmful) continue;
+      const limited = !!(opt.again || def.recharge || def.uses), cls = limited ? 1 : 3;
+      const base = { type: 'legendary', actor: id, option: opt.id, ...(pick !== undefined ? { pick } : {}) };
+      const from = (pos, t) => apartAt(s, e, pos, t, t.pos) * FT <= p.far;
+      if (p.aim === 'creature') {
+        const mv = opt.move;
+        for (const t of order) {
+          const ok = (pos) => from(pos, t) && unblocked(s, e, t) && !partRefusal(s, e, def, [t]);
+          if (ok(e.pos)) { tries.push({ cls, n: 1, i, action: { ...base, target: t.id }, why: `${opt.name} at ${t.name}${limited ? ', which it can take only so often' : ''}.` }); break; }
+          if (!mv || mv.after) continue;
+          // It moves first: the places beside this foe it could stop at, nearest to where it stands first.
+          const G = gridOf(s.map), reach = Math.max(1, Math.ceil(p.far / FT)), cands = G.range(t.pos, Math.min(reach, 6))
+            .filter((h) => (h.q !== e.pos.q || h.r !== e.pos.r) && from(h, t) && apartAt(s, e, h, t, t.pos) < apart(s, e, t))
+            .sort((x, y) => G.dist(x, e.pos) - G.dist(y, e.pos) || x.q - y.q || x.r - y.r).slice(0, MOVE_TRIES);
+          for (const h of cands) tries.push({ cls, n: 1, i, action: { ...base, to: { q: h.q, r: h.r }, target: t.id }, why: `${opt.name}: moves up on ${t.name} first.` });
+          if (cands.length) break;
+        }
+      } else if (p.aim === 'area') {
+        const spots = p.area.shape === 'emanation' ? [null] : order.map((t) => t.pos), most = def.target.area.choose;
+        let best = null;
+        for (const hex of spots) {
+          let caught = areaTargets(s, e, def, hex);
+          if (!caught) continue;
+          if (most) caught = order.filter((t) => caught.includes(t) && up(t) && inFight(s, t.id)).slice(0, most);
+          else if (caught.some((t) => !hostile(t, e))) continue;
+          const n = caught.filter((t) => order.some((o) => o.id === t.id) && up(t) && inFight(s, t.id)).length;      // only the foes it knows of count: never one hidden from it
+          if (n && (!best || n > best.n)) best = { n, extra: { ...(hex ? { hex: { q: hex.q, r: hex.r, z: hex.z } } : {}), ...(most ? { targets: caught.map((t) => t.id) } : {}) } };
+        }
+        if (best) tries.push({ cls: limited ? 1 : best.n >= 2 ? 2 : 3, n: best.n, i, action: { ...base, ...best.extra }, why: `${opt.name}, which catches ${best.n === 1 ? 'one foe' : `${best.n} foes`}.` });
+      }
+    }
+  });
+  tries.sort((x, y) => x.cls - y.cls || y.n - x.n || x.i - y.i);
+  for (const t of tries) {
+    const r = apply(structuredClone(s), t.action, LEGEND_DM);
+    if (r.ok) return { ...t.action, why: t.why };
+  }
+  return null;
 }
