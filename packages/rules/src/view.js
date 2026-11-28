@@ -84,6 +84,8 @@ function acShown(state, e) {
   const light = e.light?.fx !== undefined ? { light: { bright: e.light.bright, dim: e.light.dim, ...(e.light.item ? { item: e.light.item } : {}) } } : {};
   return { ...(ac === e.ac ? {} : { acNow: ac, acWhy: why }), ...light };
 }
+// Its legendary uses left and the most it may spend, as engine/legendary.js reckons them (usesMax, usesLeft): the lair's number when it is marked in its lair.
+const legendCount = (e) => { const max = (e.legend.lair && e.legendary.lair?.uses) || e.legendary.actions.uses; return { left: Math.max(0, max - (e.legend.acts ?? 0)), max }; };
 function seenRecord(e, state) {
   const cond = {};
   for (const c of visibleConditions(e)) cond[c] = true;         // which conditions show is decided by their data
@@ -93,6 +95,7 @@ function seenRecord(e, state) {
     pos: { q: e.pos.q, r: e.pos.r, z: e.pos.z }, look: e.look && !form ? structuredClone(e.look) : undefined,
     dead: !!e.dead, hp: seenHp(e), health: healthOf(e), cond,
     ...(e.light ? { light: { bright: e.light.bright, dim: e.light.dim } } : {}),     // a carried light is plain to see
+    ...(e.legend?.show === true && e.legendary?.actions?.uses ? { legend: legendCount(e) } : {}),     // the DM chose to show its legendary uses (docs/specs/legendary.md, Decision 9): the count, nothing else of `legend` or `legendary`
     ...(e.remains ? { remains: e.remains } : {}),                                    // a frozen statue or dust where it fell is plain to see
     ...(state ? rideSeen(state, e) : {}),
     ...(state ? heldBy(state, e) : {}),
@@ -229,6 +232,8 @@ function viewEncounter(state) {
     // A flag that names a creature the party does not know of (`hit:<attacker>:<target>`, `attacked:<id>`) is left out.
     flags: activeHidden ? {} : Object.fromEntries(Object.entries(enc.flags).filter(([k]) => !k.split(':').some((x) => state.entities[x] && classify(state, x) === 'hidden'))),
     order,
+    // The table waits between two turns for a legendary creature (engine/legendary.js): that it waits, never for whom or what is offered.
+    ...(enc.between ? { between: true } : {}),
   };
 }
 
@@ -280,14 +285,15 @@ export function viewPrompt(state, viewer) {
   if (typeof q.target === 'string' && classify(state, q.target) !== 'hidden') out.target = q.target;
   if (q.moment !== undefined) out.moment = q.moment;
   // `dtype`: the damage type its own creature is taking (Superior Hunter's Defense).
-  for (const k of ['attack', 'total', 'ac', 'crit', 'spell', 'dtype']) if (q[k] !== undefined) out[k] = q[k];
+  for (const k of ['attack', 'total', 'ac', 'crit', 'spell', 'dtype', 'left', ...(q.trigger === 'save' ? ['dc'] : [])]) if (q[k] !== undefined) out[k] = q[k];
   return structuredClone(out);
 }
 
 // Whether the party can perceive what a waiting question was set off by: the creature that set it
 // off and the creature whose action waits, where each is named, are not hidden from the party.
 function perceived(state, p) {
-  const who = [p.ask?.by, p.action?.actor].filter((x) => typeof x === 'string');
+  // A Legendary Resistance question is about the creature that failed the save: a table that waits on a creature the party does not know of would tell of it.
+  const who = [p.ask?.by, p.action?.actor, ...(p.ask?.trigger === 'save' ? [p.ask.reactor] : [])].filter((x) => typeof x === 'string');
   return who.every((id) => classify(state, id) !== 'hidden');
 }
 
@@ -818,6 +824,7 @@ function viewEventsOf(events, state, viewer) {
         if (ev.called) {
           if (cls(ev.id) === 'open') {
             const e = structuredClone(ev);
+            delete e.resisted;                           // Legendary Resistance spent on it (engine/rolls.js): sent as the success it is, never as that (docs/specs/legendary.md, Decision 9)
             if (e.secret) { delete e.dc; delete e.success; delete e.reroll; delete e.rescued; }
             out.push(e);
           } else if (cls(ev.id) !== 'hidden' && !ev.secret) out.push(pick(ev, ['type', 'id', 'abil', 'dc', 'success', 'called']));
@@ -828,6 +835,7 @@ function viewEventsOf(events, state, viewer) {
         const told = ev.src !== undefined ? runs(ev.src) : null;
         if (cls(ev.id) === 'open') {
           const e = structuredClone(ev);
+          delete e.resisted;                             // as above
           if (e.by !== undefined && cls(e.by) === 'hidden') delete e.by;
           if (told === false) delete e.dc;
           if (e.src !== undefined && cls(e.src) === 'hidden') delete e.src;
@@ -865,6 +873,9 @@ function viewEventsOf(events, state, viewer) {
         out.push({ ...pick(ev, ['type', 'actor', 'name']),
           hexes: ev.hexes ? hexesOf(ev.hexes) : null,
           targets: (ev.targets || []).filter((id) => cls(id) !== 'hidden') });
+        break;
+      case 'legendary':                                // a legendary creature took an option (engine/legendary.js): who and the option's name, as `act`; never `after` (whose turn it followed)
+        out.push(pick(ev, ['type', 'actor', 'name']));
         break;
       case 'encounterStart':
         out.push({ type: ev.type, ...(ev.fight !== undefined && { fight: ev.fight, where: ev.where }), center: ev.center, radius: ev.radius,
@@ -965,7 +976,7 @@ function viewEventsOf(events, state, viewer) {
         if (typeof viewer?.userId === 'string' && ev.to === viewer.userId && cls(ev.id) === 'open' && cls(ev.by) === 'open') out.push(pick(ev, ['type', 'id', 'by', 'order', 'text']));
         break;
       case 'concentration':
-        if (cls(ev.id) === 'open') out.push(structuredClone(ev));
+        if (cls(ev.id) === 'open') { const e = structuredClone(ev); delete e.resisted; out.push(e); }
         break;
       case 'tempHp':                                   // Temporary Hit Points gained or lost: hit points of a creature not theirs are private
         if (cls(ev.id) === 'open') {

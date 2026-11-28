@@ -33,7 +33,7 @@ import { CONTENT, SPELLS } from './content/index.js';
 import { handsFull, isUnarmed, steadiest } from './weapons.js';
 import { incapacitated } from './modifiers.js';
 import { SIZES } from './content/schema.js';
-import { ownerOf } from './engine/shared.js';
+import { ownerOf, resistLeft } from './engine/shared.js';
 import { mayAskHit } from './hitchoices.js';
 
 export const OPPORTUNITY = 'opportunity-attack';
@@ -46,11 +46,19 @@ export const OPPORTUNITY_GRAPPLE = 'opportunity-attack-grapple';
 // creatures the DM is told and decides by hand.
 export const WHEN = {
   always: 'Always', never: 'Never', miss: 'Only if it turns the hit into a miss', ask: 'Ask',
+  // Legendary Resistance (docs/specs/legendary.md, Decision 6): spent by itself only when failing the save would change something for its creature.
+  matters: 'Only if the failure matters',
 };
+// The instruction for Legendary Resistance is kept in `e.reactions` under this id, as any other (engine/rolls.js, resistFailure, reads it).
+export const RESISTANCE = 'legendary-resistance';
 
 // Actions the table may still take while an action waits for a reaction: the answer itself, and
 // what changes nothing the waiting action could depend on (talk, notes, handouts, seats).
 export const WHILE_WAITING = new Set(['react', 'say', 'ping', 'note', 'claim', 'release', 'handout', 'showHandout', 'hideHandout', 'removeHandout', 'askCheck']);
+
+// Actions the table may take while a window for legendary actions is open (docs/specs/legendary.md, Decision 3): nobody has a turn, so only what
+// changes nothing about whose turn it is. What waits for a reaction is allowed too (a legendary action may ask), and the DM may end the fight.
+export const BETWEEN_OK = new Set([...WHILE_WAITING, 'legendary', 'legendarySet', 'reactions', 'harm', 'mend', 'setHp', 'condition', 'setAc', 'place', 'save', 'todoDone', 'endEncounter']);
 
 // Addition H of docs/specs/homebrew-subclasses.md: the feature of `o` that lets it move after its Opportunity Attack hits (`triggers.opportunityHit`), or null.
 // What it gives is feet of movement, kept on the fight's turn flags as `rmove:<creature>` until the next turn begins (engine/movement.js).
@@ -132,6 +140,9 @@ export function reactionsOf(e) {
   for (const f of e.feats ?? []) if (f.initiative && f.uses) out.push({ id: f.id, name: f.name, kind: 'free', on: 'initiative', options: ['never', 'always'], dflt: 'never' });
   // A failed save rolled again for a use (Indomitable, Disciplined Survivor), likewise.
   for (const f of e.feats ?? []) if (f.reroll) out.push({ id: f.id, name: f.name, kind: 'free', on: 'reroll', options: ['never', 'always'], dflt: 'never' });
+  // Legendary Resistance (a creature with a `legendary.resistance` block): a choice made in advance, not a Reaction (`free`), taken at a failed save while a use is left.
+  // `matters` is the starting value; `ask` is applied as `manual` note until the question is built (docs/specs/legendary.md, stage L2b).
+  if (e.legendary?.resistance) out.push({ id: RESISTANCE, name: 'Legendary Resistance', kind: 'free', on: 'save', options: ['matters', 'ask', 'always', 'never'], dflt: 'matters' });
   for (const f of e.feats ?? []) {
     if (!f.reaction) continue;
     // A reroll of an ally's failed save (Countercharm) is taken by instruction only: no prompt is built for it.
@@ -168,7 +179,11 @@ export const canReact = (e) => !!e && !e.dead && e.hp > 0 && !e.reactionUsed && 
 // A companion is asked through its master's player (ownerOf).
 // A default of `ask` counts too (Investment of the Chain Master's Resistance for a master a player runs: `dfltPlayer`), read from the
 // feature itself so that this stays cheap; no other reaction has a default of `ask`.
-export const mayAsk = (s) => mayAskHit(s) || Object.values(s.entities).some((e) => ((e.reactions && Object.values(e.reactions).includes('ask'))
+// Legendary Resistance (docs/specs/legendary.md, Decision 6): while the table setting is on, a creature in play with a use left that is set to `ask`, or to `matters` (which asks
+// when it cannot tell), could stop an action to ask the DM, so a copy is taken. With the setting off this is false at once: no extra copy, nothing changes.
+export const mayAskLegendary = (s) => s.settings?.legendaryResistance === true && Object.values(s.entities).some((e) => !e.dead && e.legendary?.resistance && resistLeft(e) > 0
+  && !['always', 'never'].includes(e.reactions?.[RESISTANCE]));
+export const mayAsk = (s) => mayAskHit(s) || mayAskLegendary(s) || Object.values(s.entities).some((e) => ((e.reactions && Object.values(e.reactions).includes('ask'))
   || (e.feats ?? []).some((f) => f.invest?.ward && !e.reactions?.[f.id])) && ownerOf(s, e));
 
 // Check a `reactions` action's settings against what the creature has. Returns an error text, or null.

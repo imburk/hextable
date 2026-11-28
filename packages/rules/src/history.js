@@ -18,6 +18,7 @@
 // game and never sent to players. Pure: no network, no clock, no randomness.
 import { viewEvents, classify, seenName } from './view.js';
 import { learnShops } from './shopids.js';
+import { RESISTANCE } from './reactions.js';
 
 export const UNDO_LIMIT = 30;
 export const UNDO_BYTES = 8 * 1024 * 1024;       // per game, both lists together
@@ -243,6 +244,10 @@ export function describeStep(action, events, before, after) {
     const p = prior?.pending;
     if (!p) return finish('A reaction was answered');
     const inner = describeStep(p.action, events, { tree: { ...prior, pending: undefined } }, after);
+    // Legendary Resistance (docs/specs/legendary.md, Decision 9): the DM's record says what was answered; players are told nothing of it, only what the action did.
+    if (p.ask?.trigger === 'save' && p.ask.options?.some((o) => o.reaction === RESISTANCE)) {
+      return { label: `${inner.label} (${real(p.ask.reactor)}'s Legendary Resistance ${action.take === RESISTANCE ? 'spent' : 'declined'})`, shown: inner.shown };
+    }
     return { label: `${inner.label} (after ${real(p.ask.reactor)}'s reaction)`, shown: inner.shown && `${inner.shown}, after a reaction` };
   }
   const text = phrase(real), shown = phrase(seen);
@@ -389,6 +394,11 @@ export function describeStep(action, events, before, after) {
     case 'mount': label = `${who} mounted ${name(a.mount)}`; break;
     case 'place': if (a.node !== undefined) { const r = ev('relocated'), ids = r?.ids ?? []; label = { label: `${names(ids, name)} ${ids.length === 1 ? 'was' : 'were'} placed at ${place(r)}`, shown: told(names(ids, name, true), shownIds(ids).length === 1 ? 'was placed' : 'were placed') }; break; }
       label = `${who} ${ACTS.place}`; break;
+    // The legendary window (engine/legendary.js): the DM's; players are told nothing of a skip, of closing it or of setting a creature's counters.
+    case 'legendary':
+      if (a.option !== undefined && !a.skip && !a.done) { const opt = (after.entities[a.actor] ?? prior?.entities?.[a.actor])?.legendary?.actions?.options?.find((x) => x.id === a.option); label = `${who}: ${opt?.name ?? 'a legendary action'}`; break; }     // an option taken (L1c): "Verdigris: Pounce", the name read from the creature as `act`'s is
+      label = { label: a.done ? 'The legendary window was closed' : `Skipped ${who}'s legendary action`, shown: null }; break;
+    case 'legendarySet': label = { label: `${who}'s legendary counters were set`, shown: null }; break;
     case 'dismount': label = `${who} dismounted`; break;
     case 'companion': label = a.auto ? `${who} was left to the engine to play` : `${who} waits for its player again`; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;

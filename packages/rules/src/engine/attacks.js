@@ -5,7 +5,7 @@ import { effectsOf, startEffect } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { checkHitChoices } from '../hitchoices.js';
 import { canReact, checkInstructions, instruction, reactionsOf, underEffect } from '../reactions.js';
-import { able, ask, control, current, ent, fail, featOf, ft, hostile, inFight, need, steering, tellDM, unblocked, up, walled } from './shared.js';
+import { able, ask, control, current, ent, fail, featOf, ft, hostile, inFight, need, RuleError, steering, tellDM, unblocked, up, walled } from './shared.js';
 import { grantOf, rollMode, withGrant } from './rolls.js';
 import { aimAction, holdsOf, shellRefusal, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
@@ -73,6 +73,14 @@ function partFull(s, e, def, targets) {
   if (why) fail(why);
 }
 
+// A legendary action's own action (engine/legendary.js): `def` (one of the creature's actions, or the option's own steps made into one) aimed by `a` as `act` aims it,
+// and run without spending the turn's action: the caller has paid in legendary uses. The creature is not on its turn, so none of the turn's budget is read.
+export function legendaryAct(s, e, def, a, ev, ctx) { return takeAction(s, e, def, a, ev, ctx, true); }
+// The aim of `def` for `a` from where `e` stands, as `act` checks it ('' if all is well, else the refusal in words); changes nothing.
+export function aimRefusal(s, e, def, a, ctx) {
+  try { const { targets } = aimAction(s, e, def, a, false, ctx); partFull(s, e, def, def.target.creature ? targets : null); return ''; } catch (err) { if (err instanceof RuleError) return err.message; throw err; }
+}
+
 // Addition I (docs/specs/homebrew-subclasses.md, `reaction: { on: 'attacks', of, attack: 'melee' }`): `e` is about to make an attack (the action and the attack are paid for, the roll is not
 // made). Each hostile creature in the fight whose feature `of` put a lasting effect on `e` (reactions.js, `underEffect`) may use its Reaction for one melee weapon attack against it first: it
 // must be up and able to react, sense `e` (a creature its side does not know is there is never asked and never reacts), have `e` within the reach of a melee weapon attack of its own that is not
@@ -110,7 +118,7 @@ function reactToAttacker(s, e, ev) {
 // Use an action: aim it, pay for it, run it. In a fight it costs the creature's action (or its
 // Bonus Action, for one with `time: 'bonus'`), unless it is one of the attacks a Multiattack
 // left this turn, which it spends instead.
-function takeAction(s, e, def, a, ev, ctx = null) {
+function takeAction(s, e, def, a, ev, ctx = null, free = false) {
   const why = actionSpent(e, def);
   if (why) fail(why);
   const { targets, hexes, origin } = aimAction(s, e, def, a, false, ctx);
@@ -130,10 +138,10 @@ function takeAction(s, e, def, a, ev, ctx = null) {
     lands = strikeStart(s, ev);
   }
   if (s.encounter) {
-    const b = s.encounter.budget, time = def.time ?? 'action', pooled = time === 'action' && fromPool(b, def.id);
-    need(s, e, pooled ? null : time);
+    const b = s.encounter.budget, time = def.time ?? 'action', pooled = !free && time === 'action' && fromPool(b, def.id);
+    if (!free) need(s, e, pooled ? null : time);                  // a legendary action (`free`) is paid in legendary uses, not in the turn's action
     if (def.target.creature) for (const t of targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
-    if (pooled) fromPool(b, def.id, true); else b[time]--;
+    if (free) { /* nothing of the turn is spent */ } else if (pooled) fromPool(b, def.id, true); else b[time]--;
   }
   if (def.recharge) (e.spent ??= {})[def.id] = true;
   if (def.uses) (e.charges ??= {})[def.id] = (e.charges[def.id] ?? def.uses.n) - 1;
@@ -548,7 +556,7 @@ const base = {
       sc || fail(`${e.name} has nothing that ends a condition at the end of its turn.`);
       (typeof a.cure === 'string' && can.includes(a.cure)) || fail(can.length ? `${sc.name} can end ${can.map(conditionName).join(' or ')} on ${e.name} now.` : `${e.name} has none of the conditions ${sc.name} ends.`);
     }
-    if (finishTurn(s, e, ev, a.cure)) advanceTurn(s, ev);
+    if (finishTurn(s, e, ev, a.cure)) advanceTurn(s, ev, e.id);
   },
 };
 

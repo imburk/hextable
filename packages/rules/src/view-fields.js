@@ -58,7 +58,7 @@ export const SETTING_FIELDS = {
   sight: 'sent', diagonals: 'sent', squareRange: 'sent', areaFill: 'sent', squareCover: 'sent', autoEngage: 'sent', passiveFind: 'sent', vertical: 'sent', climbing: 'sent',
   cover: 'sent', creatureCover: 'sent', engageRange: 'sent', unseenTurns: 'sent', foeHealth: 'sent', diceThrow: 'sent', pace: 'sent', conclusion: 'sent', xpShare: 'sent', watching: 'sent',
   strikeFirst: 'sent', away: 'sent', breaks: 'sent', scoreReroll: 'sent', scoreRerollBelow: 'sent', scoreRerollResult: 'sent', hpMethod: 'sent', hpRollLow: 'sent',
-  characters: 'sent', level: 'sent',     // that a table takes characters people bring, and the adventure's levels, are no secret (portable-characters.md, Decision 5)
+  legendaryWindows: 'sent', legendaryResistance: 'sent', characters: 'sent', level: 'sent',     // that a table takes characters people bring, and the adventure's levels, are no secret (portable-characters.md, Decision 5)
 };
 
 // ---------- a lasting zone (`fx.zone`, zones.js) ----------

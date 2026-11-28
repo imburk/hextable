@@ -537,13 +537,16 @@ function exec(s, ev, kit, f, step, at) {
       else if (holds.every(Boolean)) adv = 'fighting the caster\'s side';
     }
     let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, adv, ev, about);      // cover is judged from where the effect starts
-    ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv, ...srcOf(s, f.actor, f.src?.fx) });
+    let saved = { type: 'save', id: t.id, abil: step.save, dc, ...sv, ...srcOf(s, f.actor, f.src?.fx) };
+    ev.push(saved);
     useUp(s, ev, used ?? []);                                            // a single-use modifier the save took ends now, after it
     // A failed save against Charmed or Frightened may be rolled again (Countercharm).
     if (!sv.success && kit.rerollSave) {
       const again = kit.rerollSave(s, t, step.save, dc, step.onFail, f.src.origin ?? e, ev);
-      if (again) { const { used: u2, ...sv2 } = again; sv = sv2; ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv, reroll: true, ...srcOf(s, f.actor, f.src?.fx) }); useUp(s, ev, u2 ?? []); }
+      if (again) { const { used: u2, ...sv2 } = again; sv = sv2; saved = { type: 'save', id: t.id, abil: step.save, dc, ...sv, reroll: true, ...srcOf(s, f.actor, f.src?.fx) }; ev.push(saved); useUp(s, ev, u2 ?? []); }
     }
+    // Legendary Resistance (engine/rolls.js): the last word on the save, after every reroll; a resisted one goes on as a success.
+    kit.resistFailure?.(s, t, sv, { onFail: step.onFail, half: !!step.half }, ev, saved);
 
     // Evasion: a Dexterity save for half damage does none on a success and half on a failure (the
     // failure's other effects still happen).

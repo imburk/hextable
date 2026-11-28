@@ -244,6 +244,10 @@ that has `legendary.actions` and:
   (recharge, uses), and something to aim it at (the same check the brain uses, so the engine never
   offers what it would refuse).
 
+**Lead's default (V025), for the owner to confirm:** a legendary creature hidden from the party (one the party does not know of: DM-hidden, hiding, melded, unseen) is offered no window; its legendary actions wait until it is known. So a fight with only such creatures goes on exactly as a world without them, and players are never sent that the table waits for what they cannot see.
+
+**Until stage L4 lands the window is off unless the DM turns it on** (lead, V025): the table setting `legendaryWindows` is `false` when absent, and with it off every fight plays exactly as it did. L4 turns the default on.
+
 **If nobody is offered, nothing opens** and the next turn starts exactly as today, in the same
 action, with the same events. A fight with no legendary creature is byte for byte what it was.
 
@@ -260,6 +264,7 @@ action, with the same events. A fight with no legendary creature is byte for byt
 - **One option per offered creature per window** (the reading the SRD's own words give and that
   our data already says: "one action can be taken after another creature's turn"; owner, 23 Nov,
   leg-1).
+- While it is open `spawn` and `remove` are refused (they are not in `BETWEEN_OK`): the DM closes the window first. A creature offered that is dropped, killed, made Incapacitated or moved off the map by a `BETWEEN_OK` action leaves the window at once, and when nobody is left the window closes and the next turn begins (`settleWindow`, run after every action).
 - It closes when every offered creature has taken one or been skipped, when the DM closes it, or
   when the fight ends. The next turn then begins (`advanceTurn` goes on from where it stopped).
 - **None is ever late** (owner, 23 Nov, leg-10). The game offers a window after every other
@@ -419,7 +424,7 @@ aim and one line of why, or `null` (skip). Same state, same pick; no die, no clo
 legendary creature could act, and does not wait once it has no use left; a player who counts can
 tell a fourth use (a lair) when it comes, or that a question was asked. A player who counts the
 "shrugs it off" lines may guess the trait, as at a real table. At a real table a DM's
-pause tells as much. The `twin()` tests below hold the rest: worlds that differ only in uses left
+pause tells as much. One thing a player can work out that they should not: a question put to the DM about a creature the party does not know of bumps the question number the next player question carries (#878, DEBT W71; a `todo` twin scenario shows it). The `twin()` tests below hold the rest: worlds that differ only in uses left
 (both above 0), the lair mark, the instruction, or the options the DM did not take send every player
 the same bytes.
 

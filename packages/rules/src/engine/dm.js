@@ -19,7 +19,7 @@ import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, spot, up } from './shared.js';
 import { airspace, AREA_FILLS, editMap, bringIn, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
-import { condition, GRANTS, grantOf, heal, savingThrow } from './rolls.js';
+import { condition, GRANTS, grantOf, heal, resistFailure, savingThrow } from './rolls.js';
 import { ABILITIES, DAMAGE_TYPES } from '../content/schema.js';
 import { roll } from '../rng.js';
 import { makeEntity } from './sheets.js';
@@ -88,7 +88,7 @@ export const handlers = {
       advanceTurn(s, ev);
       return;
     }
-    if (how === 'hold' ? finishTurn(s, e, ev) : awayTurn(s, e, ev)) advanceTurn(s, ev);   // a turn under way is not held: it ends
+    if (how === 'hold' ? finishTurn(s, e, ev) : awayTurn(s, e, ev)) advanceTurn(s, ev, how === 'hold' ? null : e.id);   // a turn under way is not held: it ends; a held turn is not a turn taken (no legendary window)
   },
   // { type: 'stepBack', actor }: the creature is back (or its request to step away is taken back). By
   // the DM, or by its player when the player stepped it aside (a player does not undo the DM's).
@@ -368,8 +368,12 @@ export const handlers = {
     for (const t of ts) {
       const mark = ev.length;
       const { used, ...sv } = savingThrow(s, t, abil, a.dc, null, null, mode === 'disadvantage' ? GRANTS.disadvantage : null, mode === 'advantage' ? GRANTS.advantage : null, ev);
-      ev.push({ type: 'save', id: t.id, abil, dc: a.dc, called: true, ...(a.secret ? { secret: true } : {}), ...sv });
+      const saved = { type: 'save', id: t.id, abil, dc: a.dc, called: true, ...(a.secret ? { secret: true } : {}), ...sv };
+      ev.push(saved);
       useUp(s, ev, used ?? []);
+      // Legendary Resistance (rolls.js): with the table setting on it is the creature's own instruction that decides, and what it cannot read (a call with neither damage nor a condition) is the DM's, told in a note;
+      // with the setting off the note below stands as it always did.
+      resistFailure(s, t, sv, { onFail: [...(dmg ? [{ damage: dmg.dice, type: dmg.type }] : []), ...(a.condition !== undefined ? [{ condition: a.condition }] : [])], half: !!dmg?.half, unread: !dmg && a.condition === undefined }, ev, saved);
       // A secret save keeps its outcome from the owner too: what was spent to turn it (a Bardic Inspiration die, Indomitable) is not told to players (view.js, `hush`).
       if (a.secret) for (let i = mark; i < ev.length; i++) if (ev[i].type !== 'save') ev[i].hush = true;
       // Evasion (as effects.js has it): a Dexterity save for half damage does none on a success and half on a failure.
@@ -377,7 +381,7 @@ export const handlers = {
       if (evade) ev.push({ type: 'note', id: t.id, text: sv.success ? 'Evasion: no damage' : 'Evasion: half damage', ...(a.secret ? { hush: true } : {}) });      // a secret save's outcome is not told
       // Legendary Resistance is the DM's to spend: asked of the DM alone, never decided by the engine. A creature's block says it has it (`e.legendary.resistance`);
       // the trait is read too until every legendary monster has a block (stage L1e), so no monster loses the note.
-      if (!sv.success && (t.legendary?.resistance || CONTENT.monsters[t.tpl]?.traits?.some((x) => x.id === 'legendary-resistance'))) ev.push({ type: 'manual', actor: t.id, name: 'Legendary Resistance', partial: true, text: `${t.name} failed the saving throw and has Legendary Resistance. The DM decides whether it spends a use to succeed instead; the engine has applied the failure.` });
+      if (!sv.success && !(s.settings?.legendaryResistance === true && t.legendary?.resistance) && (t.legendary?.resistance || CONTENT.monsters[t.tpl]?.traits?.some((x) => x.id === 'legendary-resistance'))) ev.push({ type: 'manual', actor: t.id, name: 'Legendary Resistance', partial: true, text: `${t.name} failed the saving throw and has Legendary Resistance. The DM decides whether it spends a use to succeed instead; the engine has applied the failure.` });
       if (dmg && (!sv.success || dmg.half) && !t.dead && !(evade && sv.success)) {
         const n = sv.success || evade ? Math.floor(r.total / 2) : r.total;
         if (n > 0) damage(s, t, [{ amount: n, type: dmg.type, dice: r.dice, bonus: r.bonus }], null, ev);
@@ -487,7 +491,13 @@ export const SETTINGS = { sight: SIGHT_RULES,
   // Characters people bring (docs/specs/portable-characters.md, Decision 5; engine/characters.js, offer and admit): 'own-trusted' (the default, so first), where the
   // DM ticks each offered character whose history is not vouched for; 'own', any offer admitted on the DM's say; 'new', no offers. The adventure's level range
   // is the setting `level`, which the `setting` action takes as a level or { min, max } (above). Words in SETTING_TEXT.
-  characters: ['own-trusted', 'own', 'new'] };
+  characters: ['own-trusted', 'own', 'new'],
+  // Legendary actions (engine/legendary.js, docs/specs/legendary.md, Decision 3): whether the table stops after a turn for a legendary creature that could act.
+  // Off (the first, and the default when absent) until the DM's screen for it exists (stage L4); then the DM turns it on.
+  legendaryWindows: [false, true],
+  // Legendary Resistance (engine/rolls.js, resistFailure; docs/specs/legendary.md, Decision 6): whether a legendary creature spends its uses at a failed save by its standing
+  // instruction. Off (the first, and the default when absent) until the DM's card for it exists (stage L4): every save then plays as it always did.
+  legendaryResistance: [false, true] };
 // What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
   characters: {

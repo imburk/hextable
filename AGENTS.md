@@ -70,7 +70,7 @@ by the engine. Must work on PC, phone and tablet.
   `market`, `openShop`, `shopEdit`, `showShop`, `revealGoods`, `closeShop`, `quote`, `buy`, `chipIn`, `sell`,
   `take`, the place rule; design `docs/specs/shops.md`, its money arithmetic in the pure `market.js` beside
   `engine.js`) and `travel.js` (the atlas's places: `enter`, `leave`, `goTo`, parking; design
-  `docs/specs/travel.md`). Under them, helpers used by more than one domain, in
+  `docs/specs/travel.md`) and `legendary.js` (legendary actions: the window that opens between turns when a legendary creature could act, `legendary` with `skip` and `done`, `legendarySet`; design `docs/specs/legendary.md`). Under them, helpers used by more than one domain, in
   layers that import only downwards: `shared.js` (basics: `fail`, `ent`,
   `control`, dice, asking a player) ← `world.js` (moving and fitting,
   regions, objects, hidden creatures, areas and targets, marching) and

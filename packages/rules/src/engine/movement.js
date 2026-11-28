@@ -155,7 +155,7 @@ function opportunityRider(s, o, ev) {
 const owedFeet = (s, e) => { const n = s.encounter?.flags?.[`${OWED_MOVE}:${e.id}`]; return Number.isFinite(n) && n > 0 ? n : 0; };
 // What `moveOptions` should see for such a move: the game as it would stand if it were `e`'s turn with only that movement. Read only (nothing of it is kept).
 // No Dash is counted (`dashes: -1`), so that every way of moving (climbing, flying: `moveOptions` adds what its Speed has over walking) is held to the feet given.
-const asItsTurn = (s, e, bud) => (bud?.free ? { ...s, encounter: { ...s.encounter, turn: s.encounter.order.findIndex((o) => o.id === e.id), budget: { ...bud, dashes: -1 } } } : s);
+const asItsTurn = (s, e, bud) => (bud?.free || bud?.out ? { ...s, encounter: { ...s.encounter, turn: s.encounter.order.findIndex((o) => o.id === e.id), budget: { ...bud, dashes: -1 } } } : s);
 // Which diagonal of a square map comes next ('alternate' diagonals), kept with the feet (`rdiag:<creature>`) so that a move in steps counts as one.
 const DIAG = 'rdiag';
 const owedDiag = (s, e) => (s.encounter?.flags?.[`${DIAG}:${e.id}`] ? 1 : 0);
@@ -597,7 +597,8 @@ function moveOn(s, a, ctx, ev, own) {
     let bud = fighting ? turnBudget(s, e) : null;
     // Out of its turn, only the movement an Opportunity Attack's rider gave (`triggers.opportunityHit`, kept as `rmove:<creature>`) lets it move, from that alone and
     // provoking nothing (`free`). It is a move and nothing more: no other action reads it, and a creature that rides or is ridden never has any (opportunityRider).
-    if (fighting && !bud && !steering(s, e) && !steed && current(s) !== e.id && owedFeet(s, e) > 0) bud = own.bud = { move: owedFeet(s, e), dashes: 0, diagonals: owedDiag(s, e), free: true };
+    if (own.give && fighting && !steed) bud = own.give;               // a legendary action's move: a budget of its own (legendaryMove, below)
+    else if (fighting && !bud && !steering(s, e) && !steed && current(s) !== e.id && owedFeet(s, e) > 0) bud = own.bud = { move: owedFeet(s, e), dashes: 0, diagonals: owedDiag(s, e), free: true };
     if (fighting && !bud) fail(steering(s, e) ? `${e.name} moves on ${steering(s, e).name}'s turn.` : `It isn't ${e.name}'s turn.`);
     const reach = moveOptions(asItsTurn(s, e, bud), e, { through: true });
     // A tap names a hex; if it gives no height, the nearest surface this creature can stop on. A party mover chooses among the places the party
@@ -796,6 +797,19 @@ function leapOn(s, a, ctx, ev) {
   if (landed && lurker && !lurker.dead) bumped(s, lurker, e, ev);
   if (!fighting && (had || !s.encounter) && walked.length > 1) { march(s, e, walked, ev); }
   checkEnd(s, ev);
+}
+
+// A legendary action's move (engine/legendary.js, docs/specs/legendary.md, Decision 4): the creature walks off its turn by the engine's own walk, from a budget of its own,
+// `bud` = { move: feet, dashes: 0, out: true } (`free: true` as well for "without provoking Opportunity Attacks"). What the walk spends is spent from `bud`, which is the caller's.
+export function legendaryMove(s, a, ctx, ev, bud) {
+  moveOn(s, a, ctx, ev, { give: bud });
+}
+// Where would `to` end a move from a budget of its own: the place the walk would stop on in that column, or null if the creature cannot get there.
+export function legendaryStop(s, e, bud, to) {
+  const reach = moveOptions(asItsTurn(s, e, bud), e, { through: true });
+  const column = [...reach.values()].filter((n) => n.canStop && col(n.h) === col(to) && (to.z === undefined || n.h.z === to.z))
+    .sort((x, y) => Math.abs(x.h.z - e.pos.z) - Math.abs(y.h.z - e.pos.z))[0];
+  return column ? column.h : null;
 }
 
 export const handlers = {

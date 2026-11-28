@@ -24,7 +24,7 @@ import { conditionName, incapacitated, incapacitatedBy, judge, modifiers, speedO
 import { fitsHit, freeHitCasts, hitChoicesOf, hitInstruction } from '../hitchoices.js';
 import { ARENA_RADIUS, ask, blocked, unblocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { circlesFor, cutWall, resize, sizeEnd, aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, sense, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
-import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, eachTurn, endSpell, arm, ward, command, confuse, COMMAND_WORDS, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
+import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, eachTurn, endSpell, arm, ward, command, confuse, COMMAND_WORDS, imbue, bestType, recharge, renew, rerollSave, rescue, resistFailure, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { died, dispel, revive, shine, stabilise } from './rolls.js';       // `stabilize`, `light` and `dispel` steps (KIT)
 import { makeEntity, tryLand } from './sheets.js';
 import { armed, weaponKey } from '../imbue.js';
@@ -229,8 +229,10 @@ function teleport(s, t, step, to, ev, own = true) {
     const dc = fx.zone.src?.dc;
     if (dc === undefined) { ev.push({ type: 'manual', actor: t.id, name: fx.name, partial: true, text: `${fx.name} calls for a Charisma save from ${t.name} to teleport ${fx.zone.ward.reverse ? 'out of' : 'into'} the circle, and no DC is known. The DM applies it.` }); continue; }
     const { used, ...sv } = savingThrow(s, t, 'cha', dc, null, null, null, null, ev);
-    ev.push({ type: 'save', id: t.id, abil: 'cha', dc, ...sv });
+    const saved = { type: 'save', id: t.id, abil: 'cha', dc, ...sv };
+    ev.push(saved);
     useUp(s, ev, used ?? []);
+    resistFailure(s, t, sv, { matters: true }, ev, saved);                // Legendary Resistance (rolls.js): the teleportation would be stopped
     if (!sv.success) { ev.push({ type: 'note', id: t.id, text: `${fx.name} stops ${t.name}'s teleportation: it stays where it is` }); return true; }
   }
   const zonesBefore = snapshot(s);
@@ -406,6 +408,7 @@ export function thenFight(s, e, ev, lands, { area = false, target = null, owed =
 export function endEncounter(s, ev, result) {
   for (const e of fighters(s)) {
     delete e.cond.dodging; delete e.cond.disengaged; e.reactionUsed = false;
+    if (e.legend) { e.legend.acts = 0; e.legend.again = {}; }          // and when a fight ends (`resisted` stays until a Long Rest)
     if (up(e)) delete e.cond.prone;                       // nothing stops you standing once the fight is over
   }
   // Stepping away is for a fight: whoever was set aside, or asked to be, is back when it ends.
@@ -425,8 +428,16 @@ export function checkEnd(s, ev) {
   if (!foes || !party) endEncounter(s, ev, !foes ? 'victory' : 'defeat');
 }
 
-export function advanceTurn(s, ev) {
+// The window for legendary actions (engine/legendary.js, docs/specs/legendary.md, Decision 3) is opened from here, but it is made in a module
+// above this one (it plays turns, so it imports advanceTurn): it hands its opener over when it loads (engine.js imports it), so no import cycle.
+export const HOOKS = { window: null };
+// `taken` is the creature whose turn has just been taken (ended by `endTurn`, played for it as set aside, or a death save rolled): the table may then
+// stop for a legendary creature (HOOKS.window, which sets `enc.between` and says so), and goes on from where it stopped when the DM closes the window
+// (legendary.js calls this again, with nothing taken). A fight with no legendary creature that could act goes by exactly as it did.
+export function advanceTurn(s, ev, taken = null) {
   const enc = s.encounter;
+  delete enc.between;                                                    // a turn begins: a window still open (a creature that left the order) goes with it
+  if (taken !== null && HOOKS.window?.(s, ev, taken)) return;
   settleOrder(s);
   // `idle` counts turns nobody can take (the dead, the down); two laps of them end the fight in a
   // stalemate. `auto` counts turns the engine settles for creatures set aside (stepping away, below):
@@ -445,8 +456,9 @@ export function advanceTurn(s, ev) {
     let stepped = false;
     if (e.hp <= 0) {
       turnSteps(s, ev, KIT, e); stepped = true;
-      if (e.hp <= 0 && !e.cond.stable) { deathSave(s, e, ev); checkEnd(s, ev); if (!s.encounter) return; }   // the last of the party may have died or become Stable
-      if (e.hp <= 0) { idle++; continue; }
+      const rolled = e.hp <= 0 && !e.cond.stable;
+      if (rolled) { deathSave(s, e, ev); checkEnd(s, ev); if (!s.encounter) return; }   // the last of the party may have died or become Stable
+      if (e.hp <= 0) { idle++; if (rolled && HOOKS.window?.(s, ev, e.id)) return; continue; }   // a death save is a turn taken
     }
     const how = auto < enc.order.length ? awayHow(s, e) : null, late = enc.moved?.[e.id];
     if (late?.turn && late.round === enc.round) {                       // a turn set aside part-way through goes on where it stopped
@@ -472,6 +484,7 @@ export function advanceTurn(s, ev) {
     // action and stays where it is, and its turn ends.
     auto++;
     if (!awayTurn(s, e, ev)) return;
+    if (HOOKS.window?.(s, ev, e.id)) return;                             // a turn played for it is a turn taken
   }
   endEncounter(s, ev, 'stalemate');
 }
@@ -489,6 +502,7 @@ function beginTurn(s, e, ev, stepped = false) {
   enc.budget = { move: speed, action: can, bonus: can, dashes: 0 };     // `move` is walking feet left; other ways of moving are worked out from it
   e.reactionUsed = false;
   delete e.cond.dodging;
+  if (e.legend) { e.legend.acts = 0; e.legend.again = {}; }              // legendary actions are regained as its turn starts (docs/specs/legendary.md, Decision 2)
   ev.push({ type: 'turn', id: e.id, round: enc.round });
   noteRuns(s, e, 'turn');                                              // abilities the DM runs for this creature (todo.js)
   // E23 with CAST_TAKES_FIRST_ACTION (casting.js): the hostile cast that started the fight was this turn's action (or
@@ -777,8 +791,10 @@ function drop(s, e, ev) {
 // The rider's DC 10 Dexterity save against falling off. True if it stays on.
 function staysOn(s, r, ev) {
   const { used, ...sv } = savingThrow(s, r, 'dex', RIDE_DC, null, null, null, null, ev);
-  ev.push({ type: 'save', id: r.id, abil: 'dex', dc: RIDE_DC, ...sv, against: 'Falling Off' });
+  const saved = { type: 'save', id: r.id, abil: 'dex', dc: RIDE_DC, ...sv, against: 'Falling Off' };
+  ev.push(saved);
   useUp(s, ev, used ?? []);
+  resistFailure(s, r, sv, { matters: true }, ev, saved);                // Legendary Resistance (rolls.js): it would fall off
   return sv.success;
 }
 // The rider comes off: into the unoccupied space within 5 ft of its mount nearest it, chosen by what its side knows
@@ -1214,8 +1230,10 @@ function relentless(s, t, ev) {
   const r = f.relentless, n = t.uses?.[f.id] ?? 0, dc = r.dc + r.step * n;
   (t.uses ??= {})[f.id] = n + 1;
   const { used, ...sv } = savingThrow(s, t, 'con', dc, null, null, null, null, ev);
-  ev.push({ type: 'save', id: t.id, abil: 'con', dc, ...sv, against: f.name, ...srcOf(s, t.id) });
+  const saved = { type: 'save', id: t.id, abil: 'con', dc, ...sv, against: f.name, ...srcOf(s, t.id) };
+  ev.push(saved);
   useUp(s, ev, used ?? []);
+  resistFailure(s, t, sv, { matters: true }, ev, saved);                // Legendary Resistance (rolls.js): it would go down
   if (!sv.success) return;
   t.hp = Math.min(t.maxHp, r.hp);
   ev.push({ type: 'std', id: t.id, action: f.name });
@@ -1690,8 +1708,10 @@ export function wardCheck(s, e, t, ev, what = 'attack') {
   for (const fx of effectsOf(s)) for (const p of fx.parts) {
     if (p.ended || p.target !== t.id || !p.ward) continue;
     const { used, ...sv } = savingThrow(s, e, p.ward.save, p.ward.dc, null, null, null, null, ev);
-    ev.push({ type: 'save', id: e.id, abil: p.ward.save, dc: p.ward.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) });
+    const saved = { type: 'save', id: e.id, abil: p.ward.save, dc: p.ward.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) };
+    ev.push(saved);
     useUp(s, ev, used ?? []);
+    resistFailure(s, e, sv, { matters: true }, ev, saved);              // Legendary Resistance (rolls.js): its attack or spell would be lost
     if (sv.success) return false;
     ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} failed its ${p.ward.save.toUpperCase()} save against ${fx.name}, so its ${what} against ${t.name} is lost. The rules let it choose a new target instead: the DM may allow that.` });
     return true;
@@ -1755,8 +1775,10 @@ export function strikeOption(s, e, t, atk, option, shove, ev) {
   renew(s, e, t);                                                       // making an enemy save keeps a Rage going
   const about = option === 'grapple' ? ['grappled'] : shove === 'prone' ? ['prone'] : null, abil = bestSave(s, t, ['str', 'dex'], e, about);
   const { used, ...sv } = savingThrow(s, t, abil, dc, null, e, null, null, ev, about);
-  ev.push({ type: 'save', id: t.id, abil, dc, by: e.id, ...sv, ...srcOf(s, e.id) });
+  const saved = { type: 'save', id: t.id, abil, dc, by: e.id, ...sv, ...srcOf(s, e.id) };
+  ev.push(saved);
   useUp(s, ev, used ?? []);
+  resistFailure(s, t, sv, { onFail: [option === 'grapple' ? { condition: 'grappled' } : shove === 'prone' ? { condition: 'prone' } : { move: 5 }] }, ev, saved);      // Legendary Resistance (rolls.js)
   if (sv.success) return;
   if (option === 'grapple') { grip(s, t, { by: e.id, with: 'hand', escape: dc, range: 5 }, ev); return; }
   if (shove === 'prone') {
@@ -2526,5 +2548,5 @@ export function polymorph(s, t, step, f, ev) {
 // "A creature you can see" (Conjure Animals, zones.js `seen`): `c` sees `t` by the sight rules (sight.js), and `t` is not hiding from it; for a caster of the party, not a creature the DM hid or one the party does not
 // know of either (what the players could not be shown is not forced to save). Judged on what the caster's side knows, never on who is there.
 const seenBy = (s, c, t) => canSee(s, c, t) !== 'no' && !hiddenFrom(t, c) && !(c.side === 'party' && (t.hidden || unknown(s, t)));
-export const KIT = { seen: seenBy, resize, polymorph, meldInto, expelMelded, confuse, wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, cutWall, sense, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { seen: seenBy, resize, polymorph, meldInto, expelMelded, confuse, wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, resistFailure, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, cutWall, sense, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

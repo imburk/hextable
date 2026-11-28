@@ -22,6 +22,9 @@ export const hostile = (a, b) => a.side !== b.side;
 // caught in an area or found, and sees nothing, so every place that asks "who is there" through this leaves it out. What must still reach it (its turn,
 // its effects, ending the spell) goes by `s.entities`.
 export const living = (s) => Object.values(s.entities).filter((e) => !e.dead && !e.melded);
+// Legendary Resistance (docs/specs/legendary.md, Decision 2): what a creature may spend in all, the lair's number when the DM has marked it in its lair, and what is left.
+export const resistMax = (e) => (e.legend?.lair && e.legendary?.lair?.resistance) || e.legendary?.resistance?.day || 0;
+export const resistLeft = (e) => Math.max(0, resistMax(e) - (e.legend?.resisted ?? 0));
 export const inFight = (s, id) => !!s.encounter && s.encounter.order.some((o) => o.id === id);
 export const current = (s) => (s.encounter ? s.encounter.order[s.encounter.turn]?.id ?? null : null);
 // A spellcaster's spell attack bonus and save DC, with what modifiers change about them when the
@@ -244,6 +247,18 @@ export function ask(s, t, q, options) {
     return o && (a.slot === undefined || o.slots?.includes(a.slot)) ? a : { reactor: t.id, take: null };
   }
   if (!ownerOf(s, t) || !RUN?.canPause) return null;
+  throw new Pause({ reactor: t.id, ...q, options });
+}
+// Legendary Resistance (docs/specs/legendary.md, Decision 6): the one question that is asked of the DM for the DM's own creature, because the brief asks
+// for a choice and not a note. As `ask`, but there need be no player who owns the creature: its controller answers (`react`: control), which for a monster
+// is the DM. null where the action cannot stop (no copy was taken); the caller then falls back to its note (Decision 7).
+export function askDM(s, t, q, options) {
+  if (RUN && RUN.i < RUN.answers.length) {
+    const a = RUN.answers[RUN.i++];
+    const o = a.reactor === t.id && options.find((x) => x.reaction === a.take);
+    return o ? a : { reactor: t.id, take: null };
+  }
+  if (!RUN?.canPause) return null;
   throw new Pause({ reactor: t.id, ...q, options });
 }
 // A DM's creature whose instruction is to ask: the DM alone is told, and decides by hand.
