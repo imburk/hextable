@@ -124,9 +124,19 @@ export const tintWater = (tile, base) => {
   const s = WATER_STEPS[waterStep(tile.depth)];
   return base.map((v) => (v + (1 - v) * s.mix) * s.dim);
 };
+// Overgrown ground (Plant Growth, #931): a grass or forest tile with `overgrown: true` is tinted darker and denser, a theme's own `overgrow` colour (r, g, b) if it
+// has one, and carries a tangle of blades drawn on its top face (`tangle`). Pure.
+export const OVERGROW = { colour: [0.1, 0.3, 0.1], mix: 0.5, dim: 0.78, blades: 11 };
+export const tintOvergrown = (tile, base, th = null) => {
+  if (!tile || tile.overgrown !== true) return base;
+  const g = th?.overgrow ?? OVERGROW.colour;
+  return base.map((v, i) => (v + (g[i] - v) * OVERGROW.mix) * OVERGROW.dim);
+};
+// The colour of a tile as the theme has it: its water by depth, its plants by overgrowth.
+export const tileColour = (tile, base, th = null) => tintOvergrown(tile, tintWater(tile, base), th);
 export function tileSig(map) {
   let n = 0;
-  for (const l of map.levels) for (const k in l.tiles) { const t = l.tiles[k]; n = (Math.imul(n, 31) + (t.t.charCodeAt(0) * 7 + t.t.length) * 131 + Math.round(((t.h ?? 0) + (t.lift ?? 0)) * 4) + (t.t === 'water' ? (t.depth ?? 10) * 3 : 0) + 17) | 0; }
+  for (const l of map.levels) for (const k in l.tiles) { const t = l.tiles[k]; n = (Math.imul(n, 31) + (t.t.charCodeAt(0) * 7 + t.t.length) * 131 + Math.round(((t.h ?? 0) + (t.lift ?? 0)) * 4) + (t.t === 'water' ? (t.depth ?? 10) * 3 : 0) + (t.overgrown === true ? 977 : 0) + 17) | 0; }
   return n;
 }
 
@@ -227,6 +237,16 @@ export function makeVeil(map, r) {
 }
 
 // ---------- terrain ----------
+// The tangle on an overgrown tile (#931): OVERGROW.blades thin blades standing on its top face, leaning outward, a few lighter than the ground and a few darker, so it
+// reads as dense low growth. One triangle each, so it costs a phone almost nothing. `c` is the tile's own colour (already tinted and shaded).
+function tangle(b, x, z, y, q, r, c, locked) {
+  for (let i = 0; i < OVERGROW.blades; i++) {
+    const a = jitter(q + i * 5, r - i * 3) * 6.28, d = 0.12 + 0.62 * jitter(r + i * 11, q + i * 2), hh = 0.2 + 0.26 * jitter(q - i, r + i * 7), lean = 0.1 + 0.1 * jitter(i, q + r);
+    const bx = x + Math.cos(a) * d, bz = z + Math.sin(a) * d, tw = a + 1.57, hw = 0.06;
+    const k = i % 3 === 0 ? 1.45 : i % 3 === 1 ? 0.7 : 1.05, col = [...c.map((v, j) => Math.min(1, v * k + (j === 1 && !locked ? 0.05 : 0))), 1];
+    b.tri([bx - Math.cos(tw) * hw, y, bz - Math.sin(tw) * hw], [bx + Math.cos(tw) * hw, y, bz + Math.sin(tw) * hw], [bx + Math.cos(a) * lean, y + hh, bz + Math.sin(a) * lean], col);
+  }
+}
 // `hasPicture(levelId)` says whether a level's picture has arrived. Returns the builders, the floors (for walls and the cut-away) and
 // the pictures to draw ({ asset, x0, x1, z0, z1, y }).
 export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture = () => false }) {
@@ -249,6 +269,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
     const { asset, feet: [fw, fh], origin: [ox, oy] } = l.image;
     pictures.push({ asset, y: surfY(l.z), x0: ox * UNIT, x1: (ox + fw) * UNIT, z0: oy * UNIT, z1: (oy + fh) * UNIT });
   }
+  let overgrown = 0;
   for (const h of allTiles(map)) {
     if (h.z > ceiling) continue;
     if (pictured.has(h.level.id)) {
@@ -260,7 +281,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
     const t = h.tile, w = G.toWorld(h), locked = enc && !enc.arena[cellCol(h)], y = surfY(h.z, t), room = rooms.has(h.level.id);
     const lowest = surfaces(map, h)[0].z === h.z;
     const j = room ? 1 : 0.94 + jitter(h.q, h.r) * 0.12;
-    let c = tintWater(t, th.tiles[t.t]).map((v) => v * j);
+    let c = tileColour(t, th.tiles[t.t], th).map((v) => v * j);
     if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
     if (!shown(map, h.level.id, h)) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
     const f = seenShade(h.level.id, cellCol(h));
@@ -271,6 +292,10 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
       b.flatHex(w.x, w.z, y, 0.86, 1, rim);
       const top = b.cellRing(w.x, w.z, 1, y), bot = b.cellRing(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB);
       for (let i = 0; i < top.length; i++) { const n = (i + 1) % top.length; b.quad(top[i], top[n], bot[n], bot[i], shade(c, th.side)); }
+    }
+    if (t.overgrown === true) {
+      overgrown++;
+      if (!room) tangle(b, w.x, w.z, y, h.q, h.r, c, locked);
     }
     if (t.t === 'forest') {
       const tc = locked ? shade(th.tree, 0.45) : [...th.tree, 1];
@@ -290,7 +315,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
       const y = pa.top * UNIT;
       for (const cell of pa.cells) {
         const t = lv.tiles[cell.hex], key = cell.hex, locked = enc && !enc.arena[key], hex = cellParse(key), hz = lv.z + (t.h ?? 0);
-        let c = tintWater(t, th.tiles[t.t]).slice();
+        let c = tileColour(t, th.tiles[t.t], th).slice();
         if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
         if (!shown(map, lv.id, { ...hex, z: hz })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
         const f = seenShade(lv.id, key);
@@ -305,7 +330,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
         if (e.kind !== 'open' && e.kind !== 'drop') continue;
         if (e.kind === 'open' && caves.has(fl.id)) continue;
         const t = lv.tiles[e.hex], key = e.hex, locked = enc && !enc.arena[key];
-        let c = tintWater(t, th.tiles[t.t]).slice();
+        let c = tileColour(t, th.tiles[t.t], th).slice();
         if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
         if (!shown(map, lv.id, { ...cellParse(key), z: lv.z + (t.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
         const f = seenShade(lv.id, key);
@@ -320,7 +345,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
     }
     if (caves.has(fl.id)) drawCave(b, caveOf(map, fl), lv, tintOf, th);
   }
-  return { terrain: b, grid: gb, shadows: sb, floorData: floors.levels, pictures };
+  return { terrain: b, grid: gb, shadows: sb, floorData: floors.levels, pictures, overgrown };
 }
 
 // A cave: the strip of floor out to the pushed edge, a face of rock standing up from it, and the rock as a dark mass at one height.
@@ -330,7 +355,7 @@ function drawCave(b, cv, lv, tintOf, th) {
   for (const { closed, points } of cv.chains) {
     const m = closed ? points.length : points.length - 1;
     for (let i = 0; i < m; i++) {
-      const a = points[i], c = points[(i + 1) % points.length], y = a.z * UNIT, top = a.top * UNIT, floor = tintOf(lv, a.hex, tintWater(lv.tiles[a.hex], th.tiles[lv.tiles[a.hex].t]));
+      const a = points[i], c = points[(i + 1) % points.length], y = a.z * UNIT, top = a.top * UNIT, floor = tintOf(lv, a.hex, tileColour(lv.tiles[a.hex], th.tiles[lv.tiles[a.hex].t], th));
       b.quad(wpt(a.p, y), wpt(c.p, y), wpt(c.q, y), wpt(a.q, y), [...floor, 1]);
       const rc = tintOf(lv, a.hex, rock), v = 0.8 + 0.2 * noise(a.q, 0), mid = y + (top - y) * 0.4;
       b.quad(wpt(a.q, y), wpt(c.q, y), wpt(c.q, mid), wpt(a.q, mid), lit(rc, 0.55 * v));

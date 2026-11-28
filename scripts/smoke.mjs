@@ -56,6 +56,7 @@ const REGISTRY = {
   maps: ['maps'],
   pitdepth: ['pitdepth'],
   waterdepth: ['waterdepth'],
+  overgrowth: ['overgrowth'],
   pinch: ['pinch'],
   ping: ['ping'],
   newgame: ['newgame'],
