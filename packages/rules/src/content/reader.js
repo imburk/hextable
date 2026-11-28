@@ -21,7 +21,7 @@
 // weapons, armour, objects and subclasses (task B13, three parts; docs/specs/homebrew-subclasses.md, stage B3).
 import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, AFFLICTIONS, STONE_SHAPES, RESIZES, WATERS, WARDS, COMMANDS, CURSES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
   GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, SPELL_ROLLS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
-  TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, isDuration, lintEntry } from './schema.js';
+  TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, HP_TAG, isDuration, lintEntry } from './schema.js';
 // index.js first: it loads effects.js whole (effects.js reached first would meet a cycle through durations.js).
 import { CONTENT } from './index.js';
 import { actionProfile, aimable, BENEFICIAL_CONDITIONS, spellKinds, spellRoll, WORK } from '../effects.js';
@@ -125,6 +125,8 @@ export const TAG_WORDS = {
   'target.notGrappler': 'the target is not a creature that grapples the attacker', 'target.grappledBySelf': 'the target is Grappled by the attacker',
   'check.escape': 'the check is made to escape a grapple', 'target.ally': 'the target is on the caster\'s side',
 };
+// The two numeric tags of a step's `when` (#907; schema.js `HP_TAG`): the words, or null for any other string.
+export const hpTagWords = (t) => { const m = typeof t === 'string' ? HP_TAG.exec(t) : null; return m ? (m[1] === 'AtMost' ? `the target has ${m[2]} Hit Points or fewer` : `the target has more than ${m[2]} Hit Points`) + ' (Temporary Hit Points do not count)' : null; };
 // What the engine can tell of each tag, where it is asked (modifiers.js `judge`; a test PLAYS every tag in every place through
 // `apply()` and holds these tables equal to what the engine does, so the reading cannot drift from it again, #430).
 // `judge(tag, sit)` answers true, false or "cannot tell" (null), from the pieces of `sit` the caller has: a place that does not
@@ -887,11 +889,12 @@ class Reading {
   whenOf(when, at) {
     if (when === undefined) return '';
     if (!Array.isArray(when)) { this.bad(`Step ${at}: \`when\` is not a list of tags.`); return ' (with an unreadable condition)'; }
-    const tags = when.filter((t) => typeof t === 'string' && Object.hasOwn(TAG_WORDS, t));
+    const tags = when.filter((t) => typeof t === 'string' && (Object.hasOwn(TAG_WORDS, t) || hpTagWords(t) !== null));
+    when.forEach((t, i) => { if (hpTagWords(t) !== null) this.num(`${at}.when.${i}`, +HP_TAG.exec(t)[2], 'hit points'); });
     if (tags.length !== when.length) this.bad(`Step ${at}: \`when\` names a situation the engine does not know.`);
     const judged = this.afterAtk > 0 ? JUDGED_STEP_AFTER_ATTACK : JUDGED_STEP;
-    const un = tags.filter((t) => !judged.includes(t));
-    let text = ` This happens only if ${list(tags.map((t) => TAG_WORDS[t]))}.`;
+    const un = tags.filter((t) => !judged.includes(t) && hpTagWords(t) === null);       // a Hit Points tag is always judged: the step has a target
+    let text = ` This happens only if ${list(tags.map((t) => hpTagWords(t) ?? TAG_WORDS[t]))}.`;
     if (un.length) {
       this.dm(`Deciding whether ${list(un.map((t) => TAG_WORDS[t]))}, each time step ${at} runs.`);
       const how = un.some((t) => t === 'attack.advantage' || t === 'attack.disadvantage') ? ' (the engine knows how an attack roll went only for the steps under that attack\'s hit or miss)' : '';
