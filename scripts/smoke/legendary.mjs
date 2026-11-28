@@ -129,8 +129,8 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         const where = await dm.evaluate(async (id) => {
           const { apply } = await import('./shared/engine.js'), S = window.hextable.state;
           const f = S.entities.fighter.pos, d = S.entities[id].pos, dist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
-          const ring = []; for (let q = -4; q <= 4; q++) for (let r = -4; r <= 4; r++) { const p = { q: f.q + q, r: f.r + r, z: f.z }; if (dist(p, f) <= 4 && dist(p, f) >= 1) ring.push(p); }      // #906: up to four hexes (a Huge dragon needs room, and the valley's trees differ each run); the engine says which it accepts
-          ring.sort((a, b) => dist(a, d) - dist(b, d));
+          const ring = []; for (let q = -4; q <= 4; q++) for (let r = -4; r <= 4; r++) { const p = { q: f.q + q, r: f.r + r, z: f.z }; if (dist(p, f) <= 4 && dist(p, f) >= 1) ring.push(p); }      // #906: up to four hexes (a Huge dragon needs room, and the valley's trees differ each run), the nearest to the fighter first (a far stop can sit on something at another height)
+          ring.sort((a, b) => (dist(a, f) > 2) - (dist(b, f) > 2) || dist(a, d) - dist(b, d));
           return ring.find((p) => apply(structuredClone({ ...S, timeline: [] }), { type: 'legendary', actor: id, option: 'pounce', to: p, target: 'fighter' }, { role: 'dm', userId: 'dm' }).ok) ?? null;
         }, drake);
         if (!where) throw new Error('no place the dragon could pounce from');
@@ -176,8 +176,11 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await waitShown(dm, '#lg .lg-go');
         await shot(dm, 'aim-area');
         await idle(dm); await wait(dm, () => !window.hextable.timeline.busy());      // a tap while the beats still play only skips them (legendary.js, as every control): wait for the picture to be still
+        const w0 = await state(dm, (S) => JSON.stringify(S.encounter.between));
         await tapIt(dm.locator('#lg .lg-go'));
-        try { await wait(dm, () => !window.hextable.state.encounter.between); }      // paid and done: the dragon's own turn has begun, which gives its uses back
+        // Paid and done: this window is gone. Not "no window at all" (#906): the fighter, dropped on purpose above, may have the next turn, which ends at once
+        // (a death save) and opens the next window.
+        try { await wait(dm, (w) => { const b = window.hextable.state.encounter?.between; return !b || JSON.stringify(b) !== w; }, w0); }
         catch (err) { throw new Error(`${err.message.slice(0, 80)} -- ${await dm.evaluate((p) => JSON.stringify({ spot: p, err: document.querySelector('#lg .lg-err')?.textContent, hint: document.querySelector('#hint-text')?.textContent, mode: window.hextable.mode, toast: document.querySelector('#toast')?.textContent, hp: [window.hextable.state.entities.fighter?.hp, window.hextable.state.entities.rogue?.hp], between: window.hextable.state.encounter?.between, acts: Object.values(window.hextable.state.entities).filter((e) => e.legend).map((e) => [e.id, e.legend.acts, e.pos]), turn: window.hextable.state.encounter?.order?.[window.hextable.state.encounter.turn]?.id }), spot)}`); }
         await dm.evaluate((hp) => { const h = window.hextable; h.act({ type: 'setHp', actor: 'fighter', hp: Math.max(hp.fighter, 1) }); h.act({ type: 'setHp', actor: 'rogue', hp: hp.rogue }); }, hp0); await idle(dm);      // back as they were (the fighter at least up), for the steps after
       }));
