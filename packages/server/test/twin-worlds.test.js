@@ -351,6 +351,37 @@ test("sight: a goblin out of sight behind a wall, moving, with undo and redo, ch
   assert.ok(JSON.stringify(hidden.raw.dm).includes("Grishnak"), "the goblin is there, for the DM");
 });
 
+// ---- Plant Growth (#923): a sphere that covers ground the party has not seen ----
+// The far room is an unrevealed region. In the hidden world its ground is grass, which the cast overgrows; in the plain world it is stone, which it leaves alone. The note, the
+// cast event, the patches and the views a player is sent must be the same in both (the DM alone is told how many tiles changed).
+test("plant growth: a player's cast whose sphere covers an unrevealed region of grass, and a walk after, is sent the same as over stone", () => {
+  const tiles = {};
+  for (let q = -4; q <= 20; q++) for (let r = -2; r <= 2; r++) tiles[`${q},${r}`] = { t: q > 10 ? "stone" : "grass" };
+  const cells = (a, b) => { const out = []; for (let q = a; q <= b; q++) for (let r = -2; r <= 2; r++) out.push(`${q},${r}`); return out; };
+  const map = newMap({ id: "twinfield", name: "Field", starts: [{ q: 0, r: 0 }], levels: [{ id: "g", name: "G", z: 0, tiles }],
+    regions: [{ id: "near", name: "Near", level: "g", hexes: cells(-4, 10), revealed: true }, { id: "far", name: "Far", level: "g", hexes: cells(11, 20), revealed: false }] });
+  const { plain, hidden } = twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      w.must({ type: "loadMap", map });
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", -2, 0], ["rogue", -2, 1], ["wizard", 0, 0], ["cleric", -2, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", spells: [...s.entities.wizard.spells, "plant-growth"], slots: { ...s.entities.wizard.slots, 3: 2 }, slotsMax: { ...s.entities.wizard.slotsMax, 3: 2 } });
+    },
+    steps: [
+      { by: "Pat", act: { type: "cast", actor: "wizard", spell: "plant-growth", slot: 3, hex: { q: 8, r: 0 }, except: [{ q: 7, r: 0 }] } },
+      { by: "Pat", act: { type: "move", actor: "rogue", to: { q: 1, r: 1 } }, allowError: true },
+    ],
+  }, {
+    hide: (w) => { for (const k of Object.keys(w.state.map.levels[0].tiles)) if (+k.split(",")[0] > 10) w.state.map.levels[0].tiles[k] = { t: "grass" }; },
+    plain: () => {},
+  });
+  assert.ok(JSON.stringify(hidden.raw.dm).includes("overgrown"), "the far grass was overgrown, for the DM");
+  assert.ok(!JSON.stringify(plain.raw.Pat).includes('"15,0"'), "the unrevealed ground is in nothing the player is sent");
+});
+
 // ---- travel W4: a place nobody has been to, in a world with a split party (was travel-view.test.js) ----
 const SECRET = "Hidden Vault";
 test("travel: a place nobody has been to, in a world with a split party, is in nothing any player is sent", () => {

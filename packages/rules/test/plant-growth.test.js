@@ -138,6 +138,10 @@ test("an exception outside the area, or one that is not a cell, is refused and n
   const t = meadow();
   t.entities.wizard.spells.push("fireball");
   t.entities.wizard.slots[3] = 3;
+  ok(apply(t, { type: "cast", actor: "wizard", spell: "fireball", hex: { q: 3, r: 0 }, slot: 3 }, DM));
+  t.entities.wizard.slots[3] = 3;
+  t.entities.wizard.spells.push("shield");
+  assert.equal(apply(t, { type: "cast", actor: "wizard", spell: "shield", slot: 1, except: [] }, DM).ok, false, "a spell with no area refuses it too");
   assert.equal(apply(t, { type: "cast", actor: "wizard", spell: "fireball", hex: { q: 3, r: 0 }, slot: 3, except: [{ q: 3, r: 0 }] }, DM).ok, false, "only Plant Growth leaves cells out");
 });
 

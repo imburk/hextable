@@ -673,6 +673,7 @@ function castSpell(s, a, ctx, ev, item) {
     const range = typeof (mm.range ?? grown) === 'number' && spear ? (mm.range ?? grown) + spear : mm.range ?? grown;
     const most = targetCount(sp.def, casterLevel, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
     let targets = [], hexes = null, areaOrigin = null, object = null, wall = null, spaceBody = null;
+    a.except === undefined || (sp.aim === 'area' && sp.def.effects.some((st) => 'overgrow' in st)) || fail(`${sp.name} has no part of its area to leave out.`);
     let except = null;       // Plant Growth: the cells of its area the caster leaves out ("The caster can exclude areas of any size"), as keys
     // Globe of Invulnerability: a spell of a level below the Globe's (its slot level less one; a spell cast with a higher slot "takes on the higher level for that casting", SRD, so the slot counts) cast from outside it cannot affect anything within it. A spell
     // aimed at creatures may target one inside, and has no effect on it (as an invalid target: `warded`, below); the inside is left out of the area of one aimed at an area. What the caster stands in is judged by where it stands, never by who is hidden in it.
@@ -698,7 +699,6 @@ function castSpell(s, a, ctx, ev, item) {
       if (sp.area.choose) targets = chosen(e, sp.name, targets, a.targets, most);
       // `except`: cells of the area left out of what the spell does to the ground. Only a spell with an `overgrow` step has the choice; every cell must lie in the area (the cast event's own cells).
       if (a.except !== undefined) {
-        sp.def.effects.some((st) => 'overgrow' in st) || fail(`${sp.name} has no part of its area to leave out.`);
         const inside = new Set(hexes.map(col));
         (Array.isArray(a.except) && a.except.length <= 2000 && a.except.every((c) => c && Number.isInteger(c.q) && Number.isInteger(c.r))) || fail(`Name the cells ${sp.name} leaves out as a list of { q, r }.`);
         a.except.every((c) => inside.has(col(c))) || fail(`${sp.name} can only leave out cells within its area.`);
