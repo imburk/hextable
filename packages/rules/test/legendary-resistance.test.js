@@ -73,6 +73,7 @@ test("1: `matters` (the default) spends on a failure that matters and lets one t
   const { s, d } = game();
   const para = [{ condition: "paralyzed" }], poison = [{ damage: "8d6", type: "poison" }], fire = [{ damage: "8d6", type: "fire" }];
   assert.equal(failureMatters(s, d, { onFail: para }), true);
+  assert.equal(failureMatters(s, d, { onFail: [{ counter: "spell" }] }), true, "a countered spell matters (review, V026)");
   assert.equal(failureMatters(s, d, { onFail: fire, half: true }), true);
   assert.equal(failureMatters(s, d, { onFail: poison }), false, "immune to poison");
   assert.equal(failureMatters(s, d, { onFail: [{ condition: "poisoned" }] }), false, "immune to the condition");

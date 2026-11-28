@@ -768,7 +768,7 @@ export function savingThrow(s, t, abil, dc, extra = null, from = null, dis = nul
 // its form, damage of a type it neither resists nor is immune to (the difference between failing and succeeding: all of it where a success takes none), otherwise no;
 // a `manual` step is not read, so it is not guessed. Beyond the list (the spec's "changes something for this creature"): a lasting modifier, a push, a fall, a new size,
 // and the other holds the steps can put on it count as well, for a failure that leaves it so is not one that changes nothing.
-const MATTERS = new Set(['kill', 'teleport', 'set', 'summon', 'polymorph', 'endConcentration', 'modifier', 'move', 'fall', 'resize', 'confuse', 'command', 'ward', 'eachTurn', 'arm', 'imbue']);
+const MATTERS = new Set(['kill', 'teleport', 'set', 'summon', 'polymorph', 'endConcentration', 'modifier', 'move', 'fall', 'resize', 'confuse', 'command', 'ward', 'eachTurn', 'arm', 'imbue', 'counter', 'light']);   // `counter`: its spell is lost (Counterspell); `light`: it is outlined (Faerie Fire)
 export function failureMatters(s, t, site = {}) {
   if (site.matters === true) return true;
   if (site.unread === true) return null;
@@ -795,6 +795,8 @@ export function failureMatters(s, t, site = {}) {
 // Off (the table setting `legendaryResistance` is not on) it returns at once and changes nothing. The instruction is the creature's own (`reactionsOf`): `always`, `never`, or `matters`
 // (the default); `ask`, and a `matters` failure the engine cannot read, apply the failure and tell the DM with a `manual` note that a use is left (Decision 7; the question itself
 // is stage L2b).
+// A legendary creature on the party's side (a homebrew ally) is no exception: its instruction is its controller's, set with `reactions` as for any creature, and
+// `matters` is its default too (Decision 6). Asking a player is stage L2b's `askDM`; until then `ask` falls back to the note.
 export function resistFailure(s, t, sv, site, ev, evt = null) {
   if (s.settings?.legendaryResistance !== true) return false;
   if (sv.success || !t?.legendary?.resistance || t.dead || resistLeft(t) < 1) return false;
