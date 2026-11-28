@@ -167,8 +167,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The DM applies this.",
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects.",
       },
       {
         id: "spellcasting",
@@ -240,8 +240,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The DM applies this.",
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects.",
       },
       {
         id: "wishes",
@@ -674,8 +674,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The DM applies this.",
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects.",
       },
       {
         id: "speak-with-beasts-and-plants",
@@ -826,8 +826,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The DM applies this.",
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects.",
       },
       {
         id: "wishes",
@@ -913,8 +913,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The DM applies this.",
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects.",
       },
       {
         id: "magic-rope",
@@ -1332,8 +1332,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The DM applies this.",
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects.",
       },
     ],
     actions: [
@@ -1918,8 +1918,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The DM applies this.",
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects.",
       },
       {
         id: "multiattack",

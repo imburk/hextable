@@ -133,7 +133,7 @@ import { fileURLToPath } from "node:url";
 
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 const EXCEPTIONS = [
-  { file: "engine/rolls.js", line: /return savingThrow\(s, t, abil, dc, null, from, null, r\.name, ev, conds\)/, why: "Countercharm's second roll is not the outcome: it goes back to the save site that asked for it (effects.js), which calls resistFailure on the result of both" },
+  { file: "engine/rolls.js", line: /return savingThrow\(s, t, abil, dc, null, from, null, r\.name, ev, conds, magic\)/, why: "Countercharm's second roll is not the outcome: it goes back to the save site that asked for it (effects.js), which calls resistFailure on the result of both" },
 ];
 function sources(dir = SRC, out = []) {
   for (const f of readdirSync(dir)) { const p = join(dir, f); if (statSync(p).isDirectory()) sources(p, out); else if (p.endsWith(".js")) out.push(p); }

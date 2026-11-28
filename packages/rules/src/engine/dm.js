@@ -364,10 +364,11 @@ export const handlers = {
       const def = typeof a.condition === 'string' ? conditionDef(a.condition) : null;
       (def && CONTENT.conditions[a.condition]) || fail('Unknown condition.');
     }
+    (a.magic === undefined || typeof a.magic === 'boolean') || fail('`magic` is true or false: whether the effect is a spell or other magic (Magic Resistance).');
     const r = dmg ? roll(s, dmg.dice) : null;
     for (const t of ts) {
       const mark = ev.length;
-      const { used, ...sv } = savingThrow(s, t, abil, a.dc, null, null, mode === 'disadvantage' ? GRANTS.disadvantage : null, mode === 'advantage' ? GRANTS.advantage : null, ev);
+      const { used, ...sv } = savingThrow(s, t, abil, a.dc, null, null, mode === 'disadvantage' ? GRANTS.disadvantage : null, mode === 'advantage' ? GRANTS.advantage : null, ev, null, a.magic === true || a.magic === false ? a.magic : undefined);
       const saved = { type: 'save', id: t.id, abil, dc: a.dc, called: true, ...(a.secret ? { secret: true } : {}), ...sv };
       ev.push(saved);
       useUp(s, ev, used ?? []);

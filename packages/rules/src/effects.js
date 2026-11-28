@@ -541,13 +541,16 @@ function exec(s, ev, kit, f, step, at) {
       if (holds.includes(null)) handOver(`${t.name} may have Advantage on this save against ${f.src.name} ("${step.advantageIf.join('", "')}"), which the engine cannot judge. The DM decides.`);
       else if (holds.every(Boolean)) adv = 'fighting the caster\'s side';
     }
-    let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, adv, ev, about);      // cover is judged from where the effect starts
+    // Is the save against magic (Magic Resistance)? A spell's steps say so (`src.spell`, `src.magic`, or the lasting effect or zone they belong to); a thing on the map that no spell made (a trap, a lever) says it is not;
+    // a creature's own action or a feature does not say, so it stays unknown and the DM is told (rolls.js `savingThrow`).
+    const magical = f.src.magic ?? (f.src.spell || (f.src.fx && effectsOf(s).find((x) => x.id === f.src.fx)?.spell) ? true : f.src.object !== undefined ? false : undefined);
+    let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, adv, ev, about, magical);      // cover is judged from where the effect starts
     let saved = { type: 'save', id: t.id, abil: step.save, dc, ...sv, ...srcOf(s, f.actor, f.src?.fx) };
     ev.push(saved);
     useUp(s, ev, used ?? []);                                            // a single-use modifier the save took ends now, after it
     // A failed save against Charmed or Frightened may be rolled again (Countercharm).
     if (!sv.success && kit.rerollSave) {
-      const again = kit.rerollSave(s, t, step.save, dc, step.onFail, f.src.origin ?? e, ev);
+      const again = kit.rerollSave(s, t, step.save, dc, step.onFail, f.src.origin ?? e, ev, magical);
       if (again) { const { used: u2, ...sv2 } = again; sv = sv2; saved = { type: 'save', id: t.id, abil: step.save, dc, ...sv, reroll: true, ...srcOf(s, f.actor, f.src?.fx) }; ev.push(saved); useUp(s, ev, u2 ?? []); }
     }
     // Legendary Resistance (engine/rolls.js): the last word on the save, after every reroll; a resisted one goes on as a success.

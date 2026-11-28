@@ -254,7 +254,10 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   // `leap` (Jump): only a modifier step `{ on: 'leap', op: 'set', value: <5 to 40 feet, a multiple of 5> }`.
   if (m.on === 'leap' && !(stepOk && m.op === 'set' && Number.isInteger(m.value) && m.value >= 5 && m.value <= 40 && m.value % 5 === 0 && Object.keys(m).length === 3)) say('a modifier on leap is a modifier step `{ on: "leap", op: "set", value: <5 to 40 feet, a multiple of 5> }`: once on each of its turns the creature may leap that far for 10 feet of movement');
   // `magic: true` (Freedom of Movement): on the condition hook, the immunity holds only against a condition a spell gives; on `speed` with op `immune`, the creature's Speed is not reduced by the lasting effect of a spell.
-  if (m.magic !== undefined && !(m.magic === true && ((m.on === 'condition' && m.op === 'immune') || (m.on === 'speed' && m.op === 'immune')))) say('`magic` is true, on the condition hook (op immune) or on `speed` with op `immune`');
+  // On a saving throw (Magic Resistance): `{ on: 'save' | 'save.<ability>', op: 'advantage', magic: true }`, Advantage on a save whose source is magical (a spell, a magic item's effect); engine/rolls.js `savingThrow` says which.
+  const magicSave = m.on === 'save' || (typeof m.on === 'string' && m.on.startsWith('save.'));
+  if (m.magic !== undefined && !(m.magic === true && ((m.on === 'condition' && m.op === 'immune') || (m.on === 'speed' && m.op === 'immune') || (magicSave && m.op === 'advantage')))) say('`magic` is true, on the condition hook (op immune), on `speed` with op `immune`, or on a saving throw with op `advantage`');
+  if (m.magic === true && magicSave && m.op === 'advantage' && Object.keys(m).length !== 3) say('an `advantage` modifier with `magic` on a saving throw is `{ on: "save", op: "advantage", magic: true }`: Advantage on saving throws against spells and other magical effects');
   if (m.on === 'speed' && m.op === 'immune' && !(stepOk && m.magic === true && Object.keys(m).length === 3)) say('an `immune` modifier on speed is a modifier step `{ on: "speed", op: "immune", magic: true }`: spells do not reduce the creature\'s Speed');
   // A value is a number, { perLevel: n } for conditions that stack in levels, or for `add`
   // dice ("1d4", "-1d4") rolled each time the modifier applies.

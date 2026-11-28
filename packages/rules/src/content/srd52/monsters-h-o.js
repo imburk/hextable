@@ -426,8 +426,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "The hezrou has Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "The hezrou has Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "stench",
@@ -1086,8 +1086,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "The devil has Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "The devil has Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "condition-immunities",
@@ -1480,8 +1480,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "The devil has Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "The devil has Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "condition-immunities",
@@ -1767,8 +1767,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "The imp has Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "The imp has Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "condition-immunities",
@@ -2129,8 +2129,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "The golem has Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "The golem has Advantage on saving throws against spells and other magical effects."
       },
     ],
     actions: [
@@ -3862,8 +3862,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "The marilith has Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "The marilith has Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "condition-immunities",
@@ -4985,8 +4985,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "The mummy has Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "The mummy has Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "undead-restoration",
@@ -5172,8 +5172,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "The nalfeshnee has Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "The nalfeshnee has Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "condition-immunities",
@@ -5325,8 +5325,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "The hag has Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "The hag has Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "soul-bag",
