@@ -142,11 +142,20 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await wait(dm, () => window.hextable.mode.kind !== 'legendary');
         await waitShown(dm, '#lg .lg-opt');
         await tapIt(dm.locator('#lg .lg-opt[data-opt="noxious-miasma"]'));
-        await tapSpot(await state(dm, () => window.hextable.state.entities.fighter.pos), 'the spot');
+        // A spot the engine accepts (the valley is not the same each time: the fighter's own place can be out of the dragon's sight or range), the fighter's first.
+        const spot = await dm.evaluate(async (id) => {
+          const { apply } = await import('./shared/engine.js'), S = window.hextable.state, f = S.entities.fighter.pos;
+          const ring = [f]; for (let q = -2; q <= 2; q++) for (let r = -2; r <= 2; r++) if ((q || r) && Math.abs(q) + Math.abs(r) + Math.abs(q + r) <= 4) ring.push({ q: f.q + q, r: f.r + r, z: f.z });
+          return ring.find((p) => apply(structuredClone({ ...S, timeline: [] }), { type: 'legendary', actor: id, option: 'noxious-miasma', hex: p }, { role: 'dm', userId: 'dm' }).ok) ?? null;
+        }, drake);
+        if (!spot) throw new Error('no spot the engine accepts for Noxious Miasma near the fighter');
+        await tapSpot(spot, 'the spot');
         await wait(dm, () => window.hextable.mode.hex);
+        await waitShown(dm, '#lg .lg-go');
         await shot(dm, 'aim-area');
         await tapIt(dm.locator('#lg .lg-go'));
-        await wait(dm, () => !window.hextable.state.encounter.between);      // paid and done: the dragon's own turn has begun, which gives its uses back
+        try { await wait(dm, () => !window.hextable.state.encounter.between); }      // paid and done: the dragon's own turn has begun, which gives its uses back
+        catch (err) { throw new Error(`${err.message.slice(0, 80)} -- ${await dm.evaluate((p) => JSON.stringify({ spot: p, err: document.querySelector('#lg .lg-err')?.textContent, hint: document.querySelector('#hint-text')?.textContent, mode: window.hextable.mode, toast: document.querySelector('#toast')?.textContent }), spot)}`); }
       });
 
       await run.do('a failed save asks for Legendary Resistance: the card, one tap, a success; the player is told nothing of it', async () => {
