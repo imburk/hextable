@@ -118,3 +118,55 @@ test("1: the instruction is listed with `reactionsOf` and set by the existing `r
   const f = apply(s, { type: "reactions", actor: "fighter", set: { [RESISTANCE]: "always" } }, DM);
   assert.equal(f.ok, false, "a creature with no Legendary Resistance has no such instruction");
 });
+
+// ---------- 8: every save site ----------
+// A test that reads the sources (as imports.test.js does for import cycles): each call of `savingThrow(` is followed, within the next lines, by `resistFailure`, or is on a
+// list of exceptions with its reason. A new save added without either fails here.
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const SRC = fileURLToPath(new URL("../src/", import.meta.url));
+const EXCEPTIONS = [
+  { file: "engine/rolls.js", line: /return savingThrow\(s, t, abil, dc, null, from, null, r\.name, ev, conds\)/, why: "Countercharm's second roll is not the outcome: it goes back to the save site that asked for it (effects.js), which calls resistFailure on the result of both" },
+];
+function sources(dir = SRC, out = []) {
+  for (const f of readdirSync(dir)) { const p = join(dir, f); if (statSync(p).isDirectory()) sources(p, out); else if (p.endsWith(".js")) out.push(p); }
+  return out.sort();
+}
+function calls() {
+  const found = [];
+  for (const p of sources()) {
+    const lines = readFileSync(p, "utf8").split("\n");
+    lines.forEach((text, i) => {
+      const code = text.replace(/\/\/.*$/, "");
+      if (!/\bsavingThrow\(/.test(code) || /function\s+savingThrow\(/.test(code)) return;
+      found.push({ file: relative(SRC, p).replaceAll("\\", "/"), n: i + 1, text, after: lines.slice(i, i + 12).join("\n") });
+    });
+  }
+  return found;
+}
+
+test("8: every `savingThrow(` call is followed by resistFailure or is a listed exception", () => {
+  const all = calls();
+  assert.ok(all.length >= 11, `the sites were found (${all.length})`);
+  const used = new Set();
+  const bare = [];
+  for (const c of all) {
+    if (/\bresistFailure\b/.test(c.after)) continue;
+    const ex = EXCEPTIONS.findIndex((x) => x.file === c.file && x.line.test(c.text));
+    if (ex < 0) bare.push(`${c.file}:${c.n}: ${c.text.trim()}`);
+    else used.add(ex);
+  }
+  assert.deepEqual(bare, [], "a save with no resistFailure after it and no exception");
+  EXCEPTIONS.forEach((x, i) => { assert.ok(used.has(i), `the exception for ${x.file} (${x.why}) names no call any more`); assert.ok(x.why.length > 20); });
+});
+
+test("8: the save sites are the ones this stage knows (a new one is told here, with what it does)", () => {
+  const sites = calls().map((c) => `${c.file}: ${c.text.trim().replace(/\s+/g, " ").slice(0, 60)}`);
+  const files = sites.map((x) => x.split(":")[0]);
+  const count = (f) => files.filter((x) => x === f).length;
+  assert.deepEqual({ effects: count("effects.js"), durations: count("durations.js"), dm: count("engine/dm.js"), resolve: count("engine/resolve.js"), rolls: count("engine/rolls.js") },
+    { effects: 1, durations: 3, dm: 1, resolve: 5, rolls: 1 });
+  assert.equal(sites.length, 11);
+});

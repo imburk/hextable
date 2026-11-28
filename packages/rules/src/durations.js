@@ -199,8 +199,10 @@ function boundary(s, ev, e, kit, when) {
       if (p.ends.on === when && whose(fx, p) === e.id && !(when === 'turnEnd' && thisTurn(s, p.born))) endPart(s, ev, fx, p);
       else if (p.ends.on === 'save' && p.ends.at === when && p.target === e.id) {
         const { used, ...sv } = kit.savingThrow(s, e, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null);
-        ev.push({ type: 'save', id: e.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) });
+        const saved = { type: 'save', id: e.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) };
+        ev.push(saved);
         useUp(s, ev, used ?? []);
+        kit.resistFailure?.(s, e, sv, { matters: true }, ev, saved);          // Legendary Resistance: keeping what holds it is what it would lose (engine/rolls.js)
         if (sv.success) endPart(s, ev, fx, p);
       }
     }
@@ -237,8 +239,10 @@ export function damaged(s, ev, t, by = null, kit = null) {
       if ((p.ends.on === 'damaged' || p.ends.orDamaged) && (p.ends.by !== 'source' || (by !== null && side(by) !== undefined && side(by) === side(fx.source)))) endPart(s, ev, fx, p);
       else if (p.ends.on === 'save' && p.ends.at === 'damaged' && kit && !t.dead) {
         const { used, ...sv } = kit.savingThrow(s, t, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null);
-        ev.push({ type: 'save', id: t.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) });
+        const saved = { type: 'save', id: t.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) };
+        ev.push(saved);
         useUp(s, ev, used ?? []);
+        kit.resistFailure?.(s, t, sv, { matters: true }, ev, saved);
         if (sv.success) endPart(s, ev, fx, p);
       }
     }
@@ -269,8 +273,10 @@ export function concentrationCheck(s, ev, t, amount, kit) {
   if (!held.length || amount <= 0) return;
   const dc = Math.min(30, Math.max(10, Math.floor(amount / 2)));
   const { used, ...sv } = kit.savingThrow(s, t, 'con', dc, 'concentration');
-  ev.push({ type: 'concentration', id: t.id, dc, ...sv, name: held.map((fx) => fx.name).join(', ') });
+  const saved = { type: 'concentration', id: t.id, dc, ...sv, name: held.map((fx) => fx.name).join(', ') };
+  ev.push(saved);
   useUp(s, ev, used ?? []);
+  kit.resistFailure?.(s, t, sv, { matters: true }, ev, saved);          // Legendary Resistance: a resisted save keeps the Concentration
   if (!sv.success) breakConcentration(s, ev, t.id, `${t.name} lost Concentration`);
 }
 // Anything that stops a creature acting also ends what it was concentrating on.

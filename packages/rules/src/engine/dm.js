@@ -19,7 +19,7 @@ import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, spot, up } from './shared.js';
 import { airspace, AREA_FILLS, editMap, bringIn, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
-import { condition, GRANTS, grantOf, heal, savingThrow } from './rolls.js';
+import { condition, GRANTS, grantOf, heal, resistFailure, savingThrow } from './rolls.js';
 import { ABILITIES, DAMAGE_TYPES } from '../content/schema.js';
 import { roll } from '../rng.js';
 import { makeEntity } from './sheets.js';
@@ -368,8 +368,12 @@ export const handlers = {
     for (const t of ts) {
       const mark = ev.length;
       const { used, ...sv } = savingThrow(s, t, abil, a.dc, null, null, mode === 'disadvantage' ? GRANTS.disadvantage : null, mode === 'advantage' ? GRANTS.advantage : null, ev);
-      ev.push({ type: 'save', id: t.id, abil, dc: a.dc, called: true, ...(a.secret ? { secret: true } : {}), ...sv });
+      const saved = { type: 'save', id: t.id, abil, dc: a.dc, called: true, ...(a.secret ? { secret: true } : {}), ...sv };
+      ev.push(saved);
       useUp(s, ev, used ?? []);
+      // Legendary Resistance (rolls.js): with the table setting on it is the creature's own instruction that decides, and what it cannot read (a call with neither damage nor a condition) is the DM's, told in a note;
+      // with the setting off the note below stands as it always did.
+      resistFailure(s, t, sv, { onFail: [...(dmg ? [{ damage: dmg.dice, type: dmg.type }] : []), ...(a.condition !== undefined ? [{ condition: a.condition }] : [])], half: !!dmg?.half, unread: !dmg && a.condition === undefined }, ev, saved);
       // A secret save keeps its outcome from the owner too: what was spent to turn it (a Bardic Inspiration die, Indomitable) is not told to players (view.js, `hush`).
       if (a.secret) for (let i = mark; i < ev.length; i++) if (ev[i].type !== 'save') ev[i].hush = true;
       // Evasion (as effects.js has it): a Dexterity save for half damage does none on a success and half on a failure.
@@ -377,7 +381,7 @@ export const handlers = {
       if (evade) ev.push({ type: 'note', id: t.id, text: sv.success ? 'Evasion: no damage' : 'Evasion: half damage', ...(a.secret ? { hush: true } : {}) });      // a secret save's outcome is not told
       // Legendary Resistance is the DM's to spend: asked of the DM alone, never decided by the engine. A creature's block says it has it (`e.legendary.resistance`);
       // the trait is read too until every legendary monster has a block (stage L1e), so no monster loses the note.
-      if (!sv.success && (t.legendary?.resistance || CONTENT.monsters[t.tpl]?.traits?.some((x) => x.id === 'legendary-resistance'))) ev.push({ type: 'manual', actor: t.id, name: 'Legendary Resistance', partial: true, text: `${t.name} failed the saving throw and has Legendary Resistance. The DM decides whether it spends a use to succeed instead; the engine has applied the failure.` });
+      if (!sv.success && !(s.settings?.legendaryResistance === true && t.legendary?.resistance) && (t.legendary?.resistance || CONTENT.monsters[t.tpl]?.traits?.some((x) => x.id === 'legendary-resistance'))) ev.push({ type: 'manual', actor: t.id, name: 'Legendary Resistance', partial: true, text: `${t.name} failed the saving throw and has Legendary Resistance. The DM decides whether it spends a use to succeed instead; the engine has applied the failure.` });
       if (dmg && (!sv.success || dmg.half) && !t.dead && !(evade && sv.success)) {
         const n = sv.success || evade ? Math.floor(r.total / 2) : r.total;
         if (n > 0) damage(s, t, [{ amount: n, type: dmg.type, dice: r.dice, bonus: r.bonus }], null, ev);
