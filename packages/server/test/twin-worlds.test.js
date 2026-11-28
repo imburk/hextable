@@ -1730,6 +1730,34 @@ test("magic circle: a party creature of a chosen type giving Charmed to a target
   assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("keeps"), "no refusal told");
 });
 
+// ---- Hallow (#918): a barrier-only ward of a DM-hidden caster binds nothing the players are sent (the walk, the teleportation) ----
+const hiddenHallow = (w) => {
+  w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 0 }, name: "Ghost", hidden: true });
+  Object.assign(byName(w, "Ghost"), { hp: 500, maxHp: 500, spells: ["hallow"], slots: { 5: 2 }, slotsMax: { 5: 2 } });
+  w.must({ type: "cast", actor: byName(w, "Ghost").id, spell: "hallow", hex: { q: 7, r: 0 }, slot: 5, choice: ["fey", "aberration"] });
+};
+const burnHallow = (w) => { hiddenHallow(w); delete w.state.entities[byName(w, "Ghost").id]; w.state.effects = w.state.effects.filter((fx) => !fx.zone?.ward); };
+test("hallow: a party creature of a chosen type walking, then teleporting, into a hidden caster's ward is sent the same as with no ward (no refusal, no stop note)", () => {
+  const r = twin({
+    players: ["Pat"],
+    setup(w) {
+      w5p3Field(w, { fey: true });
+      Object.assign(w.state.entities.fighter, { spells: ["misty-step"], slots: { 2: 3 }, slotsMax: { 2: 3 } });
+      w.must({ type: "place", actor: "fighter", to: { q: 22, r: 0 } });
+      w.putIn();
+    },
+    steps: [
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 17, r: 0 } }, allowError: true },
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 12, r: 0 } }, allowError: true },
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 17, r: 0 } }, allowError: true },
+      { by: "Pat", act: { type: "cast", actor: "fighter", spell: "misty-step", hex: { q: 14, r: 0 } }, allowError: true },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } },
+    ],
+  }, { hide: hiddenHallow, plain: burnHallow });
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("Ghost"));
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("keeps"), "no refusal told");
+});
+
 // ---- Lasting zones (#842): what players are sent of a zone, and what they are not ----
 // A zone is put in through the rules, as a cast leaves it (rules zones.js: area, on, follows or hexes and origin, spare, steps, src, last), because a creature the DM
 // has hidden cannot cast in a fight, and one that casts is told of. The players are kept clear of every zone: a creature that walked into one would be hurt by it, and

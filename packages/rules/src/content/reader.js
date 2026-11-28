@@ -614,7 +614,7 @@ class Reading {
       if (a.placed !== undefined && !(a.placed === true && a.shape === 'line')) this.bad('`placed` is true, on a line.');
       if (a.width !== undefined) { if (isInt(a.width)) this.num(`${this.pre}target.area.width`, a.width, 'feet'); else this.bad('`width` is not feet.'); }
       if (a.space !== undefined && !(a.shape === 'sphere' && ['large', 'huge', 'gargantuan'].includes(a.space))) this.bad('`space` is large, huge or gargantuan, on a sphere.');
-      const range = typeof d.range === 'number' ? d.range : 0;
+      const range = typeof d.range === 'number' ? d.range : d.range === 'touch' ? 5 : 0;      // touch is 5 feet (Hallow's point)
       const bits = [`The ${a.shape} ${a.placed === true && a.shape === 'line' ? `is put down within ${range} feet` : AREA_PLACE[a.shape](range)}`];
       if (a.placed === true && a.shape === 'line') bits.push(`it is a wall centred on the space the caster picks, running toward a second space the caster may name (otherwise across the line from the caster to the first), ${a.width ?? 5} feet thick and ${isInt(a.height) ? a.height : 5} feet high`);
       bits.push(a.exceptCaster === true || (d.zone !== undefined && a.shape === 'emanation') ? 'it catches every creature in it except the caster' : 'it catches every creature in it, the caster too if the caster is in it');
@@ -684,12 +684,12 @@ class Reading {
     const from = Array.isArray(c.from) ? c.from.filter((x) => CHOICES[c.of].includes(x)) : null;
     const word = (x) => (c.of === 'ability' ? ABILITY_WORDS[x] : c.of === 'condition' ? cond(x) : c.of === 'skill' ? x.replace(/-/g, ' ') : c.of === 'curse' ? (ABILITIES.includes(x) ? `${ABILITY_WORDS[x]} checks and saves` : CURSE_WORDS[x]) : c.of === 'affliction' ? AFFLICTION_WORDS[x] : c.of === 'shape' ? SHAPE_WORDS[x] : c.of === 'resize' ? RESIZE_WORDS[x] : c.of === 'water' ? WATER_WORDS[x] : x);
     const opts = from ? ` (${list(from.map(word), 'or')})` : c.of === 'shape' ? ` (${list(STONE_SHAPES.map((x) => SHAPE_WORDS[x]), 'or')})` : c.of === 'resize' ? ` (${list(RESIZES.map(word), 'or')})` : c.of === 'water' ? ` (${list(WATERS.map(word), 'or')})` : c.of === 'curse' ? ` (${list(CURSES.map(word), 'or')})` : c.of === 'affliction' ? ` (${list(AFFLICTIONS.map(word), 'or')})` : c.of === 'ward' ? ` (${list((from ?? WARDS).map(word), 'and')})` : c.of === 'beast' && !from ? ' (any Beast the game has)' : '';
-    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${opts}; ${c.of === 'curse' ? 'a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it' : c.of === 'affliction' ? 'a step below that names an affliction is part of the cast only for the one chosen' : c.of === 'shape' ? 'a step below that names a shape is part of the cast only for the one chosen' : c.of === 'resize' || c.of === 'water' ? 'a step below that is for one of them is part of the cast only for the one chosen' : c.of === 'ward' ? 'the kinds are the types of creature the circle works against, and the caster also says whether to reverse it' : c.of === 'beast' ? 'a step below that says "chosen" uses that Beast' : 'each step below that says "chosen" uses that choice'}.`);
+    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${opts}; ${c.of === 'curse' ? 'a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it' : c.of === 'affliction' ? 'a step below that names an affliction is part of the cast only for the one chosen' : c.of === 'shape' ? 'a step below that names a shape is part of the cast only for the one chosen' : c.of === 'resize' || c.of === 'water' ? 'a step below that is for one of them is part of the cast only for the one chosen' : c.of === 'ward' ? (this.def.zone?.ward === 'bar' ? 'the kinds are the types of creature the ward works against; it cannot be reversed' : 'the kinds are the types of creature the circle works against, and the caster also says whether to reverse it') : c.of === 'beast' ? 'a step below that says "chosen" uses that Beast' : 'each step below that says "chosen" uses that choice'}.`);
   }
 
   zone(aim) {
     const z = this.def.zone;
-    if (!isObj(z) || (z.ward !== true && !Array.isArray(z.on))) return this.bad('The zone is not an object with a list `on`.');
+    if (!isObj(z) || (z.ward !== true && z.ward !== 'bar' && !Array.isArray(z.on))) return this.bad('The zone is not an object with a list `on`.');
     this.odd(z, ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'with', 'beside', 'ward'], 'The zone');
     if (z.move !== undefined && !isInt(z.move)) this.bad('The zone\'s `move` is not a whole number of feet.');
     if (z.budget !== undefined && !isInt(z.budget)) this.bad('The zone\'s `budget` is not a whole number.');
@@ -699,6 +699,11 @@ class Reading {
       return this.dm('The lasting area: the engine cannot lay it out.');
     }
     // A circle (Magic Circle, `ward`): a barrier that goes off on nobody (docs/specs/rules-expansion.md, "Build notes: wave 5 part 3").
+    if (z.ward === 'bar') {
+      this.line(`${cap1(AREA_WORDS[a.shape](a))} stays where it was laid out for as long as the spell lasts. It is a barrier, not something that goes off: it affects nobody as it appears, and the steps below are the DM's.`);
+      this.line('Of the kinds of creature the caster chose, a creature cannot willingly walk, fly or climb into it (the move is refused; forced movement still takes it in), cannot teleport into it (the teleportation does not happen, and no saving throw is allowed), and cannot give a target inside the Charmed or Frightened condition. It gives no Disadvantage on attack rolls, and it cannot be reversed. A creature whose type the engine cannot tell is not held by it. For a creature of the party, a ward whose caster the party does not know of holds nobody, as a refusal would tell the players something is there; the DM judges it.');
+      return;
+    }
     if (z.ward === true) {
       this.line(`${cap1(AREA_WORDS[a.shape](a))} stays where it was laid out for as long as the spell lasts. It is a barrier, not something that goes off: it affects nobody as it appears, and the steps below are the DM's.`);
       this.line('Of the kinds of creature the caster chose, a creature cannot willingly walk, fly or climb into it (the move is refused; forced movement still takes it in), must succeed on a Charisma saving throw against the caster\'s spell save DC to teleport into it (on a failure it stays where it is, and what was spent on the casting stays spent), has Disadvantage on attack rolls against targets inside, and cannot give a target inside the Charmed or Frightened condition. If the caster reversed it, all of that holds the other way: such a creature cannot willingly leave, the save is for teleporting out, and targets outside are the ones protected. A creature whose type the engine cannot tell is not held by it. For a creature of the party, a circle whose caster the party does not know of holds nobody, as a refusal would tell the players something is there; the DM judges it.');
