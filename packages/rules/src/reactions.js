@@ -33,7 +33,7 @@ import { CONTENT, SPELLS } from './content/index.js';
 import { handsFull, isUnarmed, steadiest } from './weapons.js';
 import { incapacitated } from './modifiers.js';
 import { SIZES } from './content/schema.js';
-import { ownerOf } from './engine/shared.js';
+import { ownerOf, resistLeft } from './engine/shared.js';
 import { mayAskHit } from './hitchoices.js';
 
 export const OPPORTUNITY = 'opportunity-attack';
@@ -179,7 +179,11 @@ export const canReact = (e) => !!e && !e.dead && e.hp > 0 && !e.reactionUsed && 
 // A companion is asked through its master's player (ownerOf).
 // A default of `ask` counts too (Investment of the Chain Master's Resistance for a master a player runs: `dfltPlayer`), read from the
 // feature itself so that this stays cheap; no other reaction has a default of `ask`.
-export const mayAsk = (s) => mayAskHit(s) || Object.values(s.entities).some((e) => ((e.reactions && Object.values(e.reactions).includes('ask'))
+// Legendary Resistance (docs/specs/legendary.md, Decision 6): while the table setting is on, a creature in play with a use left that is set to `ask`, or to `matters` (which asks
+// when it cannot tell), could stop an action to ask the DM, so a copy is taken. With the setting off this is false at once: no extra copy, nothing changes.
+export const mayAskLegendary = (s) => s.settings?.legendaryResistance === true && Object.values(s.entities).some((e) => !e.dead && e.legendary?.resistance && resistLeft(e) > 0
+  && !['always', 'never'].includes(e.reactions?.[RESISTANCE]));
+export const mayAsk = (s) => mayAskHit(s) || mayAskLegendary(s) || Object.values(s.entities).some((e) => ((e.reactions && Object.values(e.reactions).includes('ask'))
   || (e.feats ?? []).some((f) => f.invest?.ward && !e.reactions?.[f.id])) && ownerOf(s, e));
 
 // Check a `reactions` action's settings against what the creature has. Returns an error text, or null.

@@ -12,7 +12,7 @@ import { canSee, COVER, coverOf, sees } from '../sight.js';
 import { canReact, instruction, reactionsOf, RESISTANCE } from '../reactions.js';
 import { bounded, breathOf, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers, speedOf, untrainedGear, wardName } from '../modifiers.js';
 import { derive } from '../derive.js';
-import { castAbilOf, current, dying, fail, hostile, inFight, living, mod, resistLeft, rollDice, rolledOf, up } from './shared.js';
+import { askDM, castAbilOf, current, dying, fail, hostile, inFight, living, mod, resistLeft, rollDice, rolledOf, up } from './shared.js';
 import { baked, weaponKey } from '../imbue.js';
 
 // A creature has died: the game clock when it did is kept on the body (`diedAt`, minutes; a round in a fight is 0.1 of one), for Revivify's "died within
@@ -793,22 +793,31 @@ export function failureMatters(s, t, site = {}) {
 // `save` event already pushed for it, if any. Returns true when it was spent: `sv` (and `evt`) then say `success: true, resisted: true` with the roll kept, the creature's
 // `resisted` count is one up, and the caller goes on with the success.
 // Off (the table setting `legendaryResistance` is not on) it returns at once and changes nothing. The instruction is the creature's own (`reactionsOf`): `always`, `never`, or `matters`
-// (the default); `ask`, and a `matters` failure the engine cannot read, apply the failure and tell the DM with a `manual` note that a use is left (Decision 7; the question itself
-// is stage L2b).
+// (the default); `ask`, and a `matters` failure the engine cannot read, stop the action and ask the creature's controller (`askDM`, stage L2b); where the action cannot stop (no copy was
+// taken) the failure applies and the DM is told with a `manual` note that a use is left (Decision 7).
 // A legendary creature on the party's side (a homebrew ally) is no exception: its instruction is its controller's, set with `reactions` as for any creature, and
-// `matters` is its default too (Decision 6). Asking a player is stage L2b's `askDM`; until then `ask` falls back to the note.
+// `matters` is its default too (Decision 6). Its player is asked, as the DM is for a monster (`askDM`).
 export function resistFailure(s, t, sv, site, ev, evt = null) {
   if (s.settings?.legendaryResistance !== true) return false;
   if (sv.success || !t?.legendary?.resistance || t.dead || resistLeft(t) < 1) return false;
   const r = reactionsOf(t).find((x) => x.id === RESISTANCE), how = r ? instruction(t, r, s) : 'matters';
   if (how === 'never') return false;
-  let spend = how === 'always';
+  let spend = how === 'always', stopped = false;
   if (how === 'matters') {
     const w = failureMatters(s, t, site);
     if (w === false) return false;
     spend = w === true;
+    stopped = w === null;
+  }
+  // `ask`, and a `matters` failure the engine cannot read: stop and ask the creature's controller (askDM). The answer comes back on the re-run (`react` with
+  // `take: 'legendary-resistance'` spends, `null` lets the failure stand); the dice up to here are the same. Where the action cannot stop, `answer` is null and the note below stands.
+  let answered = false;
+  if (!spend && (how === 'ask' || stopped)) {
+    const a = askDM(s, t, { trigger: 'save', total: sv.total, left: resistLeft(t), ...(typeof evt?.dc === 'number' ? { dc: evt.dc } : {}) }, [{ reaction: RESISTANCE, name: 'Legendary Resistance' }]);
+    if (a) { answered = true; spend = a.take === RESISTANCE; }
   }
   if (!spend) {
+    if (answered) return false;                      // the DM declined: the failure applies, and nothing more is said
     const left = resistLeft(t);
     ev?.push({ type: 'manual', actor: t.id, name: 'Legendary Resistance', partial: true, text: `${t.name} failed the saving throw and has ${left} use${left === 1 ? '' : 's'} of Legendary Resistance left. The DM decides whether it spends one to succeed instead; the engine has applied the failure.` });
     return false;

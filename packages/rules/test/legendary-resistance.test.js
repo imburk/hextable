@@ -224,12 +224,12 @@ test("8: a called save: succeeds under `always`; the old note is replaced by the
   assert.equal(r.events.some((e) => e.type === "damage"), false, "a success takes none");
   assert.deepEqual(manuals(r), []);
   assert.equal(d.legend.resisted, 1);
-  // `ask` (L2b will ask; until then): the failure applies and the DM is told a use is left.
+  // `ask` (L2b): the action stops and the DM is asked; the failure is applied only once the DM declines (legendary-ask.test.js plays it through).
   instruct(s, d, "ask");
   const r2 = call(s, d, { damage: { dice: "4d6", type: "fire" } });
-  assert.equal(saves(r2)[0].success, false);
-  assert.equal(manuals(r2).length, 1);
-  assert.match(manuals(r2)[0].text, /2 uses of Legendary Resistance left/);
+  assert.equal(saves(r2).length, 0, "nothing has happened yet");
+  assert.equal(s.pending.ask.reactor, d.id);
+  ok(s, { type: "react", prompt: s.pending.n, take: null });
   assert.equal(d.legend.resisted, 1);
   // `never` is the DM's word: no note.
   instruct(s, d, "never");
@@ -274,9 +274,11 @@ test("10: `matters`: a failure that changes something is resisted; one that chan
   assert.deepEqual([saves(r)[0].success, saves(r)[0].resisted], [true, true]);
   assert.equal(d.cond.paralyzed, undefined);
   assert.equal(d.legend.resisted, 2);
-  // A call with neither damage nor condition: the engine cannot read what a failure does. It applies the failure and tells the DM.
+  // A call with neither damage nor condition: the engine cannot read what a failure does, so it asks (L2b); a decline applies the failure.
   r = call(s, d, {});
-  assert.equal(saves(r)[0].success, false); assert.equal(manuals(r).length, 1);
+  assert.ok(s.pending, "the DM is asked");
+  r = ok(s, { type: "react", prompt: s.pending.n, take: null });
+  assert.equal(saves(r)[0].success, false); assert.deepEqual(manuals(r), []);
   assert.equal(d.legend.resisted, 2);
 });
 
