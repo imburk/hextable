@@ -3243,7 +3243,7 @@ export const ARMOUR_FIELDS = {
   id: 'skip', name: 'skip', source: 'skip', category: 'header', ac: 'fAc', dex: 'fDex', strength: 'fStrength', stealth: 'fStealth', weight: 'fWeight', cost: 'fCost', checked: 'fChecked',
 };
 export const OBJECT_FIELDS = {
-  id: 'skip', name: 'skip', source: 'skip', text: 'skip', kind: 'header', states: 'fStates', initial: 'fInitial', use: 'fUses', triggers: 'fTriggers', find: 'fFind', dc: 'fDc', connects: 'fConnects',
+  id: 'skip', name: 'skip', source: 'skip', text: 'skip', kind: 'header', states: 'fStates', initial: 'fInitial', use: 'fUses', triggers: 'fTriggers', find: 'fFind', dc: 'fDc', connects: 'fConnects', magic: 'fMagic',
   tier: 'fTier', checked: 'fChecked',
 };
 export const STATE_FIELDS = ['name', 'blocks', 'hidden', 'light'];
@@ -3659,6 +3659,12 @@ class ObjectReading extends Reading {
     this.odd(dc, OBJECT_DC_FIELDS, 'The DCs');
     if (dc.save !== undefined) { if (isInt(dc.save)) { this.num('dc.save', dc.save, 'DC'); this.line(`Its save DC is ${dc.save}: a save in one of its steps that gives no DC of its own is made against it, unless the DM set another where it was placed. With none, the DC is 10.`); } else this.bad('`dc.save` is not a whole number.'); }
     if (dc.find !== undefined) { if (isInt(dc.find)) { this.num('dc.find', dc.find, 'DC'); this.line(`Its find DC is ${dc.find}, unless the DM set another where it was placed.`); } else this.bad('`dc.find` is not a whole number.'); }
+  }
+  fMagic() {
+    const m = this.def.magic;
+    if (m === undefined) return;
+    if (typeof m !== 'boolean') return this.bad('`magic` is true or false.');
+    if (m) this.line('It is magical: a saving throw one of its steps forces counts as against a magical effect, so a creature with Magic Resistance has Advantage on it.');
   }
   fConnects() {
     const c = this.def.connects;

@@ -294,6 +294,7 @@ It has 1 state: "hanging". The engine keeps which one it is in, and the DM can s
 Placed with no state named, it starts in "hanging" (called "hanging").
 It has nothing to use.
 It joins its hex to another place, which the DM names where it is placed. A creature on either end can walk to the other: it costs the difference in height, at least 5 feet, and twice that unless the creature can climb.
+It is magical: a saving throw one of its steps forces counts as against a magical effect, so a creature with Magic Resistance has Advantage on it.
 Tier: auto. The engine runs all of this.
 Not checked against any rulebook.
 

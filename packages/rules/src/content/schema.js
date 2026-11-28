@@ -1345,6 +1345,7 @@ function lintObject(e, say) {
   }
   if (!states.includes(e.initial)) say('`initial` must be one of its states');
   if (e.connects !== undefined && (typeof e.connects !== 'boolean' || e.kind !== 'thing')) say('`connects` is true or false, and only a thing in a hex can join two places');
+  if (e.magic !== undefined && typeof e.magic !== 'boolean') say('`magic` is true or false: true when the thing is a magical effect, so a creature with Magic Resistance has Advantage on the saves it forces');
   if (e.dc !== undefined && !(e.dc && typeof e.dc === 'object' && Object.entries(e.dc).every(([k, n]) => ['save', 'find'].includes(k) && isInt(n) && n > 0))) say('`dc` may give whole numbers for save and find');
   const anyHidden = states.some((st) => e.states[st]?.hidden);
   if (anyHidden && !(e.find && states.includes(e.find.to) && !e.states[e.find.to]?.hidden && isInt(e.dc?.find))) say('something with a hidden state needs `find: { to }` naming the state it is found in, and `dc.find`');
@@ -3300,7 +3301,7 @@ const SHAPES = {
   monsters: { what: 'a monster', keys: ['id', 'name', 'source', 'size', 'type', 'cr', 'xp', 'pb', 'ac', 'hp', 'speed', 'senses', 'abilities', 'initiative', 'languages', 'skills', 'resist', 'vulnerable', 'immune', 'conditionImmune', 'saves', 'hover', 'mount', 'traits', 'actions', 'legendary', 'tier', 'checked', 'text'] },
   items: { what: 'an item', keys: ['id', 'name', 'category', 'rarity', 'attune', 'wear', 'base', 'bonus', 'damageType', 'properties', 'trained', 'mithral', 'grants', 'variant', 'charges', 'activate', 'tier', 'source', 'checked', 'text'] },
   feats: { what: 'a feat', keys: ['id', 'name', 'category', 'prerequisite', 'repeatable', 'tier', 'source', 'checked', 'text', 'increase', 'proficiencies', 'spellPick', 'grants'] },
-  objects: { what: 'an object', keys: ['id', 'name', 'kind', 'source', 'tier', 'checked', 'text', 'states', 'initial', 'use', 'triggers', 'find', 'dc', 'connects'] },
+  objects: { what: 'an object', keys: ['id', 'name', 'kind', 'source', 'tier', 'checked', 'text', 'states', 'initial', 'use', 'triggers', 'find', 'dc', 'connects', 'magic'] },
   weapons: { what: 'a weapon', keys: ['id', 'name', 'category', 'kind', 'damage', 'type', 'properties', 'mastery', 'range', 'versatile', 'ammo', 'twoHandedUnlessMounted', 'weight', 'cost', 'source', 'checked'] },
   armour: { what: 'armour', keys: ['id', 'name', 'category', 'ac', 'dex', 'stealth', 'strength', 'weight', 'cost', 'source', 'checked'] },
   // A subclass of an SRD class (docs/specs/homebrew-subclasses.md, Decision 2): what an SRD class's `subclass` holds, with the class it belongs to.
@@ -3804,7 +3805,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   monsters: { id: 's', name: 's', source: 's', size: 's', type: 's', cr: 'n', xp: 'i', pb: 'i', ac: 'i', hp: 'i', speed: 'o', senses: 'o', abilities: 'o', initiative: 'i', languages: 's[]', skills: 'o', resist: 's[]', vulnerable: 's[]', immune: 's[]', conditionImmune: 's[]', saves: 'o', hover: '?', mount: 's', traits: 'a', actions: 'a', legendary: 'o', tier: 's', checked: 'b', text: 's' },
   items: { id: 's', name: 's', category: 's', rarity: 's', attune: 'b|o', wear: 's', base: 'o', bonus: 'i', damageType: 's', properties: 's[]', trained: 'b', mithral: 'b', grants: 'o', variant: 's', charges: 'o', activate: 'a', tier: 's', source: 's', checked: 'b', text: 's' },
   feats: { id: 's', name: 's', category: 's', prerequisite: 'o', repeatable: 's|b', tier: 's', source: 's', checked: 'b', text: 's', increase: 'o', proficiencies: 'o', spellPick: 'o', grants: 'o' },
-  objects: { id: 's', name: 's', kind: 's', source: 's', tier: 's', checked: 'b', text: 's', states: 'o', initial: 's', use: 'a', triggers: 'a', find: 'o', dc: 'o', connects: 'b' },
+  objects: { id: 's', name: 's', kind: 's', source: 's', tier: 's', checked: 'b', text: 's', states: 'o', initial: 's', use: 'a', triggers: 'a', find: 'o', dc: 'o', connects: 'b', magic: 'b' },
   weapons: { id: 's', name: 's', category: 's', kind: 's', damage: 'd', type: 's', properties: 's[]', mastery: 's', range: 'i[]', versatile: 'd', ammo: 's', twoHandedUnlessMounted: '?', weight: 'n', cost: 's|i', source: 's', checked: 'b' },
   armour: { id: 's', name: 's', category: 's', ac: 'i', dex: 'i|s', stealth: 's', strength: 'i', weight: 'n', cost: 's|i', source: 's', checked: 'b' },
   subclasses: { id: 's', name: 's', class: 's', source: 's', checked: 'b', text: 's', spells: 'o', features: 'a', dmNotes: 's' },

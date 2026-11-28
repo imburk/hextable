@@ -156,7 +156,7 @@ export const objects = [
       pressed: { name: 'pressed', blocks: [] },
       safe: { name: 'wedged', blocks: [] },
     },
-    initial: 'hidden', find: { to: 'found' }, dc: { find: 15, save: 15 },
+    initial: 'hidden', find: { to: 'found' }, dc: { find: 15, save: 15 }, magic: true,
     use: [{ id: 'wedge', name: 'Wedge an Iron Spike under the plate', from: ['found'], to: 'safe', time: 'action' }],
     triggers: [
       {
