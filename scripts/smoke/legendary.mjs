@@ -189,6 +189,42 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await waitShown(dm, '#lg');
       });
 
+      await run.do('the pick leads the bar; By themselves plays the window with no tap, Suggest waits, Off sends nothing', async () => {
+        const auto = (on) => dm.evaluate((v) => { const c = document.getElementById('dm-auto'); c.checked = v; c.dispatchEvent(new Event('change')); }, on);
+        const idleStill = async () => { await idle(dm); await wait(dm, () => !window.hextable.timeline.busy()); };
+        await waitShown(dm, '#lg');
+        // The pick: marked first, its words under it, one button; the other options stay.
+        const row = await dm.$eval('#lg .lg-row', (r) => ({ pick: r.querySelector('.lg-pick')?.innerText ?? '', first: r.children[1]?.className, opts: r.querySelectorAll('.lg-opt').length }));
+        if (!/\u25b8/.test(row.pick) || !/Do it/.test(row.pick) || !/\./.test(row.pick)) throw new Error(`the pick row does not say what it should: ${JSON.stringify(row)}`);
+        if (row.first !== 'lg-pick' || row.opts < 3) throw new Error(`the pick is not first or the options are gone: ${JSON.stringify(row)}`);
+        const bh = await dm.$eval('#lg .lg-take', (b) => b.getBoundingClientRect().height);
+        if (bh < 56) throw new Error(`Do it is under 56 px: ${bh}`);
+        await shot(dm, 'pick');
+        // The switch, sent from DM tools.
+        await dm.evaluate(() => { document.getElementById('dm-auto').checked = false; });
+        await dm.evaluate((id) => window.hextable.act({ type: 'legendarySet', actor: id, set: { self: true } }), drake);
+        await wait(dm, (id) => window.hextable.state.entities[id].legend.self === true, drake);
+        await dm.evaluate(() => { window.__toasts = []; new MutationObserver(() => window.__toasts.push(document.querySelector('#toast')?.textContent ?? '')).observe(document.querySelector('#toast'), { childList: true, characterData: true, subtree: true, attributes: true }); });
+        // Off: nothing is sent, and the bar is there for the DM.
+        await idleStill(); await sleep(2500);
+        if (!(await state(dm, (S) => !!S.encounter.between))) throw new Error('the window was played with Run monsters automatically off');
+        await waitShown(dm, '#lg');
+        // On: it plays by itself after the pause, with no tap, and the bar does not open.
+        await auto(true);
+        await wait(dm, () => !window.hextable.state.encounter.between, null, 20000);
+        if (!(await dm.evaluate(() => window.__toasts.some((t) => /^Verdigris: /.test(t))))) throw new Error(`no toast said what was done: ${await dm.evaluate(() => JSON.stringify(window.__toasts))}`);
+        await auto(false); await idleStill();
+        // Suggest, on: nothing is sent while a creature set to Suggest is still to choose.
+        await toWindow();
+        await dm.evaluate((id) => window.hextable.act({ type: 'legendarySet', actor: id, set: { self: false } }), drake);
+        await wait(dm, (id) => window.hextable.state.entities[id].legend.self === false, drake);
+        await auto(true); await idleStill(); await sleep(2500);
+        if (!(await state(dm, (S) => !!S.encounter.between))) throw new Error('a creature on Suggest was played by itself');
+        await waitShown(dm, '#lg');
+        await auto(false);
+        await dm.evaluate((id) => window.hextable.act({ type: 'legendarySet', actor: id, set: { self: false } }), drake);
+      });
+
       await run.do("Turns counts the dragon's uses; DM tools has its switches and the two table settings", async () => {
         // The settings wait for the window to close (nothing but its own actions is accepted meanwhile); a dying creature's turn can open the next one, so Done is tapped until the table moves on.
         for (let i = 0; i < 8 && (await state(dm, (S) => !!S.encounter?.between)); i++) { await waitShown(dm, '#lg'); await tapIt(dm.locator('#lg [data-done]')); await sleep(500); await idle(dm); }
