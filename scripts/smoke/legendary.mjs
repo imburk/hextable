@@ -107,8 +107,10 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
       // A tap on the map at a creature's place or a hex, on the canvas and not under the window.
       const tapSpot = async (pos, what) => {
         await dm.evaluate((p) => window.hextable.R.focus('fighter', true), pos); await sleep(700);
-        const pt = await dm.evaluate((p) => window.hextable.R.screenOf(p), pos);
-        if (!pt || !(await onCanvas(dm, pt.x, pt.y))) throw new Error(`${what} is not on the map to tap at ${JSON.stringify(pt)}`);
+        // #906: a toast ("To do: ...") can lie over the spot for a few seconds: wait for the map to be under it, and say what covers it if it never is.
+        let pt = null;
+        for (let i = 0; i < 16; i++) { pt = await dm.evaluate((p) => window.hextable.R.screenOf(p), pos); if (pt && (await onCanvas(dm, pt.x, pt.y))) break; await sleep(500); }
+        if (!pt || !(await onCanvas(dm, pt.x, pt.y))) throw new Error(`${what} is not on the map to tap at ${JSON.stringify(pt)}, under ${await dm.evaluate((q) => { const el = q && document.elementFromPoint(q.x, q.y); return el ? `${el.tagName}#${el.id}.${el.className}`.slice(0, 80) : 'nothing'; }, pt)}`);
         await tapAt(dm, phoneDM, pt.x, pt.y);
       };
 
