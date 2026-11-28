@@ -62,6 +62,9 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   // `endSpell: true` (Searing Smite), only inside an `eachTurn`: the lasting effect those steps belong to ends, with everything it put on any creature. Put in a save's `onSuccess`: "a success ends the spell".
   // docs/specs/rules-expansion.md, "Build notes: wave 1 fight spells (#786)".
   'endSpell',
+  // `release: true` (Conjure Elemental), only inside an `eachTurn`: every part of the lasting effect on *that creature* ends (its condition, its `eachTurn`), and the spell goes on. Put in a save's `onSuccess`:
+  // "on a success it isn't Restrained by the spirit". The spell's zone, which `hold`s one creature, may then hold another. docs/specs/rules-expansion.md, "Build notes: Conjure Elemental (#921)".
+  'release',
   // `arm: { damage, type, addMod?, time?, range? }` (Flame Blade; Produce Flame with `range`): for as long as the lasting effect holds, the creature it works on has one more action to take with the Attack command: a melee spell
   // attack (reach 5 feet) with the caster's spell attack bonus, dealing `damage` (plus the spellcasting modifier with `addMod`) of `type`. It takes the Action, or the Bonus Action with `time: 'bonus'`.
   // With `range: <feet>` it is a ranged spell attack at a creature within that many feet instead (Produce Flame's hurl, 60).
@@ -233,8 +236,8 @@ export const CURE_WORDS = ['exhaustionLevel', 'curse', 'curses'];
 export const RESIZES = ['enlarge', 'reduce'];
 // `water` (Control Water): the four effects of the spell. A step with `ifChoice` is part of the cast only for the values it lists (effects.js reads the choice from the cast).
 export const WATERS = ['flood', 'part', 'redirect', 'whirlpool'];
-// `ward` (Magic Circle): the kinds of creature a circle may be set against, one or more of them (the cast's `choice` is a list of these; `reverse: true` turns the circle round).
-export const WARDS = ['celestial', 'elemental', 'fey', 'fiend', 'undead'];
+// `ward` (Magic Circle, Hallow): the kinds of creature a circle may be set against, one or more of them (the cast's `choice` is a list of these; `reverse: true` turns the circle round). A spell may list the kinds it offers (`choice.from`): Magic Circle's five, Hallow's six.
+export const WARDS = ['aberration', 'celestial', 'elemental', 'fey', 'fiend', 'undead'];
 // `beast` (Polymorph): the id of an SRD Beast stat block the caster may turn the target into (every Beast of the SRD pack; a test holds the list to the pack). Whether its Challenge Rating suits the target is the engine's, at the cast.
 export const BEASTS = ["allosaurus","ankylosaurus","ape","archelon","baboon","badger","bat","black-bear","blood-hawk","boar","brown-bear","camel","cat","constrictor-snake","crab","crocodile","deer","dire-wolf","draft-horse","eagle","elephant","elk","frog","giant-ape","giant-badger","giant-bat","giant-boar","giant-centipede","giant-constrictor-snake","giant-crab","giant-crocodile","giant-fire-beetle","giant-frog","giant-goat","giant-hyena","giant-lizard","giant-octopus","giant-rat","giant-scorpion","giant-seahorse","giant-shark","giant-spider","giant-toad","giant-venomous-snake","giant-wasp","giant-weasel","giant-wolf-spider","goat","hawk","hippopotamus","hunter-shark","hyena","jackal","killer-whale","lion","lizard","mammoth","mastiff","mule","owl","panther","piranha","plesiosaurus","polar-bear","pony","pteranodon","rat","raven","reef-shark","rhinoceros","riding-horse","saber-toothed-tiger","scorpion","seahorse","spider","tiger","triceratops","tyrannosaurus-rex","venomous-snake","vulture","warhorse","weasel","wolf"];
 // `form` (Shapechange; a `polymorph` step with `not`; docs/specs/rules-expansion.md, "Build notes: manual spells B4"): every stat block of the SRD pack, which the spell's step narrows (its `types`, `not`, `size` and `cr`: Animal Shapes, Shapechange). A test holds the list to the pack.
@@ -360,9 +363,10 @@ function lintZone(e, say, action = false) {
   const z = e.zone;
   if (z === undefined) return;
   if (!z || typeof z !== 'object' || Array.isArray(z)) return say('`zone` must be an object');
-  for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'with', 'beside', 'ward'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
+  for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'hold', 'with', 'beside', 'ward'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
   // `ward: true` (Magic Circle): the zone is a barrier, not something that goes off: it has no `on`, and the cast's `choice` is the types it works against (docs/specs/rules-expansion.md, "Build notes: wave 5 part 3").
-  if (z.ward !== undefined && !(z.ward === true && !action && e.target?.area?.shape === 'cylinder' && e.choice?.of === 'ward' && z.on === undefined && Object.keys(z).length === 1)) say('`zone.ward` is true, alone, on a spell whose area is a cylinder and whose `choice` is of `ward`');
+  // `ward: 'bar'` (Hallow): a barrier only: the chosen kinds cannot willingly enter (teleporting in is refused with no save) or give a target inside the Charmed or Frightened condition; no Disadvantage on attack rolls, and it has no reverse. A sphere or a cylinder.
+  if (z.ward !== undefined && !((z.ward === true ? e.target?.area?.shape === 'cylinder' : z.ward === 'bar' && ['sphere', 'cylinder'].includes(e.target?.area?.shape)) && !action && e.choice?.of === 'ward' && z.on === undefined && Object.keys(z).length === 1)) say('`zone.ward` is true (a cylinder) or "bar" (a sphere or a cylinder), alone, on a spell whose `choice` is of `ward`');
   // `seen: true` ("a creature you can see") and `foes: true` (the caster forces only creatures that are not on its side): a spell's zone, which goes off only on such creatures. `with: "move"` (Conjure Animals): the zone may be moved when its caster moves, on its turn, and not with an action;
   // `beside: { feet, modifier }`: while the caster is within `feet` of the zone's own space it has that modifier (Advantage on Strength saves); only on a zone that is laid out from a space (`area.space`).
   for (const k of ['seen', 'foes']) if (z[k] !== undefined && !(z[k] === true && !action && z.ward === undefined)) say(`\`zone.${k}\` is true or left out, on a spell's zone`);
@@ -372,7 +376,15 @@ function lintZone(e, say, action = false) {
     if (!(b && typeof b === 'object' && !Array.isArray(b) && Object.keys(b).every((k) => ['feet', 'modifier'].includes(k)) && isInt(b.feet) && b.feet >= 5 && b.feet <= 30 && b.feet % 5 === 0 && b.modifier && typeof b.modifier === 'object' && !action && e.target?.area?.space !== undefined)) say('`zone.beside` is { feet: 5 to 30, a multiple of 5, modifier: a modifier }, on a spell whose area is laid out from a space (`area.space`)');
     else { lintModifier(b.modifier, (m) => say(`in \`zone.beside\`: ${m}`), false, true); if (!(b.modifier.on?.startsWith('save') || b.modifier.on === 'check' || b.modifier.on === 'attack.roll')) say('`zone.beside.modifier` is on a save, a check or an attack roll'); }
   }
-  if (e.target?.area?.space !== undefined && !(z.move !== undefined && z.on !== undefined)) say('an area laid out from a space (`area.space`) is the zone of a spell with `zone.move`');
+  // `hold: true` (Conjure Elemental: "if the spirit has no creature Restrained"): the zone goes off only while no creature is Restrained by this lasting effect (a part of it with the `restrained` condition that has not ended). It is for a zone whose steps
+  // Restrain a creature and let it go (a `release` step in an `eachTurn`), and those steps are for such a zone alone. A spell's zone only. The engine reads it from the `release` step (zones.js `holding`), as the zone record has no key for it.
+  if (z.hold !== undefined && !(z.hold === true && !action)) say('`zone.hold` is true or left out, on a spell\'s zone');
+  if (!action) {
+    const steps = z.effects ?? e.effects ?? [], has = (kind, test = () => true) => { let found = false; if (Array.isArray(steps)) walkSteps(steps, (st) => { if (st && typeof st === 'object' && kind in st && test(st)) found = true; }); return found; };
+    if (z.hold === true && !(has('condition', (st) => st.condition === 'restrained' && st.ends === undefined) && has('release'))) say('`zone.hold` is for a zone whose steps Restrain a creature with no ending of its own and release it (a `release` step in an `eachTurn`)');
+    if (z.hold !== true && has('release')) say('a `release` step lets go of the one creature a zone holds: the zone needs `hold: true`');
+  }
+  if (e.target?.area?.space !== undefined && !(z.on !== undefined && (z.move !== undefined || z.hold === true))) say('an area laid out from a space (`area.space`) is the zone of a spell with `zone.move` (or one that `hold`s a creature, which does not move)');
   // `budget: n` (Guardian of Faith: "vanishes when it has dealt a total of 60 damage"): the zone's lasting effect ends once the damage its steps have dealt adds up to `n`. A spell's zone only.
   if (z.budget !== undefined && !(isInt(z.budget) && z.budget >= 1 && z.budget <= 120 && !action)) say('`zone.budget` is a whole number of damage, 1 to 120, on a spell\'s zone');
   if (z.ward === undefined && !(Array.isArray(z.on) && z.on.length && z.on.every((x) => ['enter', 'step', 'turnStart', 'turnEnd'].includes(x)) && new Set(z.on).size === z.on.length)) say('`zone.on` lists enter, turnStart and/or turnEnd, or step (each 5 feet walked within the area)');
@@ -434,7 +446,7 @@ function lintChoice(e, say) {
     if (m.types?.includes('chosen')) used.add('damageType');
   });
   walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); if (st.command === 'chosen') used.add('command'); if (st.polymorph === 'chosen') used.add(Array.isArray(st.not) ? 'form' : 'beast'); if (st.familiarity === 'chosen') used.add('familiarity'); });
-  if (e.zone?.ward === true) used.add('ward');
+  if (e.zone?.ward === true || e.zone?.ward === 'bar') used.add('ward');
   if (c !== undefined) {
     if (!c || !Object.hasOwn(CHOICES, c.of)) return say(`\`choice.of\` is one of ${Object.keys(CHOICES).join(', ')}`);
     if (c.from !== undefined && !(Array.isArray(c.from) && c.from.length > 1 && c.from.every((x) => CHOICES[c.of].includes(x)))) say(`\`choice.from\` lists ${c.of} values`);
@@ -541,6 +553,8 @@ function lintImbue(i, say) {
 }
 // What an `eachTurn` may hold: what a spell does to the creature at the start of its turn (heal, Temporary Hit Points, damage, a save that may end the spell) and what it hands to the DM.
 const EACH_TURN_KINDS = ['heal', 'tempHp', 'damage', 'save', 'endSpell', 'manual'];
+// What a save inside an `eachTurn` may do in its branches: on a failure damage (Conjure Elemental's 4d8), a note or the end of the spell; on a success the end of the spell, a release or a note.
+const EACH_TURN_BRANCH = { onFail: ['damage', 'endSpell', 'manual'], onSuccess: ['endSpell', 'release', 'manual'] };
 // `arm`: a melee spell attack the spell gives its caster for as long as it lasts (Flame Blade).
 function lintArm(a, say) {
   if (!a || typeof a !== 'object' || Array.isArray(a)) return say('`arm` is { damage, type, addMod?, time?, range? }');
@@ -623,8 +637,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       const inner = Array.isArray(step.eachTurn) ? step.eachTurn : [];
       if (!seen.eachOk) say('an `eachTurn` step is for a spell that lasts: it needs a lasting effect to hang on');
       if (!(inner.length >= 1 && inner.length <= 4 && inner.every((x) => x && typeof x === 'object' && EACH_TURN_KINDS.includes(STEPS.find((k) => k in x))))) say(`\`eachTurn\` lists one to four steps, each one of: ${EACH_TURN_KINDS.join(', ')}`);
-      // A save in the list decides one thing: whether the spell ends (or a note for the DM). Its branches hold `endSpell` and `manual` steps only.
-      for (const x of inner) if (x && typeof x === 'object' && 'save' in x) for (const b of ['onFail', 'onSuccess']) if (x[b] !== undefined && !(Array.isArray(x[b]) && x[b].length >= 1 && x[b].length <= 2 && x[b].every((y) => y && typeof y === 'object' && ['endSpell', 'manual'].includes(STEPS.find((k) => k in y))))) say(`a save inside \`eachTurn\` has \`${b}\` steps that are endSpell or manual only`);
+      // A save in the list decides one thing: whether the spell ends or the creature is released (or damage on a failure, or a note for the DM). Its branches hold those steps only.
+      for (const x of inner) if (x && typeof x === 'object' && 'save' in x) for (const b of ['onFail', 'onSuccess']) if (x[b] !== undefined && !(Array.isArray(x[b]) && x[b].length >= 1 && x[b].length <= 2 && x[b].every((y) => y && typeof y === 'object' && EACH_TURN_BRANCH[b].includes(STEPS.find((k) => k in y))))) say(`a save inside \`eachTurn\` has \`${b}\` steps that are ${EACH_TURN_BRANCH[b].slice(0, -1).join(', ')} or manual only`);
       if (step.when !== undefined) say('an `eachTurn` step has no `when`: say it on the steps inside');
     }
     if (kind === 'stabilize' && step.stabilize !== true) say('`stabilize` is true');
@@ -654,6 +668,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     // `confuse` (Confusion): true, in a spell that lasts; its `ends` is a repeated save at the end of the creature's turn, as a condition's.
     if (kind === 'confuse') { if (step.confuse !== true) say('`confuse` is true'); if (!seen.eachOk) say('a `confuse` step is for a spell that lasts: the effect holds it'); if (step.ends !== undefined && !(step.ends?.on === 'save' && step.ends.at === 'turnEnd')) say('a `confuse` step ends on a save at the end of its creature\'s turn: `ends: { on: "save", save, at: "turnEnd" }`'); }
     if (kind === 'arm') { lintArm(step.arm, say); if (!seen.eachOk) say('an `arm` step is for a spell that lasts: the action it gives goes when the spell ends'); }
+    if (kind === 'release') { if (step.release !== true) say('`release` is true'); if (!seen.inTurn) say('a `release` step goes inside an `eachTurn`: it lets go of the creature those steps belong to'); }
     if (kind === 'endSpell') { if (step.endSpell !== true) say('`endSpell` is true'); if (!seen.inTurn) say('an `endSpell` step goes inside an `eachTurn`: it ends the lasting effect those steps belong to'); }
     // `revive: hitPoints` with `within`: the Hit Points it returns with, and how many minutes after its death it may be done (Revivify: 1 and 1).
     if (kind === 'revive') {
@@ -3290,7 +3305,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], overgrow: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], release: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], overgrow: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3327,7 +3342,7 @@ const SHAPES = {
   higher: { what: 'casting higher', keys: ['level', 'targets', 'slot', 'range'] },
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value', 'hours'] },
   choice: { what: 'a choice', keys: ['of', 'from'] },
-  zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'with', 'beside', 'ward'] },
+  zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'hold', 'with', 'beside', 'ward'] },
   beside: { what: 'what a zone gives its caster beside it', keys: ['feet', 'modifier'] },
   terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts', 'silence', 'light', 'globe', 'shell', 'size'] },
   reaction: { what: 'a reaction', keys: ['on', 'blocks', 'ac', 'attack', 'manual'] },
@@ -3829,7 +3844,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   higher: { level: 'o', targets: 'o', slot: 'o', range: 'o' },
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i', hours: 'i' },
   choice: { of: 's', from: 's[]' },
-  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a', move: 'i', seen: 'b', foes: 'b', with: 's', beside: 'o', ward: 'b' },
+  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a', move: 'i', seen: 'b', foes: 'b', hold: 'b', with: 's', beside: 'o', ward: 'b|s' },
   beside: { feet: 'i', modifier: 'o' },
   terrain: { difficult: 'b|s', obscured: 's', lasts: 's', silence: 'b', light: 'i', globe: 'b', shell: 'b', size: 'i' },
   reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
@@ -3883,7 +3898,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's', from: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a', familiarity: 's' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.polymorph': { polymorph: 's', cr: 'n', types: 's[]', not: 's[]', size: 's', keep: 's[]', early: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i|s', within: 'i', unit: 's' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.water': { water: 'o' }, 'step.overgrow': { overgrow: 'b' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.polymorph': { polymorph: 's', cr: 'n', types: 's[]', not: 's[]', size: 's', keep: 's[]', early: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i|s', within: 'i', unit: 's' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.release': { release: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.water': { water: 'o' }, 'step.overgrow': { overgrow: 'b' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's', range: 'i' },
   water: { mode: 's', by: 'i', size: 'i' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },

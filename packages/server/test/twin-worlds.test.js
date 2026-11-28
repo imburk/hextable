@@ -1761,6 +1761,34 @@ test("magic circle: a party creature of a chosen type giving Charmed to a target
   assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("keeps"), "no refusal told");
 });
 
+// ---- Hallow (#918): a barrier-only ward of a DM-hidden caster binds nothing the players are sent (the walk, the teleportation) ----
+const hiddenHallow = (w) => {
+  w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 0 }, name: "Ghost", hidden: true });
+  Object.assign(byName(w, "Ghost"), { hp: 500, maxHp: 500, spells: ["hallow"], slots: { 5: 2 }, slotsMax: { 5: 2 } });
+  w.must({ type: "cast", actor: byName(w, "Ghost").id, spell: "hallow", hex: { q: 7, r: 0 }, slot: 5, choice: ["fey", "aberration"] });
+};
+const burnHallow = (w) => { hiddenHallow(w); delete w.state.entities[byName(w, "Ghost").id]; w.state.effects = w.state.effects.filter((fx) => !fx.zone?.ward); };
+test("hallow: a party creature of a chosen type walking, then teleporting, into a hidden caster's ward is sent the same as with no ward (no refusal, no stop note)", () => {
+  const r = twin({
+    players: ["Pat"],
+    setup(w) {
+      w5p3Field(w, { fey: true });
+      Object.assign(w.state.entities.fighter, { spells: ["misty-step"], slots: { 2: 3 }, slotsMax: { 2: 3 } });
+      w.must({ type: "place", actor: "fighter", to: { q: 22, r: 0 } });
+      w.putIn();
+    },
+    steps: [
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 17, r: 0 } }, allowError: true },
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 12, r: 0 } }, allowError: true },
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 17, r: 0 } }, allowError: true },
+      { by: "Pat", act: { type: "cast", actor: "fighter", spell: "misty-step", hex: { q: 14, r: 0 } }, allowError: true },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } },
+    ],
+  }, { hide: hiddenHallow, plain: burnHallow });
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("Ghost"));
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("keeps"), "no refusal told");
+});
+
 // ---- Lasting zones (#842): what players are sent of a zone, and what they are not ----
 // A zone is put in through the rules, as a cast leaves it (rules zones.js: area, on, follows or hexes and origin, spare, steps, src, last), because a creature the DM
 // has hidden cannot cast in a fight, and one that casts is told of. The players are kept clear of every zone: a creature that walked into one would be hurt by it, and
@@ -2567,4 +2595,44 @@ test("telekinesis: a seen foe moved onto a hidden creature's space is sent the s
     plain: (w) => { burn(w, { q: -9, r: -3 }); },
   });
   assert.ok(/did not know of/.test(JSON.stringify(hidden.raw.dm)), "the DM is told");
+});
+
+// ---- Conjure Elemental (#921): a zone that holds one creature, and a held creature the party does not know of ----
+// The spirit forces no one while a creature is Restrained by it. If that creature is one the party does not know of (hidden by the DM after it was held), the spirit holds it all the same
+// (the rule does not ask who knows), and a creature the party sees that starts its turn beside the spirit is simply not forced. The players are sent no event, so what they could tell is only that
+// the spirit did nothing to a creature it could have forced. So for a party caster a held creature the party does not know of does not count (zones.js `trigger`): the zone goes off as if empty, and the DM alone is told.
+test("conjure elemental: a hidden creature held by the spirit changes what the party is sent: a seen foe beside the spirit is forced the same with and without it (the zone goes off as if empty, #921)", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", -3, 0], ["rogue", -3, 1], ["cleric", 0, 0], ["wizard", -3, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.cleric, { owner: w.ids.Pat, ownerName: "Pat", spells: [...s.entities.cleric.spells, "conjure-elemental"], slots: { ...s.entities.cleric.slots, 5: 1 }, slotsMax: { ...s.entities.cleric.slotsMax, 5: 1 } });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 0 }, name: "Seen" });
+      byName(w, "Seen").saveBonus = { dex: -100 };
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 });
+      turnOf(w, "cleric");
+    },
+    steps: [
+      { by: "Pat", act: { type: "cast", actor: "cleric", spell: "conjure-elemental", slot: 5, choice: "fire", hex: { q: 4, r: 0 } } },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+    ],
+  }, {
+    at: 1,
+    // A creature outside the arena that the spirit has Restrained, and the DM has hidden since.
+    hide: (w) => {
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -9, r: -3 }, name: "Ghost", hidden: true });
+      const g = byName(w, "Ghost"), fx = w.state.effects.find((x) => x.name === "Conjure Elemental");
+      g.cond.restrained = { effect: fx.id };
+      fx.parts.push({ target: g.id, cond: "restrained" });
+    },
+    plain: (w) => { burn(w, { q: -9, r: -3 }); },
+  });
 });

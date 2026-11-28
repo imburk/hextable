@@ -190,6 +190,10 @@ const FIXTURES = [
   base('howling-pack', 'Howling Pack', { level: 3, school: 'conjuration', range: 60, duration: '10 minutes', concentration: true, tier: 'assist', kinds: ['damage'], roll: 'save:dex', target: { area: { shape: 'sphere', size: 10, space: 'large' } },
     zone: { on: ['enter', 'turnEnd'], once: 'turn', spare: true, seen: true, foes: true, move: 30, with: 'move', beside: { feet: 5, modifier: { on: 'save.str', op: 'advantage' } } },
     effects: [{ save: 'dex', onFail: [{ damage: '3d10', type: 'slashing' }] }], higher: { slot: { damage: '1d10' } } }),
+  // #921: a zone that holds one creature (`zone.hold`): a save that Restrains it and an `eachTurn` that repeats the save, hurts on a failure and lets go (`release`) on a success.
+  base('binding-spirit', 'Binding Spirit', { level: 5, school: 'conjuration', range: 60, duration: '10 minutes', concentration: true, tier: 'assist', kinds: ['damage', 'control'], roll: 'save:dex', target: { area: { shape: 'sphere', size: 5, space: 'large' } },
+    choice: { of: 'damageType', from: ['lightning', 'thunder', 'fire', 'cold'] }, zone: { on: ['enter', 'turnStart'], seen: true, foes: true, hold: true },
+    effects: [{ save: 'dex', onFail: [{ damage: '8d8', type: 'chosen' }, { condition: 'restrained' }, { eachTurn: [{ save: 'dex', onFail: [{ damage: '4d8', type: 'chosen' }], onSuccess: [{ release: true }] }] }] }], higher: { slot: { damage: '1d8' } } }),
   base('warding-ring', 'Warding Ring', { level: 3, school: 'abjuration', range: 10, time: 'minute', components: ['v', 's', 'm'], costly: true, duration: '1 hour', tier: 'assist', kinds: ['control', 'utility'], roll: 'none', target: { area: { shape: 'cylinder', size: 10, height: 20 } },
     choice: { of: 'ward' }, zone: { ward: true }, effects: [{ manual: 'What the engine does not judge is the DM\'s.' }], higher: { slot: { hours: 1 } } }),
 ];

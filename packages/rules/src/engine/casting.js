@@ -649,6 +649,7 @@ function castSpell(s, a, ctx, ev, item) {
       const list = pick.from ?? CHOICES.ward;
       (Array.isArray(a.choice) && a.choice.length >= 1 && new Set(a.choice).size === a.choice.length && a.choice.every((x) => list.includes(x))) || fail(`Choose one or more kinds of creature for ${sp.name} (${list.join(', ')}), as a list.`);
       (a.reverse === undefined || typeof a.reverse === 'boolean') || fail('`reverse` is true or false.');
+      (sp.def.zone?.ward !== 'bar' || a.reverse !== true) || fail(`${sp.name} has nothing to reverse.`);
     } else a.reverse === undefined || fail(`${sp.name} has nothing to reverse.`);
     if (pick && pick.of !== 'ward') (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : pick.of === 'command' ? `a command (${CHOICES.command.join(', ')})` : pick.of === 'shape' ? `a shape (${(pick.from ?? CHOICES.shape).join(', ')})` : pick.of === 'resize' ? `enlarge or reduce` : pick.of === 'beast' ? `a Beast of the SRD pack (its id, such as "wolf")` : pick.of === 'affliction' ? `an affliction to end (${(pick.from ?? CHOICES.affliction).join(', ')})` : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
     // A zone may spare creatures the caster names (Spirit Guardians): `a.spare`.
@@ -851,7 +852,7 @@ function castSpell(s, a, ctx, ev, item) {
       const spare = a.spare ?? [];
       fx.zone = { area: { ...sp.area }, on: [...(zoneDef.on ?? [])], ...(zoneDef.once ? { once: zoneDef.once } : {}),
         ...(zoneDef.seen ? { seen: true } : {}), ...(zoneDef.foes ? { foes: true } : {}), ...(zoneDef.with ? { with: zoneDef.with } : {}), ...(zoneDef.beside ? { beside: structuredClone(zoneDef.beside) } : {}), ...(spaceBody ? { body: spaceBody.map(col) } : {}),
-        ...(zoneDef.ward ? { ward: { types: [...a.choice], reverse: a.reverse === true } } : {}),
+        ...(zoneDef.ward ? { ward: { types: [...a.choice], reverse: a.reverse === true, ...(zoneDef.ward === 'bar' ? { bar: true } : {}) } } : {}),
         ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) } }),
         spare, ...(zoneDef.budget ? { budget: zoneDef.budget, spent: 0 } : {}), ...(zoneDef.move ? { move: zoneDef.move } : {}),
         // The steps it runs later: the zone's own `effects` if it has them (grown by the slot as the spell's are), else the cast's.
@@ -914,7 +915,7 @@ function castSpell(s, a, ctx, ev, item) {
     // A creature the caster's side does not know of in the pack's space: not refused, not found; the DM alone is told (`partial`).
     if (spaceBody) { const G = gridOf(s.map), there = living(s).filter((t) => !knownTo(s, e, t) && overlapAt(t, t.pos, { size: sp.area.space }, areaOrigin, G)); if (there.length) note(`${sp.name} appeared in the space where ${there.map((t) => t.name).join(' and ')} stands, which the caster's side does not know of. The pack is intangible and was put there so that the players learn nothing; nothing goes off on ${there.length > 1 ? 'them' : 'it'} (the caster cannot see ${there.length > 1 ? 'them' : 'it'}).`); }
     // Magic Circle by a caster the party does not know of: a refusal or a stop at its edge would tell the players something is there, so it holds no creature of the party (a shell's rule, `shellSeen`); the DM judges it.
-    if (zoneDef?.ward && fx?.zone && !shellSeen(s, e)) note(`${sp.name}: the caster is hiding, so the engine does not bar the party's creatures from it (a refusal would tell the players something is there). It holds creatures the DM plays; the DM keeps the party's creatures of the chosen types out (or in, if reversed).`);
+    if (zoneDef?.ward && fx?.zone && !shellSeen(s, e)) note(`${sp.name}: the caster is hiding, so the engine does not bar the party's creatures from it (a refusal would tell the players something is there). It holds creatures the DM plays; the DM keeps the party's creatures of the chosen types out${zoneDef.ward === 'bar' ? '' : ' (or in, if reversed)'}.`);
     const toldAlready = ev.slice(before).some((x) => x.type === 'manual' && !x.partial);
     if (sp.def.tier !== 'auto' && !toldAlready && !allLost) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true, standing: sp.def.tier, spell: sp.id });
     if (unscaled) note(`Cast ${item ? `at level ${slot}` : `with a level ${slot} slot`}. The engine could not add ${unscaled}; the DM does.`);

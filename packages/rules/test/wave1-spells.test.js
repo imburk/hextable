@@ -177,7 +177,7 @@ test("Searing Smite is data: a hit spell, auto, with a turn-start damage and a s
   assert.deepEqual(lint(def), []);
   const bad = (effects) => lint({ ...structuredClone(def), effects });
   assert.ok(bad([{ endSpell: true }]).some((p) => /endSpell/.test(p)), "endSpell only inside an eachTurn");
-  assert.ok(bad([{ eachTurn: [{ save: "con", onFail: [{ damage: "1d6", type: "fire" }] }] }]).some((p) => /endSpell or manual/.test(p)));
+  assert.ok(bad([{ eachTurn: [{ save: "con", onFail: [{ heal: "1d6" }] }] }]).some((p) => /endSpell or manual/.test(p)));      // a failed save may do damage since #921 (Conjure Elemental's 4d8), but not heal
   assert.ok(bad([{ eachTurn: [{ endSpell: 1 }] }]).some((p) => /endSpell/.test(p)));
 });
 

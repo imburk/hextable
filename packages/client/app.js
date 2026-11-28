@@ -784,7 +784,7 @@ function choicesFor() {
   if (isObjectAim(sp)) { const offers = objectsFor(S, e, sp); if (offers.length) groups.push({ id: 'object', label: `Which object does ${sp.name} work on?`, options: objectOptions(offers, mode.object ?? null) }); }
   if (isWard(sp)) {
     groups.push({ id: 'ward', multi: true, label: `Which kinds of creature does ${sp.name} work against? (one or more)`, options: wardOptions(wardKinds(sp), mode.wards ?? []) });
-    groups.push({ id: 'reverse', multi: true, label: 'Which way round?', options: reverseOptions(mode.reverse) });
+    if (sp.def.zone?.ward !== 'bar') groups.push({ id: 'reverse', multi: true, label: 'Which way round?', options: reverseOptions(mode.reverse) });      // Hallow's ward has no reverse
   }
   const list = choicesOf(sp);
   if (list) {

@@ -230,6 +230,8 @@ function teleport(s, t, step, to, ev, own = true) {
   // Only when the creature itself tries to teleport (its own spell or feature, `own`), not when another creature's effect moves it.
   for (const fx of own ? circlesFor(s, t) : []) {
     if (!warded(s, fx, t, t.pos, at)) continue;
+    // Hallow's ward (`bar`) gives the teleporting creature no save: it cannot enter, so the teleportation does not happen (the cost stands, as below).
+    if (fx.zone.ward.bar) { ev.push({ type: 'note', id: t.id, text: `${fx.name} stops ${t.name}'s teleportation: it stays where it is` }); return true; }
     const dc = fx.zone.src?.dc;
     if (dc === undefined) { ev.push({ type: 'manual', actor: t.id, name: fx.name, partial: true, text: `${fx.name} calls for a Charisma save from ${t.name} to teleport ${fx.zone.ward.reverse ? 'out of' : 'into'} the circle, and no DC is known. The DM applies it.` }); continue; }
     const { used, ...sv } = savingThrow(s, t, 'cha', dc, null, null, null, null, ev, null, true);      // a spell's circle

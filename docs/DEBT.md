@@ -227,7 +227,7 @@ Aura of Life (effects while inside an aura). Still missing:
 | Teleporting and tree travel | dimension door | teleportation circle, tree stride |
 | Guarding a creature in a way no hook can say (first drop to 0 Hit Points, magical Restrained) | ~~death ward~~ (assist, #726 job 3: the hook `hp.zero`), freedom of movement | |
 | Barriers and walls of free shape, or around a creature | ~~wall of fire~~ (assist, #786 wave 2: a straight wall as a zone), resilient sphere, private sanctum | wall of force, wall of stone |
-| Barriers and wards by creature type | | antilife shell, dispel evil and good, hallow, planar binding |
+| Barriers and wards by creature type | | antilife shell, dispel evil and good, ~~hallow~~ (assist, #919: a barrier-only ward), planar binding |
 | Raising or restoring | | greater restoration, raise dead, reincarnate |
 | An aura with a rider (extra damage to attacks against creatures in it) | conjure minor elementals | |
 | Random behaviour | confusion | |

@@ -247,7 +247,7 @@ export const spells3 = [
     time: "minute", range: 10, components: ["v", "s", "m"], costly: true,
     duration: "1 hour", concentration: false, ritual: false,
     target: {"area": {"shape": "cylinder", "size": 10, "height": 20}},
-    choice: {"of": "ward"},
+    choice: {"of": "ward", "from": ["celestial", "elemental", "fey", "fiend", "undead"]},
     zone: {"ward": true},
     effects: [{"manual": "Magic Circle: the engine keeps the barrier, the Disadvantage and the Charmed and Frightened protection for creatures whose type it knows. The DM judges a creature whose type the engine cannot tell, possession of a target inside, and creatures using interplanar travel to enter (or leave, if reversed), which the engine does not handle."}],
     higher: {"slot": {"hours": 1}},
