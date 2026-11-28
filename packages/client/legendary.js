@@ -127,7 +127,7 @@ export const lairShowHtml = (e) => `<label class="assign">Legendary actions <sel
 export function creaturesHtml(S) {
   const rows = creatureRows(S);
   if (!rows.length) return '<p class="note">No legendary creature on the table. Add a dragon, a lich or another from the list above.</p>';
-  const on = S?.settings?.legendaryWindows === true, lr = S?.settings?.legendaryResistance === true;
+  const on = S?.settings?.legendaryWindows !== false, lr = S?.settings?.legendaryResistance !== false;
   return `${on && lr ? '' : `<p class="note">${!on ? 'The pause between turns for legendary actions is off. ' : ''}${!lr ? 'Legendary Resistance is not offered at failed saves. ' : ''}Both are switches in Table rules.</p>`}${rows.map((e) => {
     const now = e.reactions?.[RESISTANCE] ?? 'matters';
     return `<div class="lg-cr" data-id="${esc(e.id)}"><div class="lg-cr-head"><b>${esc(e.name)}</b><span>${esc(countsText(e))}</span></div>

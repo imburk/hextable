@@ -57,12 +57,6 @@ export const monsters = [
         text: "If destroyed it returns to life in 5d10 days with full Hit Points."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "mucus-cloud",
         name: "Mucus Cloud",
         modifiers: [],
@@ -79,12 +73,6 @@ export const monsters = [
         name: "Multiattack",
         modifiers: [],
         text: "Two Tentacle attacks, plus Consume Memories or Dominate Mind if available."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair). Lash: one Tentacle attack. Psychic Drain: if it has a creature Charmed or Grappled, it uses Consume Memories and regains 1d10 Hit Points. The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -1087,12 +1075,6 @@ export const monsters = [
         name: "Fire Aura",
         modifiers: [],
         text: "At the end of each of its turns, creatures in a 5 foot emanation take 3d8 fire damage. The DM applies this."
-      },
-      {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day. The DM tracks the uses."
       },
       {
         id: "magic-resistance",
@@ -5610,22 +5592,10 @@ export const monsters = [
         text: "Breathes air and water."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 17, +9 to hit with spells, no Material components. At will: Acid Arrow (level 3 version), Detect Magic, Fear. 1 a day each: Speak with Dead, Vitriolic Sphere. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Cloud of Insects (a creature it sees within 120 feet makes a Dexterity save (DC 17) or takes 4d10 poison damage and has Disadvantage on Concentration saves until the end of its next turn; not again before its next turn). Frightful Presence (casts Fear using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -5752,22 +5722,10 @@ export const monsters = [
     ],
     traits: [
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 18, no Material components. At will: Detect Magic, Invisibility, Mage Hand, Shatter. 1 a day each: Scrying, Sending. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Cloaked Flight (casts Invisibility on itself and flies up to half its Fly Speed; not again before its next turn). Sonic Boom (casts Shatter using Spellcasting; not again before its next turn). Tail Swipe (makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -5893,22 +5851,10 @@ export const monsters = [
     ],
     traits: [
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 16, no Material components. At will: Detect Magic, Minor Illusion, Scorching Ray, Shapechange (beast or humanoid form only), Speak with Animals. 1 a day each: Detect Thoughts, Control Weather. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Blazing Light (casts Scorching Ray using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). Scorching Sands (a creature it sees within 120 feet makes a Dexterity save (DC 16) or takes 6d8 fire damage and has its Speed halved until the end of its next turn; not again before its next turn). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -6073,22 +6019,10 @@ export const monsters = [
         text: "Breathes air and water."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 17, +10 to hit with spells, no Material components. At will: Detect Magic, Guiding Bolt (level 2 version), Shapechange (beast or humanoid form only), Speak with Animals, Thaumaturgy. 1 a day each: Detect Thoughts, Water Breathing. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Guiding Light (casts Guiding Bolt (level 2 version) using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). Thunderclap (each creature in a 20-foot-radius sphere centred on a point it sees within 90 feet makes a Constitution save (DC 17) or takes 3d6 thunder damage and is Deafened until the end of its next turn). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -6248,22 +6182,10 @@ export const monsters = [
     ],
     traits: [
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 17, no Material components. At will: Detect Magic, Mind Spike (level 4 version), Minor Illusion, Shapechange (beast or humanoid form only). 1 a day each: Greater Restoration, Major Image. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Giggling Magic (a creature it sees within 90 feet makes a Charisma save (DC 17) or takes 7d6 psychic damage and, until the end of its next turn, subtracts 1d6 from its ability checks and attack rolls; not again before its next turn). Mind Jolt (casts Mind Spike (level 4 version) using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -6426,22 +6348,10 @@ export const monsters = [
         text: "Breathes air and water."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 21, +13 to hit with spells, no Material components. At will: Detect Magic, Guiding Bolt (level 2 version), Shapechange (beast or humanoid form only). 1 a day each: Flame Strike, Zone of Truth. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Banish (a creature it sees within 120 feet makes a Charisma save (DC 21) or takes 3d6 force damage, is Incapacitated and is sent to a harmless demiplane until the start of the dragon's next turn, then returns within 120 feet of it; not again before its next turn). Guiding Light (casts Guiding Bolt (level 2 version) using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -6606,12 +6516,6 @@ export const monsters = [
         text: "Breathes air and water."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
@@ -6622,12 +6526,6 @@ export const monsters = [
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 17, no Material components. At will: Detect Magic, Mind Spike (level 3 version). 1 a day: Geas. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Mind Invasion (casts Mind Spike (level 3 version) using Spellcasting). Noxious Miasma (each creature in a 20-foot-radius sphere centred on a point it sees within 90 feet makes a Constitution save (DC 17) or takes 2d6 poison damage and has -2 AC until the end of its next turn; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -6754,22 +6652,10 @@ export const monsters = [
     ],
     traits: [
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 20, +12 to hit with spells, no Material components. At will: Command (level 2 version), Detect Magic, Scorching Ray. 1 a day: Fireball. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Commanding Presence (casts Command (level 2 version) using Spellcasting; not again before its next turn). Fiery Rays (casts Scorching Ray using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -6893,22 +6779,10 @@ export const monsters = [
     ],
     traits: [
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 19, +11 to hit with spells, no Material components. At will: Detect Magic, Hold Monster, Ice Knife, Shapechange (beast or humanoid form only). 1 a day each: Ice Storm (level 5 version), Zone of Truth. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Chill (casts Hold Monster using Spellcasting; not again before its next turn). Cold Gale (a line 60 feet long and 10 feet wide: Dexterity save (DC 19) or 4d6 cold damage and pushed up to 30 feet away (half damage, no push on a success); not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -7071,18 +6945,6 @@ export const monsters = [
         name: "Ice Walk",
         modifiers: [],
         text: "Moves across and climbs icy surfaces without ability checks, and ice or snow Difficult Terrain costs it no extra movement."
-      },
-      {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Freezing Burst (each creature in a 30-foot-radius sphere centred on a point it sees within 120 feet makes a Constitution save (DC 14) or takes 2d6 cold damage and has Speed 0 until the end of its next turn; not again before its next turn). Frightful Presence (casts Fear (spell save DC 14, Charisma); not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -7215,22 +7077,10 @@ export const monsters = [
         text: "Breathes air and water."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 21, +13 to hit with spells, no Material components. At will: Acid Arrow (level 4 version), Detect Magic, Fear. 1 a day each: Create Undead, Speak with Dead, Vitriolic Sphere (level 5 version). The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Cloud of Insects (a creature it sees within 120 feet makes a Dexterity save (DC 21) or takes 6d10 poison damage and has Disadvantage on Concentration saves until the end of its next turn; not again before its next turn). Frightful Presence (casts Fear using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -7358,22 +7208,10 @@ export const monsters = [
     ],
     traits: [
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 22, no Material components. At will: Detect Magic, Invisibility, Mage Hand, Shatter (level 3 version). 1 a day each: Scrying, Sending. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Cloaked Flight (casts Invisibility on itself and flies up to half its Fly Speed; not again before its next turn). Sonic Boom (casts Shatter (level 3 version) using Spellcasting; not again before its next turn). Tail Swipe (makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -7499,22 +7337,10 @@ export const monsters = [
     ],
     traits: [
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 20, no Material components. At will: Detect Magic, Minor Illusion, Scorching Ray (level 3 version), Shapechange (beast or humanoid form only), Speak with Animals. 1 a day each: Control Weather, Detect Thoughts. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Blazing Light (casts Scorching Ray (level 3 version) using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). Scorching Sands (a creature it sees within 120 feet makes a Dexterity save (DC 20) or takes 8d8 fire damage and has its Speed halved until the end of its next turn; not again before its next turn). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -7679,22 +7505,10 @@ export const monsters = [
         text: "Breathes air and water."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 22, +14 to hit with spells, no Material components. At will: Detect Magic, Guiding Bolt (level 2 version), Shapechange (beast or humanoid form only), Speak with Animals, Thaumaturgy. 1 a day each: Detect Thoughts, Control Water, Scrying, Water Breathing. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Guiding Light (casts Guiding Bolt (level 2 version) using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). Thunderclap (each creature in a 20-foot-radius sphere centred on a point it sees within 120 feet makes a Constitution save (DC 22) or takes 3d8 thunder damage and is Deafened until the end of its next turn). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -7854,22 +7668,10 @@ export const monsters = [
     ],
     traits: [
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 21, no Material components. At will: Detect Magic, Mind Spike (level 5 version), Minor Illusion, Shapechange (beast or humanoid form only). 1 a day each: Greater Restoration, Major Image, Project Image. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Giggling Magic (a creature it sees within 120 feet makes a Charisma save (DC 21) or takes 9d6 psychic damage and, until the end of its next turn, subtracts 1d8 from its ability checks and attack rolls; not again before its next turn). Mind Jolt (casts Mind Spike (level 5 version) using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -8033,22 +7835,10 @@ export const monsters = [
         text: "Breathes air and water."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 24, +16 to hit with spells, no Material components. At will: Detect Magic, Guiding Bolt (level 4 version), Shapechange (beast or humanoid form only). 1 a day each: Flame Strike (level 6 version), Word of Recall, Zone of Truth. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Banish (a creature it sees within 120 feet makes a Charisma save (DC 24) or takes 7d6 force damage, is Incapacitated and is sent to a harmless demiplane until the start of the dragon's next turn, then returns within 120 feet of it; not again before its next turn). Guiding Light (casts Guiding Bolt (level 4 version) using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -8213,12 +8003,6 @@ export const monsters = [
         text: "Breathes air and water."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
@@ -8229,12 +8013,6 @@ export const monsters = [
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 21, no Material components. At will: Detect Magic, Mind Spike (level 5 version). 1 a day each: Geas, Modify Memory. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Mind Invasion (casts Mind Spike (level 5 version) using Spellcasting). Noxious Miasma (each creature in a 30-foot-radius sphere centred on a point it sees within 90 feet makes a Constitution save (DC 21) or takes 5d6 poison damage and has -2 AC until the end of its next turn; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -8361,22 +8139,10 @@ export const monsters = [
     ],
     traits: [
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 23, +15 to hit with spells, no Material components. At will: Command (level 2 version), Detect Magic, Scorching Ray (level 3 version). 1 a day each: Fireball (level 6 version), Scrying. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Commanding Presence (casts Command (level 2 version) using Spellcasting; not again before its next turn). Fiery Rays (casts Scorching Ray (level 3 version) using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -8500,22 +8266,10 @@ export const monsters = [
     ],
     traits: [
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
         text: "Charisma, spell save DC 23, +15 to hit with spells, no Material components. At will: Detect Magic, Hold Monster, Ice Knife (level 2 version), Shapechange (beast or humanoid form only). 1 a day each: Control Weather, Ice Storm (level 7 version), Teleport, Zone of Truth. The DM casts these."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Chill (casts Hold Monster using Spellcasting; not again before its next turn). Cold Gale (a line 60 feet long and 10 feet wide: Dexterity save (DC 23) or 4d6 cold damage and pushed up to 30 feet away (half damage, no push on a success); not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -8678,18 +8432,6 @@ export const monsters = [
         name: "Ice Walk",
         modifiers: [],
         text: "Moves across and climbs icy surfaces without ability checks, and ice or snow Difficult Terrain costs it no extra movement."
-      },
-      {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Freezing Burst (each creature in a 30-foot-radius sphere centred on a point it sees within 120 feet makes a Constitution save (DC 20) or takes 4d6 cold damage and has Speed 0 until the end of its next turn; not again before its next turn). Frightful Presence (casts Fear (spell save DC 18, Charisma); not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [

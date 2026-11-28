@@ -42,7 +42,7 @@ export function reactionsHtml(S, e, { panel = false, dm = false } = {}) {
   // Legendary Resistance is a choice about a failed save, not a Reaction and not a use that waits for Always: its own words (legendary.md, Decision 6), and for the DM the lair and show switches.
   const lrRow = (r) => `<div class="rx rx-free" data-rx="${esc(r.id)}"><label for="${pre}rx-${esc(r.id)}"><b>${esc(r.name)}</b><small>${esc(['When it fails a saving throw', isLegendary(e) ? `${resistLeft(e)} of ${resistMax(e)} left` : ''].filter(Boolean).join(' · '))}</small></label>
       <select id="${pre}rx-${esc(r.id)}" data-rx-set="${esc(r.id)}">${r.options.map((o) => `<option value="${o}"${o === r.now ? ' selected' : ''}>${esc(INSTRUCTION[o] ?? WHEN[o] ?? o)}${o === r.dflt ? ' (default)' : ''}</option>`).join('')}</select></div>`;
-  const legend = lr ? `<section class="rx-group" data-rx-group="legendary"><h4 class="rx-head">Legendary</h4>${lrRow(lr)}${S.settings?.legendaryResistance === true ? '' : '<p class="note">Legendary Resistance is switched off for this table (DM tools, Table rules).</p>'}
+  const legend = lr ? `<section class="rx-group" data-rx-group="legendary"><h4 class="rx-head">Legendary</h4>${lrRow(lr)}${S.settings?.legendaryResistance !== false ? '' : '<p class="note">Legendary Resistance is switched off for this table (DM tools, Table rules).</p>'}
       ${dm && isLegendary(e) ? `<div data-id="${esc(e.id)}">${lairShowHtml(e)}<p class="note">${esc(countsText(e))}</p></div>` : ''}</section>` : '';
   const body = real.map(row).join('');
   if (panel) return `<section id="ap-rx">${status}${body}${apart}${legend}</section>`;

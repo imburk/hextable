@@ -2619,12 +2619,6 @@ export const monsters = [
         text: "Breathes air and water."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
         id: "siege-monster",
         name: "Siege Monster",
         modifiers: [],
@@ -2635,12 +2629,6 @@ export const monsters = [
         name: "Condition Immunities",
         modifiers: [],
         text: "Immune to the Frightened, Grappled, Paralyzed, Restrained condition(s). The engine applies this."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "Has legendary actions (3 uses, 4 in its lair): Storm Bolt (uses Lightning Strike) and Toxic Ink (Constitution save, DC 23, each creature in a 15 foot emanation while it is underwater is Blinded and Poisoned until the end of its next turn, then the kraken moves up to its Speed). The engine has no field for them; the DM runs them from the SRD."
       }
     ],
     actions: [
@@ -3030,12 +3018,6 @@ export const monsters = [
         text: "Immune to the Charmed, Exhaustion, Frightened, Paralyzed, Poisoned condition(s). The engine applies this."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
-      },
-      {
         id: "spirit-jar",
         name: "Spirit Jar",
         modifiers: [],
@@ -3052,12 +3034,6 @@ export const monsters = [
         name: "Protective Magic",
         modifiers: [],
         text: "Reaction: casts Counterspell or Shield in response to the trigger. The DM applies this."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "Has legendary actions (3 uses, 4 in its lair): Deathly Teleport, Disrupt Life (Constitution save DC 20, 9d6 Necrotic, 20 foot emanation, non-Undead) and Frightening Gaze (casts Fear). The engine has no field for them; the DM runs them from the SRD."
       }
     ],
     actions: [
@@ -5007,12 +4983,6 @@ export const monsters = [
         text: "Immune to the Charmed, Exhaustion, Frightened, Paralyzed, Poisoned condition(s). The engine applies this."
       },
       {
-        id: "legendary-resistance",
-        name: "Legendary Resistance",
-        modifiers: [],
-        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
-      },
-      {
         id: "magic-resistance",
         name: "Magic Resistance",
         modifiers: [],
@@ -5036,12 +5006,6 @@ export const monsters = [
         modifiers: [],
         reaction: { on: "hit", ac: 2, manual: "Whirlwind of Sand: the mummy also teleports up to 60 feet to an unoccupied space it can see, and each creature of its choice that it can see within 5 feet of that space is Blinded until the end of the mummy's next turn. The DM applies this." },
         text: "Reaction when hit by an attack roll: adds 2 to its AC against that attack, teleports up to 60 feet, and creatures of its choice within 5 feet of the destination are Blinded until the end of its next turn. The engine adds the AC by standing instruction (by default only when that turns the hit into a miss); the DM applies the teleport and the Blinded condition."
-      },
-      {
-        id: "legendary-actions",
-        name: "Legendary Actions",
-        modifiers: [],
-        text: "Has legendary actions (3 uses, 4 in its lair): Dread Command (casts Command), Glare (uses Dreadful Glare) and Necrotic Strike (one Rotting Fist or Channel Negative Energy attack). The engine has no field for them; the DM runs them from the SRD."
       }
     ],
     actions: [

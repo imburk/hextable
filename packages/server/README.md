@@ -435,7 +435,7 @@ undo of an answer puts the question back.
 
 ### Legendary actions
 
-Design: `docs/specs/legendary.md`. With the table setting `legendaryWindows` on (off when absent), a pause
+Design: `docs/specs/legendary.md`. With the table setting `legendaryWindows` on (on when absent since L4b; `false` turns it off), a pause
 opens after a taken turn while a legendary creature the party knows of could act: the state's
 `encounter.between`. While it is open only `legendary`, `legendarySet`, `react`, `reactions`, the DM's tools
 and the chat are accepted; any other action is refused with "Between turns: the DM is deciding on legendary

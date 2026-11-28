@@ -20,6 +20,7 @@ function field(seed = 5) {
   for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
   for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
   s.settings.autoEngage = false;
+  s.settings.legendaryWindows = false;          // these play whole turns, not the window (on by default since L4b)
   for (const [id, q, r] of [["wizard", 0, 0], ["fighter", -2, 0], ["rogue", -4, 4], ["cleric", -1, 0]]) ok(apply(s, { type: "place", actor: id, to: { q, r } }, DM));
   const slots = { 1: 4, 2: 3, 3: 3, 4: 3, 5: 3, 6: 2, 7: 1, 8: 1, 9: 1 };
   for (const id of ["wizard", "cleric"]) Object.assign(s.entities[id], { slots: { ...slots }, slotsMax: { ...slots } });

@@ -39,6 +39,7 @@ function field(monster, others, { fight = true, seed = 7 } = {}) {
   for (const id of Object.keys(s.entities)) delete s.entities[id];
   for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
   s.settings.autoEngage = false;
+  s.settings.legendaryWindows = false;          // these play whole turns, not the window (on by default since L4b)
   const g = spawn(s, monster, { q: 0, r: 0 }, { hp: 900 });
   const targets = others.map((o) => spawn(s, "goblin-warrior", { q: o.q, r: o.r }, { side: "party" }));
   targets.forEach((id, i) => { if (others[i].size) s.entities[id].size = others[i].size; fails(s.entities[id]); });     // sized after all are placed: a bigger one would take its neighbour's hex

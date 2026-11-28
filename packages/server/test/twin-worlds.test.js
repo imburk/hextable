@@ -2239,6 +2239,7 @@ const lrSetup = (w) => {
   for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
   w.must({ type: "setting", key: "autoEngage", value: false });
   w.must({ type: "setting", key: "legendaryResistance", value: true });
+  w.must({ type: "setting", key: "legendaryWindows", value: false });     // these test the saves, not the window (on by default since L4b)
   w.must({ type: "spawn", monster: "adult-green-dragon", at: { q: -3, r: 2 }, name: "Verdigris" });
   w.must({ type: "startEncounter", center: { q: -6, r: 2 }, radius: 8 });
   for (const e of Object.values(w.state.entities)) if (e.side === "party") e.hp = e.maxHp = 900;
