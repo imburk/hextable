@@ -247,6 +247,7 @@ export function spellProfile(def) {
     if (k === 'modifier' && st.modifier.against) harmful = true;     // a mark or curse that works only against its target (Hex, Hunter's Mark) is cast at a foe
     if (k === 'heal') { heals = true; healStep ??= st; }
   });
+  let mv = null; walk(def.effects, (st) => { if (!mv && 'move' in st && st.dir === 'chosen') mv = st; });      // a move step to a space the cast names (Telekinesis)
   const t = def.target, tp = def.effects.find((st) => 'teleport' in st), sm = def.effects.find((st) => 'summon' in st);
   // A spell's sphere or cylinder goes off within its range (a Self one, on the caster's own hex).
   const within = t.area && ['sphere', 'cylinder'].includes(t.area.shape) ? Math.max(1, feet(def.range)) : feet(def.range);
@@ -267,6 +268,8 @@ export function spellProfile(def) {
     roll: spellRoll(def),                          // what it turns on: 'attack', 'save:dex' and so on, 'none', or null when not known
     // A teleport: the `cast` action names the destination in `hex` (docs/specs/rules-expansion.md).
     ...(tp ? { teleport: { feet: tp.teleport, see: !!tp.see } } : {}),
+    // A move to a chosen space: the `cast` action names it in `hex`, and the cast is refused unless the creature can be put there (engine/casting.js `chosenSpot`).
+    ...(mv ? { chosen: mv.move } : {}),
     // A summon: the `cast` action names its choices and a space for each creature in `summon` (engine/casting.js).
     ...(sm ? { summon: { of: sm.summon, count: sm.count ?? 1, ...(sm.variants ? { variants: [...sm.variants] } : {}), ...(sm.types ? { types: [...sm.types] } : {}),
       ...(sm.forms ? { forms: structuredClone(sm.forms) } : {}), kind: sm.bond?.kind ?? null,
@@ -678,6 +681,11 @@ function exec(s, ev, kit, f, step, at) {
   // `largest`: only a creature of that size or smaller is moved (Repelling Blast: Large).
   if (kind === 'move') {
     if (tooBig(t, step)) return ev.push({ type: 'note', id: t.id, actor: f.actor, text: `${t.name} is bigger than ${cap(step.largest)}, so ${f.src.name} does not ${step.dir === 'toward' ? 'pull' : 'push'} it` });
+    // `dir: "chosen"`: put where the cast named (`f.src.to`, checked at the cast by `chosenSpot`): straight there by force, no path and no Opportunity Attack.
+    if (step.dir === 'chosen') {
+      if (!f.src.to) return handOver(`${f.src.name} names no space, so the engine cannot move ${t.name}. The DM moves it, up to ${step.move} ft.`);
+      return kit.teleport(s, t, { teleport: step.move, forced: true }, f.src.to, ev, false);
+    }
     return kit.push(s, t, step.move, step.dir, e.pos, ev);
   }
   if (kind === 'set' || kind === 'reveal') {

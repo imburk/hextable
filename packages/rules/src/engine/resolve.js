@@ -238,7 +238,7 @@ function teleport(s, t, step, to, ev, own = true) {
   const zonesBefore = snapshot(s);
   t.pos = { ...at };
   if (t.follow && !inFight(s, t.id)) unfollow(s, t, ev);
-  ev.push({ type: 'moved', id: t.id, path: [{ ...at }], teleport: true });
+  ev.push({ type: 'moved', id: t.id, path: [{ ...at }], teleport: true, ...(step.forced ? { forced: true } : {}) });
   entered(s, ev, KIT, zonesBefore);                                     // a zone it lands in works on it once this effect is done
   // A thing on the floor that goes off when stepped on (a pressure plate): the engine does not run
   // it from inside a spell, so the DM is told.

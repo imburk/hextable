@@ -669,7 +669,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     }
     if (kind === 'move') {
       if (!(isInt(step.move) && step.move > 0 && step.move % 5 === 0)) say('`move` must be a distance in feet, a multiple of 5');
-      if (!['away', 'toward'].includes(step.dir)) say('a move step needs `dir`: away or toward');
+      if (!['away', 'toward', 'chosen'].includes(step.dir)) say('a move step needs `dir`: away, toward or chosen (the space the cast names)');
     }
     // `imbue` (docs/specs/on-hit.md, Decision 8): one of its weapons changes for as long as the effect lasts.
     if (kind === 'imbue') lintImbue(step.imbue, say);

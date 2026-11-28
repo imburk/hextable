@@ -1108,8 +1108,9 @@ export const STEP_SENTENCES = {
   },
   move({ st, at, Who, say }) {
     if (!(isInt(st.move) && st.move > 0)) this.bad(`Step ${at}: \`move\` is not feet.`); else this.num(`${at}.move`, st.move, 'feet');
-    if (!['away', 'toward'].includes(st.dir)) this.bad(`Step ${at}: \`dir\` is not away or toward.`);
+    if (!['away', 'toward', 'chosen'].includes(st.dir)) this.bad(`Step ${at}: \`dir\` is not away, toward or chosen.`);
     const size = typeof st.largest === 'string' && ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'].includes(st.largest) ? `If it is ${cap1(st.largest)} or smaller, it` : null;
+    if (st.dir === 'chosen') return say(`${size ?? Who} is moved up to ${st.move} feet to a space the caster chooses, on the ground, within the spell's range and unoccupied; it goes straight there, with no Opportunity Attacks.`);
     say(`${size ?? Who} is ${st.dir === 'toward' ? 'pulled' : 'pushed'} ${st.move} feet straight ${st.dir === 'toward' ? 'toward' : 'away from'} the caster; it stops at a wall, a drop or anything in the way.`);
   },
   fall({ st, at, Who, say }) {
