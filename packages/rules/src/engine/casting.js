@@ -50,6 +50,24 @@ export function teleportSpot(s, e0, step, hex, name, player = false) {
   return to;
 }
 
+// Where a `move` step with `dir: "chosen"` (Telekinesis) puts `t` when the caster names `hex`: checked before anything is spent. Ground only (a height
+// above the ground there is the DM's "held aloft"), within the step's feet of where `t` stands and the spell's range of the caster, on the map, room for `t`, unoccupied.
+export function chosenSpot(s, e, t, sp, hex, range, player = false) {
+  (hex && Number.isInteger(hex.q) && Number.isInteger(hex.r)) || fail(`Pick the space ${sp.name} moves ${t.name} to.`);
+  const to = landing(s.map, hex, t.pos.z) || fail("There's nothing there to stand on.");
+  !Number.isFinite(hex.z) || Math.abs(hex.z - to.z) < 1e-9 || fail(`${sp.name} puts ${t.name} on the ground only.`);
+  if (player && unseenAt(s.map, to)) fail(`Pick a place the party has seen for ${sp.name}.`);
+  key(to) !== key(t.pos) || fail(`${t.name} is already there.`);
+  const d = gap(s, t.pos, to);
+  d * FT <= sp.chosen || fail(`That is ${ft(d)} from ${t.name}. ${sp.name} moves it ${sp.chosen} ft.`);
+  const dc = gap(s, e.pos, to);
+  dc * FT <= range || fail(`That is ${ft(dc)} away. ${sp.name} reaches ${range} ft.`);
+  const why = roomAt(s, t, to);
+  if (why) fail(why);
+  !living(s).some((o) => o.id !== t.id && overlapAt(o, o.pos, t, to, gridOf(s.map)) && knownTo(s, e, o)) || fail('That space is occupied.');
+  return to;
+}
+
 // "a Humanoid", "a Beast or an Undead": the creature types a spell is limited to, in a sentence.
 const typeWords = (types) => types.map((t) => `${/^[aeiou]/.test(t) ? 'an' : 'a'} ${t[0].toUpperCase()}${t.slice(1)}`).join(' or ');
 
@@ -696,7 +714,9 @@ function castSpell(s, a, ctx, ev, item) {
     // A teleport goes where `a.hex` names (Misty Step), checked now, before anything is spent.
     // With no `hex` the engine has nowhere to take the caster and the DM moves it.
     const tpStep = sp.teleport ? sp.def.effects.find((x) => 'teleport' in x) : null;
-    const tpTo = tpStep && a.hex !== undefined ? teleportSpot(s, e, tpStep, a.hex, sp.name, ctx.role !== 'dm') : null;
+    let tpTo = tpStep && a.hex !== undefined ? teleportSpot(s, e, tpStep, a.hex, sp.name, ctx.role !== 'dm') : null;
+    // A move to a chosen space (Telekinesis): the cast names it in `hex`, and it must suit the creature moved, now.
+    if (sp.chosen) { targets.length === 1 || fail(`${sp.name} moves one creature.`); tpTo = chosenSpot(s, e, targets[0], sp, a.hex, range, ctx.role !== 'dm'); }
     // A summon names its choices and a space for each creature (`a.summon`), checked now, before anything is spent.
     const summoning = summonFor(s, e, sp, a, Math.max(slot, sp.level), range, ctx, via?.freeCast);
     const evo = item ? {} : evokerFor(e, sp, a, slot, via, targets);

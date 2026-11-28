@@ -402,12 +402,15 @@ export const spells5 = [
     level: 5, school: "transmutation", classes: ["sorcerer","wizard"],
     time: "action", range: 60, components: ["v","s"],
     duration: "10 minutes", concentration: true, ritual: false,
-    target: {"self":true},
-    effects: [{"manual":"Telekinesis: for up to 10 minutes the caster uses a Magic action each turn on one creature or object in range. Creature: a Huge or smaller creature makes a Strength save or is moved up to 30 feet in any direction within range and is Restrained until the end of the caster's next turn (held aloft if lifted, falling then unless the caster repeats it and it fails again). Object: a Huge or smaller object that is not worn or carried moves automatically up to 30 feet; a worn or carried one needs its bearer to fail a Strength save. The caster can also exert fine control over objects, such as simple manipulations. The DM runs it."}],
+    target: {"creature":{"count":1}},
+    effects: [
+      {"save":"str","onFail":[{"move":30,"dir":"chosen","largest":"huge"},{"condition":"restrained","largest":"huge","ends":{"on":"turnEnd","of":"source"}}]},
+      {"manual":"Telekinesis lasts up to 10 minutes of Concentration. On each later turn the caster uses a Magic action on one creature or object in range, seen: the creature part again (the DM runs it, with the same Strength save), or the object part. Object: a Huge or smaller object that is not worn or carried moves automatically up to 30 feet within range; a worn or carried one needs its bearer to fail a Strength save. A creature lifted into the air is suspended there and falls at the end of the caster's next turn unless the caster uses this on it again and it fails the save (the engine moves it only along the ground). The caster can also exert fine control over objects, such as simple manipulations. The DM runs these."}
+    ],
     kinds: ["control", "utility"],
     roll: "save:str",
-    tier: "manual", checked: true,
-    text: "The caster moves a creature (Strength save) or an object up to 30 feet by thought each turn for up to 10 minutes.",
+    tier: "assist", checked: true,
+    text: "The caster moves a creature by thought (Strength save) up to 30 feet, to a space the cast names, and it is Restrained until the end of the caster's next turn; the effect can be used again as a Magic action on later turns for up to 10 minutes. The engine runs the first cast on a creature: the save, the move to a space on the ground and the Restrained condition. The DM runs the later turns, lifting a creature into the air, objects and fine control.",
   },
   {
     id: "telepathic-bond", name: "Telepathic Bond", source: "SRD 5.2.1",
