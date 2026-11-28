@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CONTENT, SPELLS } from "../src/content/index.js";
-import { BEASTS, CHOICES, lintEntry } from "../src/content/schema.js";
+import { BEASTS, CHOICES, FORMS, lintEntry } from "../src/content/schema.js";
 import { readEntry } from "../src/content/reader.js";
 import { aiStep } from "../src/ai.js";
 import { apply } from "../src/engine.js";
@@ -45,7 +45,9 @@ test("Polymorph: assist; lints; reads with no problem; the choice is a Beast, th
 test("Polymorph: the list of Beasts is every Beast of the SRD pack, and nothing else", () => {
   const beasts = Object.values(CONTENT.monsters).filter((m) => m.type === "beast").map((m) => m.id).sort();
   assert.deepEqual([...BEASTS].sort(), beasts);
-  assert.equal(CHOICES.beast, BEASTS);
+  // B4 (#903) widened the choice to every stat block of the pack (`FORMS`): what a form may be is the step's (Polymorph's is a Beast, and `beastWhy` refuses the rest).
+  assert.deepEqual([...FORMS].sort(), Object.keys(CONTENT.monsters).sort());
+  assert.equal(CHOICES.beast, FORMS);
 });
 
 test("takeForm: Wild Shape's layer is as it was (no `whole`: nothing of the whole form is kept), a whole form puts everything back", () => {
