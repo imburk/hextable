@@ -3,7 +3,7 @@
 // build notes for #165.
 //
 // It is `fx.terrain` on a lasting effect (durations.js), made when the spell is cast (engine/casting.js):
-//   { area, hexes: [col keys], origin, difficult?: true, obscured?: 'heavy' | 'light', silence?: true, globe?: true, shell?: true, follows?: id }
+//   { area, hexes: [col keys], origin, difficult?: true | 'foes', obscured?: 'heavy' | 'light', silence?: true, globe?: true, shell?: true, follows?: id }
 // laid out as the spell's area was, and gone when the effect ends. Movement reads difficultAt()
 // (engine/world.js, moveOptions); sight reads obscuredAt() (sight.js, sees).
 import { boxOf, col, gridOf, squareAround } from './grid.js';
@@ -23,8 +23,16 @@ function inside(s, t, pos) {
   return true;
 }
 // Is this place Difficult Terrain because of a spell? (It is or it is not: it does not stack.)
-export function difficultAt(s, pos) {
-  for (const fx of terrainsOf(s)) if (fx.terrain.difficult && inside(s, fx.terrain, pos)) return true;
+// `difficult: "foes"` (Conjure Minor Elementals, #916) is an Emanation that follows its caster and is difficult only for a creature hostile to the caster: it needs `mover`, the creature that
+// would stand at `pos`, and `seen(s, caster)`, which says the party may know of the caster (a hidden foe's aura must not show itself in what a party creature's walk costs).
+export function difficultAt(s, pos, mover, seen = () => true) {
+  for (const fx of terrainsOf(s)) {
+    const t = fx.terrain;
+    if (t.difficult === 'foes') {
+      const c = s.entities[t.follows];
+      if (mover && c && !c.dead && c.id !== mover.id && c.side !== mover.side && (mover.side !== 'party' || seen(s, c)) && inShell(s, fx, mover, pos)) return true;
+    } else if (t.difficult && inside(s, t, pos)) return true;
+  }
   return false;
 }
 // How obscured a spell makes this place: 'heavy', 'light' or null.

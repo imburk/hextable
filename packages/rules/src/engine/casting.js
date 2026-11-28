@@ -854,7 +854,7 @@ function castSpell(s, a, ctx, ev, item) {
     // Ground or air the spell changes for as long as it lasts (terrain.js). An instant one that says
     // `lasts: 'nextTurnEnd'` (Ice Storm) gets an effect that ends at the end of the caster's next turn.
     const ter = sp.def.terrain;
-    if (ter && hexes) {
+    if (ter && (hexes || ter.difficult === 'foes')) {
       if (!fx) {
         fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: false, duration: '1 round', level: Math.max(slot, sp.level) });
         fx.parts.push({ target: e.id, ends: { on: 'turnEnd', of: 'source' }, born: turnKey(s) });
@@ -862,7 +862,8 @@ function castSpell(s, a, ctx, ev, item) {
       }
       // A Globe's columns include the caster's own space (the Emanation's list leaves it out); a Shell keeps none and moves with its caster.
       const own = ter.globe ? footprint(e, e.pos, gridOf(s.map)).map(col) : [];
-      fx.terrain = { area: { ...sp.area }, hexes: ter.shell ? [] : [...new Set([...hexes.map(col), ...own])], origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}), ...(ter.silence ? { silence: true } : {}), ...(ter.light ? { light: ter.light } : {}), ...(ter.globe ? { globe: true } : {}), ...(ter.shell ? { shell: true, follows: e.id } : {}) };
+      fx.terrain = { area: ter.difficult === 'foes' ? { shape: 'emanation', size: ter.size } : { ...sp.area }, hexes: ter.shell || ter.difficult === 'foes' ? [] : [...new Set([...hexes.map(col), ...own])], origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: ter.difficult === 'foes' ? 'foes' : true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}), ...(ter.silence ? { silence: true } : {}), ...(ter.light ? { light: ter.light } : {}), ...(ter.globe ? { globe: true } : {}), ...(ter.shell ? { shell: true, follows: e.id } : {}), ...(ter.difficult === 'foes' ? { follows: e.id } : {}) };
+      if (ter.difficult === 'foes' && !shellSeen(s, e)) ev.push({ type: 'manual', actor: e.id, name: sp.name, partial: true, text: `${sp.name}: the caster is hiding, so the engine does not make the ground difficult for the party's creatures (their cost would tell the players something is there). The DM judges it for them.` });
       if (ter.shell && !shellSeen(s, e)) ev.push({ type: 'manual', actor: e.id, name: sp.name, partial: true, text: `${sp.name}: the caster is hiding, so the engine does not enforce the aura (a refusal would tell the players something is there). The DM keeps creatures other than Constructs and Undead from passing into it or reaching through it.` });
     }
     const before = ev.length;

@@ -84,7 +84,10 @@ export function scaleSteps(def, casterLevel = 0, slot = def.level) {
       if (!bySlot[key]) continue;
       // An attack the spell gives its caster (`arm`: Flame Blade) grows like a damage step of its own.
       const st = first(key) ?? (key === 'damage' ? first('arm')?.arm : null), sum = st && addDice(st[key], bySlot[key], up);
-      if (sum) st[key] = sum; else unscaled = `the extra ${bySlot[key]} per slot level above ${def.level}`;
+      // A spell with no damage step whose extra damage is a `damage.dealt` modifier of plain dice (Conjure Minor Elementals, #916) grows those dice.
+      const mod = !st && key === 'damage' ? first('modifier') : null, mst = mod && mod.modifier.on === 'damage.dealt' && /^\d+d\d+$/.test(mod.modifier.value) ? mod.modifier : null, msum = mst && addDice(mst.value, bySlot[key], up);
+      if (msum) mst.value = msum;
+      else if (sum) st[key] = sum; else unscaled = `the extra ${bySlot[key]} per slot level above ${def.level}`;
     }
     // A spell that does damage at the start of the creature's turns (Searing Smite: "All the damage increases by 1d6") grows that damage by the same dice.
     if (bySlot.damage) {

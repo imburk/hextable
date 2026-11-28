@@ -309,7 +309,7 @@ test('a manual spell quotes its manual text and says the DM does this', () => {
 const NOT_NUMBERS = ['id', 'name', 'source', 'text', 'manual', 'summon', 'variants', 'blocks', 'set', 'spell', 'cost', 'classes', 'kinds', 'checked', 'resource', 'on'];   // "on" names a hook: d20 is not a number (Raise Dead's penalty, #899)
 function numbersIn(v, path, out) {
   if (typeof v === 'number') out.push(`${path}=${v}`);
-  else if (typeof v === 'string') { const hp = /^target\.hp(?:AtMost|Above):(\d+)$/.exec(v); if (hp) out.push(`${path}=${+hp[1]}`);   // a Hit Points tag (#907) holds a number: N
+  else if (typeof v === 'string') { const hp = /^target\.(?:hp(?:AtMost|Above)|within):(\d+)$/.exec(v); if (hp) out.push(`${path}=${+hp[1]}`);   // a Hit Points tag (#907) or a distance tag (`target.within:N`, #916) holds a number: N
     else if (/\d/.test(v)) out.push(`${path}=${v}`); }
   else if (Array.isArray(v)) { if (!/\.forms$/.test(path)) v.forEach((x, i) => numbersIn(x, `${path}.${i}`, out)); }
   else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) {

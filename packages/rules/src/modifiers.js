@@ -103,6 +103,9 @@ export function judge(tag, sit, s) {
       return a ? Object.values(s.entities).some((o) => upright(o) && o.side !== a.side && apart(s, o, a) <= 1) : null;
     default: {
       // `target.hpAtMost:N` / `target.hpAbove:N` (#907): the target's current Hit Points, never its Temporary Hit Points.
+      // `target.within:N` (#916): the target is within N feet of the source, as `apart` measures an attack (a multiple of 5 up to 300; the lint holds the rest).
+      const w = typeof tag === 'string' ? /^target\.within:([1-9]\d{0,2})$/.exec(tag) : null;
+      if (w) return a && t ? apart(s, a, t) * FT <= +w[1] : null;
       const m = typeof tag === 'string' ? /^target\.hp(AtMost|Above):([1-9]\d{0,2})$/.exec(tag) : null;
       if (!m || !t || typeof t.hp !== 'number') return null;
       return m[1] === 'AtMost' ? t.hp <= +m[2] : t.hp > +m[2];

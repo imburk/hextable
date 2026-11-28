@@ -787,7 +787,7 @@ function leapOn(s, a, ctx, ev) {
     const text = `${e.name} leaps ${short} ft${cost.spell ? ' (Jump)' : ''}.`;
     ev.push(e.side === 'party' ? { type: 'note', id: e.id, text } : { type: 'manual', actor: e.id, name: 'Leap', partial: true, text });
     // SRD "Long Jump": landing in Difficult Terrain takes a DC 10 Dexterity (Acrobatics) check, or the creature is Prone.
-    const hard = modifiers(s, e, 'terrain').immune !== true && (TILES[land.tile.t].cost > 1 || difficultAt(s, e.pos));
+    const hard = modifiers(s, e, 'terrain').immune !== true && (TILES[land.tile.t].cost > 1 || difficultAt(s, e.pos, e, shellSeen));
     if (hard) {
       const r = abilityCheck(s, e, { skill: 'acrobatics' }), good = r.total >= 10;
       ev.push({ type: 'check', id: e.id, ability: 'dex', skill: 'acrobatics', ...r, dc: 10, success: good, what: 'Landing in Difficult Terrain' });
