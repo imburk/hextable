@@ -342,27 +342,22 @@ phone too, including before a table is joined: the lobby (`#lobby`) gets an
 └───────────────────────────────────────────────────────┴──────────────┘
 ```
 
-- Width 360 px. A **pin** button keeps it open: `hextable.drawerPin`
-  (default off). Pinned, the canvas element's box shrinks by the drawer's
-  width (`#gl { inset: 0 var(--drawer-w) 0 0 }`; `render.js` already follows
-  the canvas size with a `ResizeObserver`, so no renderer change), and `#cam`,
-  `#top`, `#order`, `#hint` and the dock move out from under it. Unpinned, it
+- Width 360 px. The pin button and `hextable.drawerPin`, and the canvas shrinking beside a pinned drawer: Removed (owner, 28 Nov, #888). The drawer
   floats over the map with a scrim that does not block the map (a click on the
   map closes it), so a tracker can be opened for a glance and dismissed by
   clicking the map.
 - Keyboard: `m` toggles the drawer (not while typing; the existing key
-  handler already skips inputs), Escape closes an unpinned drawer, `Tab` moves
-  through it and, unpinned, is trapped in it while open; focus returns to the
+  handler already skips inputs), Escape closes the drawer, `Tab` moves
+  through it and is trapped in it while open; focus returns to the
   burger on close. The tab strip is `role="tablist"` with arrow keys.
 
 **Screen readers.** `#drawer` is `role="dialog" aria-modal="true"` while it
-covers the map (phone, or desktop unpinned) and `role="complementary"` when
-pinned; its heading names the tab. Opening moves focus to the heading;
+covers the map (always; the pinned `role="complementary"`: Removed (owner, 28 Nov, #888).); its heading names the tab. Opening moves focus to the heading;
 closing returns it to `#btn-menu`. A visually hidden `aria-live="polite"`
 region says "Round 3. Tor's turn." when the turn changes, once, never per
 Hit Point change. The slide itself is skipped under `prefers-reduced-motion`.
 
-**Preference.** `hextable.drawerSide`, `hextable.drawerPin`, and the last open
+**Preference.** `hextable.drawerSide`, and the last open
 tab (in memory only; it is not worth storing).
 
 ### Decision 3: the tracker in the drawer
@@ -964,7 +959,7 @@ changeable, and a table setting never depends on a device.
 |---|---|---|---|
 | Theme | client | `hextable.theme` | yes (`btn-look`) |
 | Drawer side (right, left) | client | `hextable.drawerSide` | new |
-| Drawer pinned (desktop) | client | `hextable.drawerPin` | new |
+| Drawer pinned (desktop) | client | `hextable.drawerPin` | Removed (owner, 28 Nov, #888). |
 | Default action tab (auto, remember) | client | `hextable.panelTab` | new |
 | Spell sort order | client | `hextable.spellSort` | new |
 | Log filters | client | `hextable.logFilter` | new |
@@ -1081,9 +1076,7 @@ hidden meanwhile.
 - **Many tabs on a small screen.** Six tabs at 390 px is 65 px each; the
   labels are short and the strip scrolls. If a playtest shows it is too
   tight, Bonus (a filter) is the one to fold into Spells and Features.
-- **A pinned drawer narrows the canvas.** The renderer follows the canvas
-  size, but the camera still centres on the canvas, so the focused creature
-  is centred in what is left. That is wanted.
+- **A pinned drawer narrows the canvas.** Removed (owner, 28 Nov, #888).
 - **The class chip, Items that do things, ritual casting and a spellbook are
   engine work that is not scheduled or belongs to others (#175).** The
   panel ships without them and says so on screen instead of showing a control
@@ -1229,15 +1222,14 @@ What was settled while building, where it differs from the text above, and what 
 - **Ids kept.** Every panel keeps its id (`tracker`, `sheet`, `log`, `handouts`, `dm`); `#btn-handouts` and `#ho-badge` are the Handouts
   tab and its badge, so `handouts.js` and `scenes.js` needed no change. A tab's `hidden` attribute says it is not the open tab, so the
   app draws only what is shown. New ids: `#btn-menu`, `#menu-badge`, `#drawer`, `#drawer-tabs`, `#tab-*`, `#set-*`, `#splash`, `#lobby-about`.
-- **Wide and unpinned**, the drawer starts below the top bar, not at the top of the screen: the burger can close it and Undo stays one
-  tap. Below 1480 px it also stops above the dock, because the dock (760 px, centred) would otherwise sit under it. Pinned, it is full
-  height and the map, top bar, order strip, hint, camera buttons, dock and editor move out of its way (`--inset-l`, `--inset-r`).
-- **Tablets (600 to 899 px)** get the phone behaviour (scrim, modal), since there is no room to pin.
+- **Wide**, the drawer starts below the top bar, not at the top of the screen: the burger can close it and Undo stays one
+  tap. Below 1480 px it also stops above the dock, because the dock (760 px, centred) would otherwise sit under it. Pinned: Removed (owner, 28 Nov, #888).
+- **Tablets (600 to 899 px)** get the phone behaviour (scrim, modal), (there is no pin any more).
 - **Handouts tab:** players with handouts only; the DM's are in the DM tab (no empty list for the DM).
 - **Splash:** static in `index.html`, so it shows before the script loads; it goes when a table or the lobby shows, after 10 s in any
   case, and by CSS alone after 12 s if the script never runs. It never waits for anything.
 - **Settings.** Theme, floors look, cut-away, caves (stored as `hextable.floors`, `hextable.cutaway`, `hextable.caves`; `?hex`,
-  `?nocut` and `?nocave` still win, and then the control is off and says so), drawer side and pin, dice, animation, always throw my dice,
+  `?nocut` and `?nocave` still win, and then the control is off and says so), drawer side, dice, animation, always throw my dice,
   and for the DM the monsters' dice. The renderer choice stays out, as the table in Decision 7 says. The table's rules are listed in
   plain words (`rulesLines`); for the DM each has a "Change" button that opens the DM tab. Not built: default action tab, spell sort and
   log filters (their features do not exist yet).

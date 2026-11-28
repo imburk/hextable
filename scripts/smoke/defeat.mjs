@@ -103,25 +103,15 @@ async function defeat(browser, url, label, opts) {
         if (!btns[1][1]) throw new Error('"go back to the last rest" is offered with no rest to go back to');
         if (!/No rest to go back to/.test(await page.textContent('#df .df-choice.off p'))) throw new Error('the greyed choice does not say why');
       });
-      await run.do('with another theme and the menu open, closed or pinned the card and the menu do not fight', async () => {
+      await run.do('with another theme and the menu open, or closed, the card and the menu do not fight', async () => {
         await openTab(page, 'settings/display');
         await page.selectOption('#set-theme', 'sunlit');
-        // dr/dl are the drawer's left and right edges; the pinned menu sits on either side, so the card must clear whichever it is on
+        // dr/dl are the drawer's left and right edges; the menu sits on either side, so the card must clear whichever it is on
         const front = () => page.evaluate(() => { const c = document.querySelector('.df-card').getBoundingClientRect(); return { inside: !!document.elementFromPoint(c.left + c.width / 2, c.top + 30)?.closest('#df'), r: c.right, l: c.left, w: innerWidth, dr: document.getElementById("drawer").getBoundingClientRect().left, dl: document.getElementById('drawer').getBoundingClientRect().right }; });
         let f = await front();
         if (touch && f.inside) throw new Error('the card is in front of the open menu, which the person asked for');
         await closeMenu(page);
         if (!(await front()).inside) throw new Error('the card is hidden once the menu is closed');
-        if (!touch) {
-          await openTab(page, 'turns');
-          await page.evaluate(() => window.hextable.drawer.setPin(true));
-          await sleep(500);
-          f = await front();
-          if (f.l < f.dl - 1 && f.r > f.dr + 1) throw new Error(`the card runs under the pinned menu: ${JSON.stringify(f)}`);
-          await shot('defeat-pinned');
-          await page.evaluate(() => window.hextable.drawer.setPin(false));
-          await closeMenu(page);
-        }
       });
       await run.do('the card can be put aside and brought back', async () => {
         await tap(page, '#df .df-x');

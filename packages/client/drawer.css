@@ -127,7 +127,6 @@ body.editing #editor { bottom: var(--dock-h); max-height: calc(55vh - var(--dock
 body.drawer-over #drawer { z-index: 12; } body.drawer-over #drawer-scrim { z-index: 11; }
 #drawer-scrim { position: fixed; inset: 0; z-index: 4; background: var(--scrim, #0006); }
 #drawer-scrim:not([hidden]) { animation: scrim-in var(--menu-in) ease; } @keyframes scrim-in { from { opacity: 0; } }
-@media (max-width: 899px) { #drawer-pin, #set-pin-row, #set-pin-note { display: none; } }
 
 #drawer-handle { display: none; }
 /* the strip (Decision 4c): the places as symbols across the top of every screen, 48 px each; the current one has a rim and an underline in the accent colour */
@@ -166,7 +165,6 @@ body[data-menu-labels="always"] #menu-root .pr-txt small { display: none; }
 #crumb-here { min-width: 0; }
 #drawer-title { margin: 0; font-size: 20px; outline: none; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; } #drawer-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #drawer-head > button { min-width: 44px; min-height: 44px; padding: 0 10px; } #drawer-head #drawer-close { font-size: 26px; line-height: 1; }
-#drawer-pin.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
 #menu-levels { flex: 1; min-height: 0; position: relative; display: flex; }
 .menu-level { min-width: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--panel-solid, var(--panel)); }

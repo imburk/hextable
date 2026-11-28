@@ -47,7 +47,7 @@ test('a rule of the table is on Table rules, and what runs a fight on Undo and t
 test('Setup is the seven sections of Decision 4d, in their order, with the controls it had', () => {
   const heads = [...setup.matchAll(/<section id="([\w-]+)"[^>]*><h3>([^<]+)<\/h3>/g)].map((m) => m[2]);
   assert.deepEqual(heads, ['Display and controls', 'Dice', 'The menu', 'Characters and packs', 'The table\'s rules', 'Help and about', 'Leave the table']);
-  for (const id of ['set-theme', 'set-floors', 'set-cutaway', 'set-caves', 'set-look-note', 'set-cam', 'set-token', 'set-motion', 'set-side', 'set-pin', 'set-pin-row', 'set-pin-note', 'set-paneltab', 'set-dm-box',
+  for (const id of ['set-theme', 'set-floors', 'set-cutaway', 'set-caves', 'set-look-note', 'set-cam', 'set-token', 'set-motion', 'set-side', 'set-paneltab', 'set-dm-box',
     'dm-dice-monsters', 'set-table-box', 'pace-table', 'set-rules', 'btn-leave']) assert.equal(setup.split(` id="${id}"`).length - 1, 1, `#${id}`);
   assert.ok(setup.indexOf('id="btn-leave"') > setup.indexOf('Leave the table</h3>'), 'leaving is the last section, apart from the rest');
 });

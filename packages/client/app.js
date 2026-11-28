@@ -627,7 +627,6 @@ function onUpdate(state, events, fresh) {
   TL.setPace(pace());
   if (first) {
     LV.reset(); selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); LG.fresh(); AP.fresh(); CP.fresh(); DF.fresh(); CC.fresh(); D.reset();
-    if (D.pinned && D.wide) D.open('turns', null, true);       // pinned means open beside the map, from the start
     splashDone();
     QE.fresh();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
@@ -1703,7 +1702,7 @@ const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), c
   passTap: () => !!choicesNow && D.tab === 'sheet', tapMap: (x, y, type) => R.tapAt(x, y, type),
   change: (why) => { if (why === 'close') menuCloses++; refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
-foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
+foldMenu = () => { if (D.isOpen) D.close(false); };
 showSheet = () => { if (choicesNow && !(D.isOpen && D.tab === 'sheet')) D.open('sheet'); };
 $('party').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-id]'); if (b) pickChar(b.dataset.id); });
 // Help and feedback is a row of the menu; its panel is its own overlay, so the menu folds away first (one overlay at a time).
@@ -1746,7 +1745,7 @@ const renderAbout = () => { const html = aboutHTML({ stateVersion: VERSION, tabl
 const setTheme = (id) => { if (!THEMES[id]) return; themeId = id; prefs.set('hextable.theme', themeId); applyTheme(); R.setTheme(THEMES[themeId]); };
 const ST = initSettings({ prefs, themeId: () => themeId, setTheme, look: (k, v) => { if (setLook(k, v)) R.setTheme(THEMES[themeId]); }, dice: DICE, repace: () => { TL.setPace(pace()); syncPlaying(); }, drawer: D, isDM, bars: () => { const st = TL.shown(); if (st) R.setState(shownState(st), []); } });
 // Where the drawer covers the map, a DM tool that asks for a tap on the map closes it first.
-const closeDM = () => { if (!D.pinnedOpen()) D.close(); };
+const closeDM = () => { D.close(); };
 $('dm-edit').addEventListener('click', closeDM);
 $('dm-start').onclick = () => { closeDM(); setMode({ kind: 'encounter' }); };
 $('dm-end').onclick = () => act({ type: 'endEncounter' });

@@ -17,7 +17,7 @@
 // dropped; 'handouts', a place until M10, is that section of Log and chat).
 //
 // Preferences it keeps (client only, through `prefs`): hextable.drawerSide ('left' | 'right': where a wide screen's column comes from),
-// hextable.drawerPin (bool), hextable.menuMotion ('slide' | 'appear'), hextable.menuToken ('center' | 'left' | 'right': where the token sits; it sits there
+// hextable.menuMotion ('slide' | 'appear'), hextable.menuToken ('center' | 'left' | 'right': where the token sits; it sits there
 // whatever is open), hextable.menuLabels ('3s' | 'always': the words under the symbols), hextable.seen.ring (the note about the health ring was read),
 // hextable.menuOrder and hextable.menuHidden (M9, Arrange: the order of the places and which are hidden; menuorder.js).
 // Where the menu is open is in memory only, and a closed menu opens on its arc.
@@ -45,7 +45,7 @@ export const TABS = {
 const MORE = 'more', MORE_TITLE = 'Every place';
 const ALIAS = { character: 'sheet', party: 'turns', root: '', menu: '', table: '' };
 const SIDES = ['left', 'right'], MOTIONS = ['slide', 'appear'], TOKENS = ['center', 'left', 'right'], LABELS = ['3s', 'always'];
-const WIDE = '(min-width: 900px)';             // the pinned menu, and closeDM() in app.js, use this width
+const WIDE = '(min-width: 900px)';             // a wide screen (the column's side, #888: the menu is always modal)
 const COLUMNS = `${WIDE}, (orientation: landscape) and (max-height: 500px)`;      // the shape with a column: a wide screen, or a phone on its side
 const FLICK = 0.5, SWIPE = 60;                 // px per ms, px: how far or fast a drag on the handle must go to close
 const HOLD_MS = 500;                           // a symbol of the arc held this long opens Arrange (Decision 4c)
@@ -57,7 +57,6 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   const mqWide = matchMedia(WIDE), mqCols = matchMedia(COLUMNS);
   const savedSide = prefs.get('hextable.drawerSide');
   let side = SIDES.includes(savedSide) ? savedSide : 'left';
-  let pin = prefs.get('hextable.drawerPin') === true;
   const savedMotion = prefs.get('hextable.menuMotion'), savedToken = prefs.get('hextable.menuToken'), savedLabels = prefs.get('hextable.menuLabels');
   let motion = MOTIONS.includes(savedMotion) ? savedMotion : 'slide';
   let tokenAt = TOKENS.includes(savedToken) ? savedToken : 'center';
@@ -77,8 +76,6 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   const still = () => reduced() || motion === 'appear';       // no movement at all (Decision 6)
   const wide = () => mqWide.matches;
   const columns = () => mqCols.matches;
-  const pinned = () => pin && wide();
-  const modal = () => !pinned();      // it covers the map unless it is pinned beside it
   // The arc's words come up after 3 s with no choice (the same wait as the scroll card's, scrolltip.js), or at once when the setting says Always.
   const dwell = dwellTimer({ hold: () => { labelsUp = true; arcEl.classList.add('labels'); } });
 
@@ -338,8 +335,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     document.body.dataset.token = tokenAt;
     document.body.classList.toggle('drawer-open', open);
     document.body.classList.toggle('menu-arc', arcOn);
-    document.body.classList.toggle('drawer-pinned', open && up && pinned());
-    document.body.classList.toggle('drawer-modal', open && (arcOn || modal()));
+    document.body.classList.toggle('drawer-modal', open);
     document.body.classList.toggle('drawer-pretable', !S);
     el.dataset.path = path.join('/'); el.dataset.depth = String(sub ? 2 : path.length ? 1 : 0); el.dataset.leaf = leaf ?? '';
     // The sheet (or the column) is up while a screen is open; the arc alone leaves it down.
@@ -401,10 +397,8 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     // The menu slides over the map and the map does not move (#749): no inset is set, so --inset-l and --inset-r stay 0 (drawer.css) and the canvas, the camera and the renderer inset are the same open or shut.
     // The token does not move for the menu (round 6, R25): the sheet and the column keep their bottom strip empty for it (drawer.css).
     token.setAttribute('aria-expanded', String(open));
-    // A dialog while it covers the map; a complementary landmark when it sits beside it.
-    if (modal()) { el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); } else { el.setAttribute('role', 'complementary'); el.removeAttribute('aria-modal'); }
-    $('drawer-pin').setAttribute('aria-pressed', String(pin)); $('drawer-pin').classList.toggle('on', pin);
-    scrim.hidden = !(open && (arcOn || modal()));              // the dimmed map is the clear zone: one tap on it closes everything and does nothing else
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');      // it always covers the map
+    scrim.hidden = !open;              // the dimmed map is the clear zone: one tap on it closes everything and does nothing else
     el.classList.toggle('held', held);
     el.inert = !(open && up);
   }
@@ -541,20 +535,19 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     scrimDown = null; close();
     if (tap) tapMap(tap.x, tap.y, tap.type);
   });
-  $('drawer-pin').addEventListener('click', () => setPin(!pin));
 
-  // ---- keys: m toggles (not while typing); Escape closes an unpinned menu and always the arc. On the arc the arrow keys move round it in order and
+  // ---- keys: m toggles (not while typing); Escape closes the menu. On the arc the arrow keys move round it in order and
   // Enter opens; on the strip Left and Right move along it; in a list Up and Down move between rows and Right or Enter opens one; Left or Backspace
   // goes back from a screen inside a screen. Tab stays inside while it covers the map ----
   const seen = (b) => !b.hidden && b.getClientRects().length > 0;
   addEventListener('keydown', (ev) => {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName) || ev.target.isContentEditable;
     const onArc = isOpen && !held && !path.length, box = onArc ? arcEl : el;
-    if (ev.key === 'Escape' && isOpen && !held && (onArc || !pinned())) {
+    if (ev.key === 'Escape' && isOpen && !held) {
       if ($('rp') && !$('rp').hidden) return;
       ev.preventDefault(); ev.stopImmediatePropagation(); close(); return;
     }
-    if (ev.key === 'Tab' && isOpen && !held && (onArc || modal()) && box.contains(ev.target)) {
+    if (ev.key === 'Tab' && isOpen && !held && box.contains(ev.target)) {
       const f = [...box.querySelectorAll('button, input, select, textarea, a[href], summary, [tabindex="0"], h2[tabindex]')].filter((x) => !x.disabled && !x.hidden && x.tabIndex >= -1 && x.getClientRects().length && !x.closest('[hidden], [inert]') && getComputedStyle(x).visibility !== 'hidden' && !(x.tabIndex < 0 && x !== title));
       if (!f.length) return;
       const first = f[0], last = f.at(-1);
@@ -575,22 +568,21 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
       }
       if (onArc && ev.key.toLowerCase() !== 'm') { if (/^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace)$/.test(ev.key)) eat(); return; }      // behind the arc the arrow keys walk the party: not while it is up
       const row = ev.target.closest?.('#drawer-body .menu-row, #more-list .menu-row, #drawer-body .acc-bar');
-      const mine = (row || symb || ev.target === title || !pinned());     // a pinned menu leaves the arrow keys to the map unless a row has the focus
-      if (mine && ev.target === title && ev.key === 'ArrowUp') {      // from the heading, Up reaches the strip
+      if (ev.target === title && ev.key === 'ArrowUp') {      // from the heading, Up reaches the strip
         const cur = rootList.querySelector('[aria-current="page"]') ?? stripButtons().find(seen);
         if (cur && seen(cur)) { eat(); cur.focus({ preventScroll: true }); return; }
       }
-      if (mine && symb && ev.key === 'ArrowDown') { eat(); title.focus({ preventScroll: true }); return; }
-      if (mine && row && /^(ArrowUp|ArrowDown|Home|End)$/.test(ev.key)) {
+      if (symb && ev.key === 'ArrowDown') { eat(); title.focus({ preventScroll: true }); return; }
+      if (row && /^(ArrowUp|ArrowDown|Home|End)$/.test(ev.key)) {
         const acc = row.closest('.tabpanel.acc');             // a page's bars, and the row under them, are one list for the arrow keys
         const rows = [...(acc ? acc.querySelectorAll(':scope > .acc-sec > .acc-h > .acc-bar, :scope > .acc-all .menu-row') : row.closest('ul').querySelectorAll('.menu-row'))].filter(seen);
         const i = rows.indexOf(row), next = ev.key === 'Home' ? rows[0] : ev.key === 'End' ? rows.at(-1) : rows[Math.max(0, Math.min(rows.length - 1, i + (ev.key === 'ArrowDown' ? 1 : -1)))];
         eat(); next?.focus({ preventScroll: true }); return;
       }
-      if (mine && row && ev.key === 'ArrowRight') { eat(); if (row.getAttribute('aria-expanded') !== 'true') row.click(); return; }
-      if (mine && (ev.key === 'ArrowLeft' || ev.key === 'Backspace') && back()) { eat(); return; }
+      if (row && ev.key === 'ArrowRight') { eat(); if (row.getAttribute('aria-expanded') !== 'true') row.click(); return; }
+      if ((ev.key === 'ArrowLeft' || ev.key === 'Backspace') && back()) { eat(); return; }
       // With no level to go back to, the key must still not reach the game (ArrowLeft walks the party or turns the camera behind the menu).
-      if (!pinned() && (ev.key === 'ArrowLeft' || ev.key === 'Backspace')) { eat(); return; }
+      if ((ev.key === 'ArrowLeft' || ev.key === 'Backspace')) { eat(); return; }
     }
     if (!typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey && ev.key.toLowerCase() === 'm' && $('lobby').hidden) { ev.preventDefault(); toggle(); }
   }, true);
@@ -624,9 +616,6 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   function setSide(s) {
     if (!SIDES.includes(s)) return;
     side = s; prefs.set('hextable.drawerSide', s); paint(); change('side');
-  }
-  function setPin(on) {
-    pin = !!on; prefs.set('hextable.drawerPin', pin); paint(); change('pin');
   }
   function setMotion(m) {
     if (!MOTIONS.includes(m)) return;
@@ -672,7 +661,6 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     get section() { return subOf(path); },
     get path() { return [...path]; },
     get side() { return side; }, setSide,
-    get pinned() { return pin; }, setPin,
     get motion() { return motion; }, setMotion,
     get token() { return tokenAt; }, setToken,
     get labels() { return labels; }, setLabels,
@@ -680,7 +668,6 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     get arc() { return isOpen && !held && !path.length; },
     get wide() { return wide(); },
     get columns() { return columns(); },
-    pinnedOpen: () => isOpen && pinned() && path.length > 0,      // a screen sits beside the map (the arc is never pinned)
     current: () => (state() ? current(state()) : null),
   };
 }
