@@ -10,7 +10,7 @@
 //       one `manual` event: who (`actor`, or null), what it is called (a spell, a feature), the words the engine gave the
 //       DM, and the creatures its words name (`ids`). The same note made again while its card is open adds to `count`.
 //   { n, t, kind: 'run', actor, name, runs: [{ name, text }], why: 'added' | 'turn' }
-//       a creature with abilities the engine does not run (Spellcasting, Legendary Actions: DEBT M5, M6): the DM runs
+//       a creature with abilities the engine does not run (Spellcasting, and the manual options of a legendary block): the DM runs
 //       them. One open card for a creature; a new turn makes it new.
 //
 // Pure: the dice and the clock are the game's own. Design: docs/specs/dm-todo.md.
@@ -27,14 +27,24 @@ const cut = (x, n) => (x.length > n ? `${x.slice(0, n - 1)}…` : x);
 // (no modifiers, no effects, no reaction) whose name says it is one of these. When M5 and M6 are built the traits carry
 // what the engine reads and this list goes quiet by itself.
 const RUNS = /^(?:innate |psionic )?spellcasting\b|^legendary (?:actions|resistance)\b/i;
+const SPELLS_ONLY = /^(?:innate |psionic )?spellcasting\b/i;
 const unread = (t) => !(Array.isArray(t.modifiers) && t.modifiers.length) && !(Array.isArray(t.effects) && t.effects.length) && !t.reaction;
 
 export function runsOf(e) {
   if (!e || e.side === 'party' || e.kind === 'pc') return [];
-  const traits = CONTENT.monsters?.[e.tpl]?.traits;
+  const tpl = CONTENT.monsters?.[e.tpl], traits = tpl?.traits;
   if (!Array.isArray(traits)) return [];
   const out = [];
-  for (const t of traits) if (t && typeof t.name === 'string' && RUNS.test(t.name) && unread(t) && !out.some((x) => x.name === t.name)) out.push({ name: t.name.slice(0, 60), text: String(t.text ?? '').slice(0, 700) });
+  // A creature with a `legendary` block has its legendary actions and Legendary Resistance run by the engine (docs/specs/legendary.md, L4b): the card keeps only the
+  // options of the block that are the DM's alone (no `use`, `effects` or `move`) and Spellcasting. A trait still written as text (no block) keeps the old card.
+  const block = e.legendary ?? tpl?.legendary;
+  if (block && typeof block === 'object') {
+    for (const o of Array.isArray(block.actions?.options) ? block.actions.options : []) {
+      if (o && typeof o.name === 'string' && o.use === undefined && o.effects === undefined && o.move === undefined && !out.some((x) => x.name === o.name)) out.push({ name: o.name.slice(0, 60), text: String(o.manual ?? o.text ?? '').slice(0, 700) });
+    }
+  }
+  const re = block && typeof block === 'object' ? SPELLS_ONLY : RUNS;
+  for (const t of traits) if (t && typeof t.name === 'string' && re.test(t.name) && unread(t) && !out.some((x) => x.name === t.name)) out.push({ name: t.name.slice(0, 60), text: String(t.text ?? '').slice(0, 700) });
   return out;
 }
 

@@ -1281,7 +1281,7 @@ function renderDM() {
   $('dm-engage').checked = S.settings.autoEngage; $('dm-passive').value = S.settings.passiveFind ?? 'off'; $('dm-engage-range').value = String(S.settings.engageRange ?? 10);
   renderMarch();
   { const box = $('dm-legendary'), html = creaturesHtml(S); if (box.dataset.sig !== html && !box.contains(document.activeElement)) { box.dataset.sig = html; box.innerHTML = html; } }
-  $('dm-legendary-windows').checked = S.settings.legendaryWindows === true; $('dm-legendary-resistance').checked = S.settings.legendaryResistance === true;
+  $('dm-legendary-windows').checked = S.settings.legendaryWindows !== false; $('dm-legendary-resistance').checked = S.settings.legendaryResistance !== false;
   $('dm-sight').value = S.settings.sight ?? 'rooms';
   $('dm-unseen-turns').value = S.settings.unseenTurns ?? 'say';
   $('dm-foe-health').value = S.settings.foeHealth ?? 'rough';

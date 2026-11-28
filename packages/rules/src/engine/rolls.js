@@ -792,13 +792,13 @@ export function failureMatters(s, t, site = {}) {
 // after every reroll and rescue, so it is the last word on a save. `sv` is the save as `savingThrow` returned it; `site` says what failing does (`failureMatters`); `evt` is the
 // `save` event already pushed for it, if any. Returns true when it was spent: `sv` (and `evt`) then say `success: true, resisted: true` with the roll kept, the creature's
 // `resisted` count is one up, and the caller goes on with the success.
-// Off (the table setting `legendaryResistance` is not on) it returns at once and changes nothing. The instruction is the creature's own (`reactionsOf`): `always`, `never`, or `matters`
+// Off (the table setting `legendaryResistance` is `false`; absent means on) it returns at once and changes nothing. The instruction is the creature's own (`reactionsOf`): `always`, `never`, or `matters`
 // (the default); `ask`, and a `matters` failure the engine cannot read, stop the action and ask the creature's controller (`askDM`, stage L2b); where the action cannot stop (no copy was
 // taken) the failure applies and the DM is told with a `manual` note that a use is left (Decision 7).
 // A legendary creature on the party's side (a homebrew ally) is no exception: its instruction is its controller's, set with `reactions` as for any creature, and
 // `matters` is its default too (Decision 6). Its player is asked, as the DM is for a monster (`askDM`).
 export function resistFailure(s, t, sv, site, ev, evt = null) {
-  if (s.settings?.legendaryResistance !== true) return false;
+  if (s.settings?.legendaryResistance === false) return false;
   if (sv.success || !t?.legendary?.resistance || t.dead || resistLeft(t) < 1) return false;
   const r = reactionsOf(t).find((x) => x.id === RESISTANCE), how = r ? instruction(t, r, s) : 'matters';
   if (how === 'never') return false;
