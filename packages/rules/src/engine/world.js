@@ -338,7 +338,7 @@ export function moveOptions(s, e, opts = {}) {
   const passable = (o) => !hostile(o, e) || !up(o) || incapacitated(o) || o.size === 'tiny' || Math.abs(rank(o) - rank(e)) >= 2;
   const blocks = (h) => inWay(h, (o) => !passable(o)), crowded = (h) => inWay(h, (o) => hostile(o, e) && o.size !== 'tiny');
   // Ground a spell made Difficult Terrain (terrain.js: Ice Storm, Grease). Walking only: a flyer is not on the ground.
-  const spelled = terrainsOf(s).length ? (h) => difficultAt(s, h) : () => false;
+  const spelled = terrainsOf(s).length ? (h) => difficultAt(s, h, e, shellSeen) : () => false;
   // Antilife Shell: it cannot be walked, climbed or flown into from outside (and ladders are no way round it).
   // Magic Circle: the same, for a creature of a type a circle is set against (into it, or out of it if reversed); ladders are no way round it either.
   const shells = opts.unshelled ? [] : shellsFor(s, e), circles = opts.unshelled ? [] : circlesFor(s, e);

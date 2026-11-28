@@ -567,7 +567,7 @@ repo; no test, smoke run or browser was run.
 | charm-monster | 4 | assist | Forced behaviour and orders |
 | compulsion | 4 | assist | Forced behaviour and orders |
 | confusion | 4 | manual | Forced behaviour and orders |
-| conjure-minor-elementals | 4 | manual | Inside an area, or an area that moves |
+| conjure-minor-elementals | 4 | auto (#916) | Inside an area, or an area that moves |
 | conjure-woodland-beings | 4 | assist | Extra actions or turn limits |
 | control-water | 4 | assist | Objects, walls, terrain |
 | death-ward | 4 | manual | A trigger with no hook |

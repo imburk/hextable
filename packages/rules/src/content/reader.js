@@ -21,7 +21,7 @@
 // weapons, armour, objects and subclasses (task B13, three parts; docs/specs/homebrew-subclasses.md, stage B3).
 import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, AFFLICTIONS, STONE_SHAPES, RESIZES, WATERS, WARDS, COMMANDS, CURSES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
   GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, SPELL_ROLLS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
-  TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, HP_TAG, isDuration, lintEntry } from './schema.js';
+  TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, HP_TAG, WITHIN_TAG, withinOk, isDuration, lintEntry } from './schema.js';
 // index.js first: it loads effects.js whole (effects.js reached first would meet a cycle through durations.js).
 import { CONTENT } from './index.js';
 import { actionProfile, aimable, BENEFICIAL_CONDITIONS, spellKinds, spellRoll, WORK } from '../effects.js';
@@ -126,6 +126,8 @@ export const TAG_WORDS = {
   'check.escape': 'the check is made to escape a grapple', 'target.ally': 'the target is on the caster\'s side',
 };
 // The two numeric tags of a step's `when` (#907; schema.js `HP_TAG`): the words, or null for any other string.
+// `target.within:N` (#916; schema.js `WITHIN_TAG`): the words, or null for any other string.
+export const withinTagWords = (t) => { const m = typeof t === 'string' && withinOk(t) ? WITHIN_TAG.exec(t) : null; return m ? `the target is within ${m[1]} feet of the one the modifier is for` : null; };
 export const hpTagWords = (t) => { const m = typeof t === 'string' ? HP_TAG.exec(t) : null; return m ? (m[1] === 'AtMost' ? `the target has ${m[2]} Hit Points or fewer` : `the target has more than ${m[2]} Hit Points`) + ' (Temporary Hit Points do not count)' : null; };
 // What the engine can tell of each tag, where it is asked (modifiers.js `judge`; a test PLAYS every tag in every place through
 // `apply()` and holds these tables equal to what the engine does, so the reading cannot drift from it again, #430).
@@ -726,7 +728,13 @@ class Reading {
     const t = this.def.terrain;
     if (t === undefined) return;
     if (!isObj(t)) return this.bad('`terrain` is not an object.');
-    this.odd(t, ['difficult', 'obscured', 'lasts', 'silence', 'light', 'globe', 'shell'], 'The terrain');
+    this.odd(t, ['difficult', 'obscured', 'lasts', 'silence', 'light', 'globe', 'shell', 'size'], 'The terrain');
+    if (t.difficult === 'foes') {
+      if (!isInt(t.size)) return this.bad('`terrain.difficult: "foes"` needs its `size`, the Emanation in feet.');
+      this.num('terrain.size', t.size, 'feet');
+      this.line(`A ${t.size}-foot Emanation moves with the caster for as long as the spell lasts, and the ground in it is Difficult Terrain for creatures hostile to the caster (each foot of movement there costs 1 extra foot, as in any Difficult Terrain; an ally of the caster pays nothing extra). A creature the engine cannot tell is hostile, or a caster the party does not know of, is left to the DM.`);
+      return;
+    }
     if (t.globe === true || t.shell === true) {
       if (t.globe === true) this.line('The Emanation stays where it went off, as a barrier for as long as the spell lasts: a spell cast from outside it, of a level below the slot the spell was cast with, cannot affect anything within it (a spell cast with a higher slot counts at that higher level). Such a spell may be aimed at a creature inside, and has no effect on it; the inside is left out of the area of one aimed at an area. A spell cast from inside it is not stopped.');
       else this.line('The Emanation moves with the caster as a barrier for as long as the spell lasts: a creature other than a Construct or an Undead cannot move into it from outside, or make a melee attack of 5 feet reach from outside at one inside it (or from inside at one outside). A creature already inside is not pushed out. Spells, ranged attacks and attacks with more than 5 feet of reach are not stopped. If the caster moves so that a Huge or smaller creature it holds back would be forced through it, the spell ends.');
@@ -796,7 +804,9 @@ class Reading {
         if (s[key] === undefined) continue;
         if (!isDice(s[key])) { this.bad(`\`higher.slot.${key}\` is not dice.`); continue; }
         this.num(`higher.slot.${key}`, s[key], 'dice');
-        const f = firstOf(key);
+        let f = firstOf(key);
+        // No damage step, but a `damage.dealt` modifier of plain dice (Conjure Minor Elementals): those are the dice that grow (effects.js scaleSteps).
+        if (!f && key === 'damage') { let m = null; this.walk((st, at) => { if (!m && isObj(st.modifier) && st.modifier.on === 'damage.dealt' && typeof st.modifier.value === 'string' && /^\d+d\d+$/.test(st.modifier.value)) m = { st: { damage: st.modifier.value, type: st.modifier.types?.[0] }, at }; }); f = m; }
         const word = { damage: 'damage', heal: 'healing', tempHp: 'Temporary Hit Points' }[key];
         if (!f) { this.line(`The entry adds ${s[key]} ${word} per slot level, but it has no ${key} step: nothing grows.`); continue; }
         const sides = (x) => (/d(\d+)/.exec(x)?.[1] ?? null);
@@ -889,12 +899,12 @@ class Reading {
   whenOf(when, at) {
     if (when === undefined) return '';
     if (!Array.isArray(when)) { this.bad(`Step ${at}: \`when\` is not a list of tags.`); return ' (with an unreadable condition)'; }
-    const tags = when.filter((t) => typeof t === 'string' && (Object.hasOwn(TAG_WORDS, t) || hpTagWords(t) !== null));
-    when.forEach((t, i) => { if (hpTagWords(t) !== null) this.num(`${at}.when.${i}`, +HP_TAG.exec(t)[2], 'hit points'); });
+    const tags = when.filter((t) => typeof t === 'string' && (Object.hasOwn(TAG_WORDS, t) || hpTagWords(t) !== null || withinTagWords(t) !== null));
+    when.forEach((t, i) => { if (withinTagWords(t) !== null) this.num(`${at}.when.${i}`, +WITHIN_TAG.exec(t)[1], 'feet'); if (hpTagWords(t) !== null) this.num(`${at}.when.${i}`, +HP_TAG.exec(t)[2], 'hit points'); });
     if (tags.length !== when.length) this.bad(`Step ${at}: \`when\` names a situation the engine does not know.`);
     const judged = this.afterAtk > 0 ? JUDGED_STEP_AFTER_ATTACK : JUDGED_STEP;
-    const un = tags.filter((t) => !judged.includes(t) && hpTagWords(t) === null);       // a Hit Points tag is always judged: the step has a target
-    let text = ` This happens only if ${list(tags.map((t) => hpTagWords(t) ?? TAG_WORDS[t]))}.`;
+    const un = tags.filter((t) => !judged.includes(t) && hpTagWords(t) === null && withinTagWords(t) === null);       // a Hit Points tag is always judged: the step has a target
+    let text = ` This happens only if ${list(tags.map((t) => hpTagWords(t) ?? withinTagWords(t) ?? TAG_WORDS[t]))}.`;
     if (un.length) {
       this.dm(`Deciding whether ${list(un.map((t) => TAG_WORDS[t]))}, each time step ${at} runs.`);
       const how = un.some((t) => t === 'attack.advantage' || t === 'attack.disadvantage') ? ' (the engine knows how an attack roll went only for the steps under that attack\'s hit or miss)' : '';
@@ -1467,11 +1477,14 @@ function modExtras(m, at, toCaster) {
   if (m.atLeast === 1) bits.push('it never takes a part of the damage below 1 (a part that was 0 stays 0)');
   if (typeof m.spell === 'string') bits.push(`it holds only for the damage of ${nameOf('spells', m.spell)}`);
   if (m.when !== undefined) {
-    const tags = Array.isArray(m.when) ? m.when.filter((t) => typeof t === 'string' && Object.hasOwn(TAG_WORDS, t)) : [];
-    if (!Array.isArray(m.when) || tags.length !== m.when.length) this.bad(`${at}: \`when\` names a situation the engine does not know.`);
     const hook = typeof m.on === 'string' ? m.on : '';
+    // `target.within:N` (#916) is read on a `damage.dealt` modifier only, as the lint has it; it is judged there whenever the attacker and the target are known.
+    const near = (t) => hook === 'damage.dealt' && withinTagWords(t) !== null;
+    const tags = Array.isArray(m.when) ? m.when.filter((t) => typeof t === 'string' && (Object.hasOwn(TAG_WORDS, t) || near(t))) : [];
+    if (!Array.isArray(m.when) || tags.length !== m.when.length) this.bad(`${at}: \`when\` names a situation the engine does not know.`);
+    if (Array.isArray(m.when)) m.when.forEach((t, i) => { if (near(t)) this.num(`${at}.when.${i}`, +WITHIN_TAG.exec(t)[1], 'feet'); });
     const own = HOLDER_HOOKS.includes(hook);                       // the creature itself is the "target" there: its own state is what is asked
-    const word = (t) => (own && SELF_TAG_WORDS[t]) || TAG_WORDS[t];
+    const word = (t) => (own && SELF_TAG_WORDS[t]) || withinTagWords(t) || TAG_WORDS[t];
     bits.push(`it holds only when ${list(tags.map(word))}`);
     if (hook === 'hp.max') {
       // rolls.js `modifier`: the Hit Point maximum changes when the modifier is put on, and nothing asks its `when`.
@@ -1483,7 +1496,7 @@ function modExtras(m, at, toCaster) {
       // `attack.str`: known only when the attack says which ability it uses (a character's) or is a spell's. A creature's own attack never does.
       const sometimes = (JUDGED_SOMETIMES[hook] ?? []).filter((t) => tags.includes(t));
       const dead = tags.filter((t) => (NEVER_TRUE[hook] ?? []).includes(t));
-      const never = tags.filter((t) => !judged.includes(t) || (sometimes.includes(t) && this.mon && this.inTrait));
+      const never = tags.filter((t) => !near(t) && (!judged.includes(t) || (sometimes.includes(t) && this.mon && this.inTrait)));
       if (dead.length) {
         this.never++;
         bits.push(`the engine never applies this: a creature making a Death Saving Throw is at 0 Hit Points, so ${list(dead.map(word))} cannot hold`);

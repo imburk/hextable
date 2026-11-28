@@ -200,10 +200,14 @@ function findFunction(value, path = '') {
 // The two tags with a number (#907), judged on an effect step's `when` only: `target.hpAtMost:N` (the target's current Hit Points, not Temporary, are N or fewer) and
 // `target.hpAbove:N` (more than N). N is a whole number from 1 to 999. They are not in `TAGS`: a pattern, so the list does not grow.
 export const HP_TAG = /^target\.hp(AtMost|Above):([1-9]\d{0,2})$/;
-function lintWhen(when, say, numeric = false) {
+// `target.within:N` (#916): the target is within N feet of the source (the attacker, for an attack's damage), N a multiple of 5 from 5 to 300, measured as attacks measure. Judged on an effect step's `when`
+// and on a `damage.dealt` modifier's (Conjure Minor Elementals: the extra damage is for a creature in the Emanation).
+export const WITHIN_TAG = /^target\.within:([1-9]\d{0,2})$/;
+export const withinOk = (t) => typeof t === 'string' && WITHIN_TAG.test(t) && +WITHIN_TAG.exec(t)[1] % 5 === 0 && +WITHIN_TAG.exec(t)[1] <= 300;
+function lintWhen(when, say, numeric = false, within = numeric) {
   if (when === undefined) return;
   if (!Array.isArray(when)) return say('`when` must be a list of tags');
-  for (const t of when) if (!TAGS.includes(t) && !(numeric && typeof t === 'string' && HP_TAG.test(t))) say(`unknown situation tag "${typeof t === 'string' ? t : JSON.stringify(t)}"`);
+  for (const t of when) if (typeof t === 'string' && WITHIN_TAG.test(t) && within) { if (!withinOk(t)) say(`\`${t}\`: the feet are a multiple of 5 from 5 to 300`); } else if (!TAGS.includes(t) && !(numeric && typeof t === 'string' && HP_TAG.test(t))) say(`unknown situation tag "${typeof t === 'string' ? t : JSON.stringify(t)}"`);
 }
 // A spell's choice made when it is cast (`choice: { of, from? }`); a modifier names it as "chosen".
 // `condition`: one condition a `cure` step ends (Lesser Restoration), from `from`.
@@ -340,7 +344,7 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
     if (!(v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 2 && isInt(v.base) && v.base >= 1 && v.base <= 26 && ABILITIES.includes(v.ability))) say('`baseAc` needs a `value` of { base: a whole number, ability: an ability }');
     for (const k of Object.keys(m)) if (!['on', 'op', 'value'].includes(k)) say(`\`baseAc\` has no \`${k}\`: it sets the base Armor Class and nothing else`);
   }
-  lintWhen(m.when, say);
+  lintWhen(m.when, say, false, m.on === 'damage.dealt');
 }
 // A zone: the spell's area stays for its duration and its steps go off on a creature that enters
 // it (`enter`), or starts or ends its turn there; `once: 'turn'` at most once a turn for each
@@ -397,16 +401,20 @@ function lintTerrain(e, say) {
   const t = e.terrain;
   if (t === undefined) return;
   if (!t || typeof t !== 'object' || !Object.keys(t).length) return say('`terrain` must be an object');
-  for (const k of Object.keys(t)) if (!['difficult', 'obscured', 'lasts', 'silence', 'light', 'globe', 'shell'].includes(k)) say(`\`terrain.${k}\` is not something terrain has`);
-  if (t.difficult !== undefined && t.difficult !== true) say('`terrain.difficult` is true or left out');
+  for (const k of Object.keys(t)) if (!['difficult', 'obscured', 'lasts', 'silence', 'light', 'globe', 'shell', 'size'].includes(k)) say(`\`terrain.${k}\` is not something terrain has`);
+  if (t.difficult !== undefined && t.difficult !== true && t.difficult !== 'foes') say('`terrain.difficult` is true, "foes" or left out');
+  // `difficult: "foes"` (Conjure Minor Elementals, #916): an Emanation that moves with its caster and is Difficult Terrain only for creatures hostile to it. It is the whole of its terrain, on a lasting spell.
+  // Its `size` is the Emanation's, in feet; the spell itself is aimed at its caster, so the steps it carries (the caster's own modifier) run once, whoever is or is not in the Emanation.
+  if (t.difficult === 'foes' && !(Object.keys(t).length === 2 && Number.isInteger(t.size) && t.size >= 5 && t.size <= 30 && t.size % 5 === 0 && e.duration !== 'instant' && e.target?.self === true && e.target.area === undefined)) say('`terrain.difficult: "foes"` comes with its `size` (feet, a multiple of 5 up to 30) and nothing else, on a lasting spell aimed at its caster: the Emanation moves with the caster');
+  if (t.size !== undefined && t.difficult !== 'foes') say('`terrain.size` is for `difficult: "foes"`');
   if (t.obscured !== undefined && !['heavy', 'light'].includes(t.obscured)) say('`terrain.obscured` is "heavy" or "light"');
   if (t.silence !== undefined && !(t.silence === true && e.duration !== 'instant' && e.target?.area?.shape === 'sphere')) say('`terrain.silence` is true, on a lasting spell whose area is a sphere');
-  const barrier = t.globe !== undefined || t.shell !== undefined;
+  const barrier = t.globe !== undefined || t.shell !== undefined || t.difficult === 'foes';
   for (const k of ['globe', 'shell']) if (t[k] !== undefined && !(t[k] === true && e.duration !== 'instant' && e.target?.area?.shape === 'emanation' && Object.keys(t).length === 1)) say(`\`terrain.${k}\` is true, alone, on a lasting spell whose area is an Emanation`);
   if (t.globe !== undefined && t.shell !== undefined) say('`terrain` is a globe or a shell, not both');
   if (t.light !== undefined && !(Number.isInteger(t.light) && t.light >= 5 && t.light <= 120 && t.light % 5 === 0 && e.duration !== 'instant' && e.target?.area?.shape === 'sphere')) say('`terrain.light` is the feet of Dim Light beyond the area (5 to 120, a multiple of 5), on a lasting spell whose area is a sphere: the area itself is Bright Light');
   if (!t.difficult && !t.obscured && !t.silence && t.light === undefined && !barrier) say('`terrain` makes the area difficult, obscured, silent, lit, a globe or a shell');
-  if (!e.target?.area || e.target.area.count || e.target.area.choose || (e.target.area.shape === 'emanation' && !barrier)) say('`terrain` needs a single area that stays where it is laid out');
+  if (t.difficult !== 'foes' && (!e.target?.area || e.target.area.count || e.target.area.choose || (e.target.area.shape === 'emanation' && !barrier))) say('`terrain` needs a single area that stays where it is laid out');
   if (e.duration === 'instant' ? t.lasts !== 'nextTurnEnd' : t.lasts !== undefined) say('`terrain.lasts` is "nextTurnEnd", for an instant spell only (otherwise it lasts as the spell does)');
 }
 
@@ -3314,7 +3322,7 @@ const SHAPES = {
   choice: { what: 'a choice', keys: ['of', 'from'] },
   zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'with', 'beside', 'ward'] },
   beside: { what: 'what a zone gives its caster beside it', keys: ['feet', 'modifier'] },
-  terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts', 'silence', 'light', 'globe', 'shell'] },
+  terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts', 'silence', 'light', 'globe', 'shell', 'size'] },
   reaction: { what: 'a reaction', keys: ['on', 'blocks', 'ac', 'attack', 'manual'] },
   bond: { what: 'a summon bond', keys: SUMMON_BOND_KEYS },
   count: { what: 'a summon count', keys: ['slot', 'base', 'above'] },
@@ -3492,7 +3500,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   'spells.level': [0, 9], 'spells.range': [1, 10560000],
   'area.size': FEET, 'area.range': [5, 225],        // a monster's sphere or cylinder centred up to so far away (90 feet is the SRD's largest, the Adult Green Dragon's Noxious Miasma)
   'area.height': [5, 100], 'area.width': [5, 100], 'area.choose': [2, 20], 'area.count': [2, 20],
-  'terrain.light': [5, 120], 'creature.count': [1, 20], 'creature.range': [5, 1200], 'arm.range': [5, 120], 'water.by': [5, 20], 'water.size': [5, 200], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
+  'terrain.light': [5, 120], 'terrain.size': [5, 30], 'creature.count': [1, 20], 'creature.range': [5, 1200], 'arm.range': [5, 120], 'water.by': [5, 20], 'water.size': [5, 200], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
   'targets.#': [1, 20], 'range.#': [5, 240], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
@@ -3816,7 +3824,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   choice: { of: 's', from: 's[]' },
   zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a', move: 'i', seen: 'b', foes: 'b', with: 's', beside: 'o', ward: 'b' },
   beside: { feet: 'i', modifier: 'o' },
-  terrain: { difficult: 'b', obscured: 's', lasts: 's', silence: 'b', light: 'i', globe: 'b', shell: 'b' },
+  terrain: { difficult: 'b|s', obscured: 's', lasts: 's', silence: 'b', light: 'i', globe: 'b', shell: 'b', size: 'i' },
   reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
   hitRider: { with: 's' },
   bond: { kind: 's', turn: 's', orders: 's', range: 'i', at0: 's', ends: 's[]', leash: 'i', noAttack: 'b', mount: 's', first: 's' },
