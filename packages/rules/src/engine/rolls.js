@@ -625,7 +625,7 @@ export function revive(s, t, step, ev, f) {
   const name = f.src.name, actor = f.actor ?? t.id, limit = step.within * (MINUTES_IN[step.unit ?? 'minute'] ?? 1);
   f.unrevived = true;                                         // until it has brought the creature back: the steps after this one then do nothing to a body that is still dead
   if (!t.dead) return ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${t.name} is not dead, so ${name} does nothing.` });
-  if (!Number.isFinite(t.diedAt)) return ev.push({ type: 'manual', actor, name, text: `${name} was cast on ${t.name}, but the engine does not know when ${t.name} died (it died before the engine kept the time), so it did not revive it. If it died within the last ${lastWords(step)} and not of old age, the DM brings it back with ${hitPointsWords(step)} (setHp).` });
+  if (!Number.isFinite(t.diedAt)) return ev.push({ type: 'manual', actor, name, text: `${name} was cast on ${t.name}, but the engine does not know when ${t.name} died (it died before the engine kept the time), so it did not revive it. If it died within the last ${lastWords(step)} and not of old age, the DM brings it back with ${hitPointsWords(step)} (setHp) and applies the rest of ${name} by hand as its text says (any cure, any penalty, the material it takes).` });
   const ago = s.clock - t.diedAt;
   if (!(ago <= limit + 1e-6)) return ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${t.name} died more than ${agoWords(step)} ago, so ${name} does nothing to it.` });
   delete f.unrevived;
@@ -902,7 +902,7 @@ export function abilityCheck(s, e, what, dimToo = false, dis = [], adv = []) {
 // `dis` adds reasons for Disadvantage that are not modifiers, such as Dim Light.
 export function passive(s, e, skill, dis = []) {
   const proficient = !!(e.skills?.includes(skill) || e.skillBonus?.[skill] !== undefined);      // as `abilityCheck` judges it (engine/features.js)
-  const m = modifiers(s, e, 'check', { target: e, skill, ability: SKILLS[skill], proficient }, '');
+  const m = modifiers(s, e, 'check', { target: e, skill, ability: SKILLS[skill], proficient, passive: true }, '');      // `passive`: not a D20 Test (a `d20` modifier is not added)
   m.disadvantage = [...m.disadvantage, ...dis];
   return 10 + checkBonus(e, { skill }, m.lent) + m.add + (m.advantage.length && !m.disadvantage.length ? 5 : 0) - (m.disadvantage.length && !m.advantage.length ? 5 : 0);
 }

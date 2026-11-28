@@ -3734,6 +3734,13 @@ function lintNumbers(kind, e, say) {
   if (attacks > HOMEBREW_WORK.attacks) say(`its Multiattack makes ${thousands(attacks)} attacks; the most is ${HOMEBREW_WORK.attacks}`);
   else if (work > HOMEBREW_WORK.steps) say(`one use (its ${what}) can run ${thousands(work)} steps, counting every branch, every repeat and every creature it reaches (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${HOMEBREW_WORK.steps}`);
   else if (dice > HOMEBREW_WORK.dice) say(`one use (its ${diceWhat}) can roll ${thousands(dice)} dice, counting every repeat, the double dice of a critical hit and every creature that rolls its own (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${thousands(HOMEBREW_WORK.dice)}`);
+  // A homebrew revive (docs/specs/rules-expansion.md, B1): all its Hit Points (`'max'`) or a reach in days or years only as the SRD has them, in a spell of level 5 or
+  // more (Raise Dead and above); otherwise minutes, at most 2 (Revivify's own reach is 1). The 500 of `step.within` is the ceiling of a day- or year-long reach.
+  for (const st of (function* walk(v) { if (Array.isArray(v)) for (const x of v) yield* walk(x); else if (v && typeof v === 'object') { if ('revive' in v) yield v; for (const x of Object.values(v)) yield* walk(x); } })(e)) {
+    const long = st.revive === 'max' || (st.unit !== undefined && st.unit !== 'minute');
+    if (long && !(kind === 'spells' && Number.isInteger(e.level) && e.level >= 5)) say('a revive with all its Hit Points ("max") or a reach in days or years is for a spell of level 5 or more');
+    else if (!long && Number.isInteger(st.within) && st.within > 2) say(`a revive's reach of ${st.within} minutes is too long; the most is 2 (or days, in a spell of level 5 or more)`);
+  }
   for (const [ctx, v, path, g, owner, key] of numbersOf(kind, e)) {
     const r = (kind === 'subclasses' && (FORM_CR_PATH.test(path) ? FORM_CR : SUBCLASS_RANGES[`${owner}.${key}`])) || rangeOf(owner, key, g);
     if (!r) { say(`${path}: a number is not allowed here (no range is set for "${ctx}")`); continue; }

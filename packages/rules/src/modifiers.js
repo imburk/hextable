@@ -300,7 +300,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
     if (src.against && sit.target?.id !== src.against) continue;
     if (src.except && sit.attacker?.id === src.except) continue;
     for (const m of src.modifiers) {
-      if (m.on !== hook && !(m.on === 'd20' && !m.onFail && D20_TESTS.includes(hook))) continue;      // `d20`: a number added to every D20 Test (Raise Dead's penalty)
+      if (m.on !== hook && !(m.on === 'd20' && !m.onFail && D20_TESTS.includes(hook) && !sit.passive)) continue;      // `d20`: a number added to every D20 Test (Raise Dead's penalty); a passive score is no roll
       if (!(m.when ?? []).every((tag) => judge(tag, { ...sit, self: e }, s) === true)) continue;      // not known to hold: not applied
       if (m.spell !== undefined && sit.spellId !== m.spell) continue;                                 // only that spell's damage (Agonizing Blast)
       if (m.from !== undefined && !fromHolds(s, e, m, hook, sit)) continue;                          // only against creatures of those types (Protection from Evil and Good)

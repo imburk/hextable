@@ -126,3 +126,25 @@ test("a creature that did not finish the Long Rest keeps its penalty", () => {
   ok(apply(s, { type: "rest", ids: ["pia"] }, DM));
   assert.equal(d20(s, "fighter")[1], -4);
 });
+
+test("B1: a homebrew revive may bring all Hit Points back, or reach days or years, only in a spell of level 5 or more; minutes stay at most 2", async () => {
+  const { loadPack } = await import("../src/content/registry.js");
+  const { readFileSync } = await import("node:fs");
+  const sample = JSON.parse(readFileSync(new URL("./fixtures/sample-pack.json", import.meta.url), "utf8"));
+  const revivify = (await import("../src/content/index.js")).CONTENT.spells.revivify;
+  const pack = (level, step) => ({ format: sample.format, v: sample.v, pack: sample.pack, spells: [{ ...structuredClone(revivify), id: "hb-sample-back", name: "Back", source: "homebrew:sample", level, checked: false, effects: [step] }] });
+  const problems = (level, step) => { const r = loadPack(pack(level, step)); return r.ok ? [] : (r.problems ?? r.errors ?? [String(r.error)]); };
+  assert.deepEqual(problems(3, { revive: 1, within: 1 }), [], "a Revivify of its own is fine");
+  assert.ok(problems(1, { revive: "max", within: 1 }).some((p) => /level 5 or more/.test(p)), "all Hit Points at level 1: refused");
+  assert.ok(problems(3, { revive: 1, within: 5, unit: "day" }).some((p) => /level 5 or more/.test(p)), "days at level 3: refused");
+  assert.ok(problems(3, { revive: 1, within: 3 }).some((p) => /the most is 2/.test(p)), "3 minutes: refused");
+  assert.deepEqual(problems(5, { revive: "max", within: 10, unit: "day" }), [], "a Raise Dead of its own is fine");
+});
+
+test("B1: a passive score is no D20 Test: the -4 of Raise Dead leaves it alone", async () => {
+  const { passive } = await import("../src/engine/rolls.js");
+  const s = newGame(5), e = s.entities.rogue, before = passive(s, e, "perception");
+  (e.feats ??= []).push({ id: "b1-test", name: "Test", modifiers: [{ on: "d20", op: "add", value: -4 }] });
+  assert.equal(passive(s, e, "perception"), before);
+  assert.equal(modifiers(s, e, "check", { target: e, skill: "perception" }, "").add, -4, "a roll still takes it");
+});
