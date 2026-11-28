@@ -39,6 +39,9 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
 
 // What an effect can do. One key from this list names the step; the rest are its details.
 export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'endConcentration', 'summon', 'imbue', 'manual',
+  // `grant: { item, count }` (Goodberry): `count` of a pack item (1 to 20) are put among the gear of the creature it works on, each marked as the lasting effect's own, and every one still marked vanishes
+  // when the effect ends, wherever it has gone (engine/characters.js `grantItems`, durations.js `endPart`). Only in a spell that lasts. docs/specs/rules-expansion.md, "Build notes: Goodberry".
+  'grant',
   // `stabilize: true`: a creature at 0 Hit Points that is not dead becomes Stable (Spare the Dying). `light: { bright, dim }`: the creature it works on carries a light for as long
   // as the lasting effect it is part of runs (Light); `replaces: true`: casting it again ends the caster's earlier one. docs/specs/rules-expansion.md, "Build notes: Mage Armor, Spare the Dying and Light".
   'stabilize', 'light',
@@ -688,6 +691,12 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     }
     // `imbue` (docs/specs/on-hit.md, Decision 8): one of its weapons changes for as long as the effect lasts.
     if (kind === 'imbue') lintImbue(step.imbue, say);
+    // `grant: { item, count }`: an item id of the pack, and how many (1 to 20). The id is read against the pack where the engine runs it (it hands the step to the DM if the table has no such item).
+    if (kind === 'grant') {
+      const g = step.grant;
+      if (!(g && typeof g === 'object' && !Array.isArray(g) && Object.keys(g).every((k) => ['item', 'count'].includes(k)) && typeof g.item === 'string' && ID.test(g.item) && isInt(g.count) && g.count >= 1 && g.count <= 20)) say('`grant` is { item, count }: an item id, and 1 to 20 of them');
+      if (!seen.eachOk) say('a `grant` step is for a spell that lasts: what it gives goes when the spell ends');
+    }
     if (kind === 'fall' && !(step.fall === 'surface' || (isInt(step.fall) && step.fall > 0))) say('`fall` must be a number of feet or "surface"');
     if (kind === 'set') {
       if (!ID.test(step.set ?? '')) say('`set` must name a state');
@@ -3284,7 +3293,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [], water: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], grant: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [], water: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3352,6 +3361,7 @@ const SHAPES = {
   attune: { what: 'attunement', keys: ['by', 'spellcaster'] },
   arm: { what: 'an arm step', keys: ['damage', 'type', 'addMod', 'time', 'range'] },
   water: { what: 'a water step', keys: ['mode', 'by', 'size'] },
+  grant: { what: 'a grant step', keys: ['item', 'count'] },
   imbue: { what: 'an imbue step', keys: ['weapons', 'melee', 'nonmagical', 'abil', 'die', 'plus', 'attackAdd', 'types'] },
   base: { what: 'a base item', keys: ['weapon', 'armour'] },
   charges: { what: 'charges', keys: ['max', 'regain'] },
@@ -3432,7 +3442,7 @@ export function lintKeys(kind, entry, say, visit) {
           if (!allowed.includes(k)) { say(`${p}: "${k}" is not something a ${kinds[0]} step has`); continue; }
           visit?.(`step.${kinds[0]}`, k, st[k], `${p}.${k}`, st);
           const child = BRANCHES.includes(k) ? 'steps' : kinds[0] === 'summon' ? { bond: 'bond', count: 'count', reassert: 'count', over: 'over', forms: Array.isArray(st.forms) ? 'open' : 'forms' }[k] ?? 'open'
-            : k === 'modifier' ? 'modifier' : k === 'imbue' ? 'imbue' : k === 'arm' ? 'arm' : k === 'water' ? 'water' : k === 'ends' ? 'ends' : 'open';
+            : k === 'modifier' ? 'modifier' : k === 'imbue' ? 'imbue' : k === 'grant' ? 'grant' : k === 'arm' ? 'arm' : k === 'water' ? 'water' : k === 'ends' ? 'ends' : 'open';
           stack.push([st[k], child, `${p}.${k}`]);
         }
       });
@@ -3496,7 +3506,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   // legendary actions (docs/specs/legendary.md, Decision 1); `lair.xp` is about twice the SRD's largest (41,000)
   'legendary.uses': [1, 5], 'options.cost': [1, 3], 'resistance.day': [1, 10], 'lair.uses': [1, 5], 'lair.resistance': [1, 10], 'lair.xp': [0, 100000],
   // an imbue step (docs/specs/on-hit.md, Decision 8): a magic bonus, a bonus to attack rolls, and the levels and slot levels they are given by
-  'imbue.plus': [1, 3], 'imbue.attackAdd': [-5, 10], 'imbue.min': [-5, 10], 'attackAdd.min': [-5, 10], 'bySlot.*': [1, 3],
+  'grant.count': [1, 20], 'imbue.plus': [1, 3], 'imbue.attackAdd': [-5, 10], 'imbue.min': [-5, 10], 'attackAdd.min': [-5, 10], 'bySlot.*': [1, 3],
   // spells
   'spells.level': [0, 9], 'spells.range': [1, 10560000],
   'area.size': FEET, 'area.range': [5, 225],        // a monster's sphere or cylinder centred up to so far away (90 feet is the SRD's largest, the Adult Green Dragon's Noxious Miasma)
@@ -3877,9 +3887,10 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's', from: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a', familiarity: 's' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.polymorph': { polymorph: 's', cr: 'n', types: 's[]', not: 's[]', size: 's', keep: 's[]', early: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i|s', within: 'i', unit: 's' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.water': { water: 'o' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.grant': { grant: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.polymorph': { polymorph: 's', cr: 'n', types: 's[]', not: 's[]', size: 's', keep: 's[]', early: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i|s', within: 'i', unit: 's' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.water': { water: 'o' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's', range: 'i' },
   water: { mode: 's', by: 'i', size: 'i' },
+  grant: { item: 'id', count: 'i' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
 });

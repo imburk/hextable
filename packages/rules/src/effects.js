@@ -678,6 +678,7 @@ function exec(s, ev, kit, f, step, at) {
       : `${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);
   }
   if (kind === 'imbue') return kit.imbue(s, t, step, f, ev) || handOver(`${f.src.name} changes what a weapon does for a while, but no weapon of ${t.name}'s was named for it (or it has no lasting effect to hang that on). The DM applies it.`);
+  if (kind === 'grant') return kit.grant(s, t, step, f, ev) || handOver(`${f.src.name} puts ${step.grant.count} ${step.grant.item} in ${t.name}'s hands for as long as it lasts, which the engine cannot do here (no lasting effect to hang it on, no such item at this table, or no character sheet to carry it). The DM hands them out and takes the rest back when it ends.`);
   if (kind === 'fall') {
     // A placed pit may say how deep it is (`fall` on the object); the definition's number is the default.
     const o = f.src.object ? s.map.objects.find((x) => x.id === f.src.object) : null;

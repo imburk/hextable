@@ -116,6 +116,8 @@ export function sentFields(rec, table) {
 // master's pocket dimension is a record too, and goes through the same table.
 export function partyFields(rec) {
   const out = sentFields(rec, PARTY_FIELDS);
+  // An item's `from` (the lasting effect that made it, a `grant` step) is the engine's bookkeeping: it names an effect, so a player is not sent it.
+  if (Array.isArray(out.sheet?.items)) out.sheet.items = out.sheet.items.map((x) => { if (!x || typeof x !== 'object' || !('from' in x)) return x; const { from: _from, ...rest } = x; return rest; });
   if (out.pocket && typeof out.pocket === 'object' && !Array.isArray(out.pocket)) {
     for (const [id, c] of Object.entries(rec.pocket)) out.pocket[id] = c && typeof c === 'object' && !Array.isArray(c) ? partyFields(c) : out.pocket[id];
   }

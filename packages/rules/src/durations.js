@@ -10,6 +10,7 @@
 //          | { enc, round } (in a fight: the start of the source's turn in that round)
 //   parts: what it put on creatures, so ending it takes exactly that off again:
 //          { target, cond, ends?, dc?, born? }, { target, modifier, ends?, dc?, born?, against? }
+//          { target, items: { item, name } } (a `grant` step: the items it handed out carry `from: <this effect's id>` and vanish when it ends, wherever they are, `vanishItems`),
 //          { target, confuse: { had } } (a `confuse` step: Confusion; `had` is what its Reaction was before),
 //          { target, turn: { steps, src } } (an `eachTurn` step: what the effect runs on the creature at the start of each of its turns, effects.js `turnSteps`;
 //          never sent to players), { target, meld: true } (a `meld` step: Meld into Stone; the creature's `melded` mark names this effect, and ending the effect
@@ -98,9 +99,39 @@ function endPart(s, ev, fx, p) {
   if (p.light && t?.light?.fx === fx.id) { delete t.light; ev.push({ type: 'light', id: t.id, bright: 0, dim: 0 }); }
   // An action a spell gave it goes (an `arm` step: Flame Blade).
   if (p.arm && t?.actions) { t.actions = t.actions.filter((x) => !(x.id === p.arm && x.armed === fx.id)); if (ev) ev.push({ type: 'note', id: t.id, text: `${fx.name}: ${t.name} no longer has it` }); }
+  // Items it handed out go, wherever they are now (a `grant` step: Goodberry).
+  if (p.items) vanishItems(s, ev, fx);
   // Temporary Hit Points that came from this effect vanish with it (those from elsewhere since stay).
   if (p.temp && t?.tempFx === fx.id) { const lost = t.tempHp ?? 0; t.tempHp = 0; delete t.tempFx; if (lost) ev.push({ type: 'tempHp', id: t.id, amount: -lost, tempHp: 0 }); }
 }
+// What a `grant` step put in hands (Goodberry) vanishes with its effect, wherever it has gone: every item marked `from` this effect's id, on a character's sheet
+// (a creature's `gear` holds names only, so it cannot be marked: the DM was told at the grant), or lying in a pile, in the place in play or a parked one.
+// The holder of one of its own is told (a `gear` event, which a player is sent only for a creature of theirs); nothing is said of a creature or a pile the party does not know of.
+function vanishItems(s, ev, fx) {
+  const lost = (x) => x && typeof x === 'object' && x.from === fx.id, names = Object.fromEntries(fx.parts.filter((q) => q.items).map((q) => [q.items.item, q.items.name]));
+  const worlds = [s, ...Object.values(s.parked ?? {}).filter((r) => r && typeof r === 'object')];
+  for (const w of worlds) {
+    for (const e of Object.values(w.entities ?? {})) {
+      if (!Array.isArray(e?.sheet?.items) || !e.sheet.items.some(lost)) continue;
+      const gone = e.sheet.items.filter(lost), pack = gone[0].item;
+      e.sheet.items = e.sheet.items.filter((x) => !lost(x));
+      if (e.sheet.attuning && !e.sheet.items.some((x) => x.id === e.sheet.attuning.item)) delete e.sheet.attuning;
+      if (!e.sheet.items.length) delete e.sheet.items;
+      if (ev) ev.push({ type: 'gear', id: e.id, item: `${gone.length > 1 ? `${gone.length} ` : ''}${names[gone[0].item] ?? gone[0].item}`, pack, why: 'ended', taken: true });
+    }
+    const objects = w.map?.objects;
+    if (!Array.isArray(objects)) continue;
+    for (const o of [...objects]) {
+      if (!Array.isArray(o.contents) || !o.contents.some(lost)) continue;
+      o.contents = o.contents.filter((x) => !lost(x));
+      if (!o.contents.length) {
+        objects.splice(objects.indexOf(o), 1);
+        if (w.map.seen?.objects) delete w.map.seen.objects[o.id];
+      }
+    }
+  }
+}
+
 // Is a creature held by Confusion (a `confuse` part, not ended)? Its Reaction is then spent, as the fight begins or it joins one (resolve.js, world.js).
 export const confusedNow = (s, e) => effectsOf(s).some((fx) => fx.parts.some((p) => p.confuse && !p.ended && p.target === e.id));
 const targetsOf = (fx) => [...new Set(fx.parts.map((p) => p.target))];

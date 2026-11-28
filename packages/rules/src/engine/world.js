@@ -620,15 +620,16 @@ export function nearObject(s, e, o) {
 
 // ---------- piles: what lies on the ground (E17) ----------
 // A pile is a map object of the kind `pile` whose placed record has `contents`, a list of what lies there:
-// `{ id, name }` for an item known by name (as `gear` holds them), or `{ id, item, base?, type?, spell?, charges? }`
+// `{ id, name }` for an item known by name (as `gear` holds them), or `{ id, item, base?, type?, spell?, charges?, from? }`
 // for a magic item of the pack (a sheet's item entry without its key, `equipped` or `attuned`). Dropped by `drop`,
 // taken by `pickUp`, laid down by the DM with `mapEdit`. The map document's linter (map.js) does not read
 // `contents`, so what is not well formed is left out here, and so never offered, sent or picked up.
 export const PILE_MAX = 40;
-const CONTENT_KEYS = ['id', 'name', 'item', 'base', 'type', 'spell', 'charges'];
+const CONTENT_KEYS = ['id', 'name', 'item', 'base', 'type', 'spell', 'charges', 'from'];
 export const isPile = (o) => objectDef(o)?.kind === 'pile';
 const wellFormed = (x) => !!x && typeof x === 'object' && !Array.isArray(x) && Object.keys(x).every((k) => CONTENT_KEYS.includes(k)) &&
   typeof x.id === 'string' && /^[a-z0-9]{1,12}$/.test(x.id) &&
+  (x.from === undefined || (typeof x.from === 'string' && /^fx\d{1,9}$/.test(x.from) && x.item !== undefined)) &&
   (x.item === undefined ? typeof x.name === 'string' && !!x.name.trim() && x.name.length <= 60 && ['base', 'type', 'spell', 'charges'].every((k) => x[k] === undefined)
     : x.name === undefined && typeof x.item === 'string' && Object.hasOwn(CONTENT.items, x.item) &&
       (x.charges === undefined || (Number.isInteger(x.charges) && x.charges >= 0 && x.charges <= (CONTENT.items[x.item].charges?.max ?? -1))));

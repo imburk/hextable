@@ -208,7 +208,7 @@ export function featuresOf(sheet) {
 
 // ---------- magic items ----------
 // A sheet's magic items (SRD "Magic Items"; docs/specs/rules-expansion.md, "Magic items" amendment):
-//   items: [{ id, item, base?, type?, spell?, equipped?, attuned?, charges? }]
+//   items: [{ id, item, base?, type?, spell?, equipped?, attuned?, charges?, from? }]
 // `id` is the item's own short key on the sheet ("i1"), `item` a magic item of the pack, `base` the weapon or
 // armour it is made from where the item lets you choose, `type` and `spell` its variant (a Ring of Resistance's
 // damage type, a Spell Scroll's spell). An item works while worn or held (`equipped`; one that works from your
@@ -1050,7 +1050,8 @@ export function featChoices(sheet) {
 }
 
 // ---------- magic items on a sheet ----------
-const ITEM_ENTRY = ['id', 'item', 'base', 'type', 'spell', 'equipped', 'attuned', 'charges'];
+// `from`: the id of the lasting effect that made it (a `grant` step: Goodberry); it goes when that effect ends, wherever it is.
+const ITEM_ENTRY = ['id', 'item', 'base', 'type', 'spell', 'equipped', 'attuned', 'charges', 'from'];
 // Can the character cast a spell by its own traits or features (an item's Attunement "by a Spellcaster")?
 const castsSpells = (sheet) => classesOf(sheet).some((k) => k.c?.casting && k.level >= (k.c.casting.from ?? 1) && (k.c.casting.cantrips[k.level - 1] > 0 || (k.c.casting.kind === 'pact' ? k.c.casting.slots[k.level - 1] > 0 : k.c.casting.slots[k.level - 1]?.length > 0)))
   || (Array.isArray(sheet.feats) && sheet.feats.some((x) => CONTENT.feats[x?.id]?.spellPick && Array.isArray(x.spells) && x.spells.length));
@@ -1069,12 +1070,13 @@ function checkItems(sheet, { armourWords, weaponWords, trainedSuit, multi, who }
   if (!Array.isArray(sheet.items) || sheet.items.length > 60) return say('Its items are a list of up to 60.');
   const keys = new Set(), worn = {}, attuned = [];
   for (const x of sheet.items) {
-    if (!x || typeof x !== 'object' || Array.isArray(x) || Object.keys(x).some((k) => !ITEM_ENTRY.includes(k))) { say('An item is { id, item } with base, type, spell, equipped, attuned or charges.'); continue; }
+    if (!x || typeof x !== 'object' || Array.isArray(x) || Object.keys(x).some((k) => !ITEM_ENTRY.includes(k))) { say('An item is { id, item } with base, type, spell, equipped, attuned, charges or from.'); continue; }
     if (!(typeof x.id === 'string' && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(x.id) && x.id.length <= 12) || keys.has(x.id)) say('Each item has its own short id, like "i1".');
     keys.add(x.id);
     const def = CONTENT.items[x.item];
     if (!def) { say(`There is no magic item "${String(x.item)}" in the game.`); continue; }
     const name = itemName(def, x);
+    if (x.from !== undefined && !(typeof x.from === 'string' && /^fx\d{1,9}$/.test(x.from))) say(`${name}: from is the id of a lasting effect.`);
     for (const k of ['equipped', 'attuned']) if (x[k] !== undefined && typeof x[k] !== 'boolean') say(`${name}: ${k} is true or false.`);
     // What it is made from.
     if (def.base) {
