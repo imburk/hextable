@@ -7,6 +7,7 @@ import { SPELLS } from "../src/content/index.js";
 import { lintEntry } from "../src/content/schema.js";
 import { readEntry } from "../src/content/reader.js";
 import { judge } from "../src/modifiers.js";
+import { difficultAt } from "../src/terrain.js";
 import { apply, current, moveOptions } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
 
@@ -165,4 +166,23 @@ test("the reader says the distance tag and the foes-only ground in plain words, 
   assert.deepEqual(r.problems, []); assert.deepEqual(r.doesNot, []);
   const bad = readEntry("spell", { ...DEF, effects: [{ modifier: { ...DEF.effects[0].modifier, when: ["attack.hit", "target.within:12"] }, to: "caster" }] });
   assert.ok(bad.problems.length, "a distance that is not a multiple of 5 is a problem, not a quiet skip");
+});
+
+test("difficultAt: no mover means no foes-only ground; a hidden caster's aura is kept off the party's movers; an ally and the caster itself are free", () => {
+  const s = field();
+  const foe = spawn(s, "goblin-warrior", 6, 0), ally = s.entities.cleric;
+  cast(s);
+  const inside = { q: 2, r: 0, z: 0 }, outside = { q: 6, r: 0, z: 0 };
+  assert.equal(difficultAt(s, inside), false, "no mover, no answer of difficulty");
+  assert.equal(difficultAt(s, inside, foe), true, "a foe inside");
+  assert.equal(difficultAt(s, outside, foe), false, "a foe outside");
+  assert.equal(difficultAt(s, inside, ally), false, "an ally");
+  assert.equal(difficultAt(s, inside, s.entities.fighter), false, "the caster");
+  // A foe of the party holds it: for a party mover it counts only if the party may know of the caster (the `seen` the caller lends), and always for the foe's own side.
+  const g = spawn(s, "goblin-warrior", 3, 0);
+  s.effects = [{ id: "fxh", name: "Conjure Minor Elementals", spell: "conjure-minor-elementals", source: g.id, parts: [], terrain: { area: { shape: "emanation", size: 15 }, hexes: [], origin: { ...g.pos }, difficult: "foes", follows: g.id } }];
+  const party = s.entities.rogue; party.pos = { q: 4, r: 0, z: 0 };
+  assert.equal(difficultAt(s, party.pos, party), true, "known: difficult");
+  assert.equal(difficultAt(s, party.pos, party, () => false), false, "the party does not know of the caster: the cost tells nothing");
+  assert.equal(difficultAt(s, party.pos, foe, () => false), false, "its own side is not its foe");
 });

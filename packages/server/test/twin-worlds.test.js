@@ -1022,6 +1022,43 @@ test("antilife shell: a visible creature that moves into the shell of a hidden c
   assert.ok(moved(plain) && moved(hidden), "the visible creature moved in both: the shell of a hidden caster refuses nothing");
 });
 
+// ---- Conjure Minor Elementals (#916): a hidden caster's foes-only Difficult Terrain ----
+// The ground costs a party creature double inside the aura of a foe it does not know of, which would tell the players something is there. `difficultAt` is given `shellSeen`, so a
+// party creature walks through it at the plain cost: the same bytes as on a bare cell.
+const elementalsOf = (w, caster) => {
+  const g = byName(w, caster), fx = startEffect(w.state, { name: "Conjure Minor Elementals", spell: "conjure-minor-elementals", source: g.id, conc: true, duration: "10 minutes", level: 4 });
+  fx.parts.push({ target: g.id, ends: { on: "concentration" } });
+  fx.terrain = { area: { shape: "emanation", size: 15 }, hexes: [], origin: { ...g.pos }, difficult: "foes", follows: g.id };
+};
+test("conjure minor elementals: a party creature that walks through the aura of a hidden caster is sent the same as on a bare cell", () => {
+  twin({
+    players: ["Pat", "Sam"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+      Object.assign(s.entities.cleric, { owner: w.ids.Sam, ownerName: "Sam" });
+      // A fight is on, so the walk has a budget and the aura's double cost would show (outside a fight a walk is not counted).
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 4 }, name: "Seen" });
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 });
+      turnOf(w, "fighter");
+      w.putIn();
+    },
+    steps: [
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 6, r: 0 } }, allowError: true },
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 4, r: 0 } }, allowError: true },
+      { by: "Sam", act: { type: "say", as: "cleric", text: "Did it slow you?" } },
+    ],
+  }, {
+    // Spawned outside the arena (one spawned inside joins the fight and is revealed), then stood where its aura covers the walk.
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -9, r: -3 }, name: "Ghost", hidden: true }); const g = byName(w, "Ghost"); g.pos = { ...g.pos, q: 9, r: 0 }; elementalsOf(w, "Ghost"); },
+    plain: (w) => { burn(w, { q: -9, r: -3 }); },
+  });
+});
+
 // ---- Globe of Invulnerability (#786 wave 3b part 1): a hidden creature inside the barrier, and a spell cast from outside at the area ----
 // The barrier leaves the inside out of the area by place, so a hidden creature there is neither hit nor found by it: the same bytes as a bare cell.
 test("globe of invulnerability: a spell cast from outside at an area over a hidden creature inside the barrier is sent the same as over a bare cell", () => {
