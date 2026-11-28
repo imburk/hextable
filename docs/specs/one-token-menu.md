@@ -202,7 +202,7 @@ rather than greyed in a fight; the sheet is still shown under the status block (
   for the DM (players to let in, unsettled rewards, the fallen party's card) stays above the list. The old Fight section is split: starting, ending, auto-play and pace are on Undo and the
   fight; the rules are on Table rules. Every id is kept.
 - **Setup.** Seven sections in Decision 4d's order: Display and controls (theme, floors, walls, caves, shadows, edge of a fight, camera buttons, keys), Dice, The menu (the token's place, slide or
-  appear, side, pin, which group a character's page opens on), Characters and packs, The table's rules, Help and about, Leave the table (Leave for anyone at a table, New game in a solo game).
+  appear, side, which group a character's page opens on), Characters and packs, The table's rules, Help and about, Leave the table (Leave for anyone at a table, New game in a solo game).
 
 **Settled.**
 - **"Every DM section is reachable in three taps"** is counted from the menu's first level: Table, DM tools, the screen. With the token it is four. M8's few places (DM tools on the first level,
@@ -304,7 +304,7 @@ M10's.
   leaving are in Setup (Help and about; Leave the table), where M5 had already put them.
 - **Names.** A screen's heading is its own name (a character's page is the character's name; Turns is Party while nobody fights; no screen is headed "Menu"). A screen inside a screen
   has a way back that names where it goes ("‹ DM tools" over "Creatures"); the breadcrumb is gone, since there is no first-level list to go back to.
-- **Closing.** A phone's sheet has no ×: the handle closes it (a tap or a drag down), as do the die, the map and Escape. A wide screen's column keeps its × beside Pin.
+- **Closing.** A phone's sheet has no ×: the handle closes it (a tap or a drag down), as do the die, the map and Escape. A wide screen's column keeps its ×.
 - **Setup › The menu › Labels under the symbols**: After 3 seconds / Always (`hextable.menuLabels`). Under Always the strip shows the words too.
 - **Motion** (R20): only the sheet (or the column) and the arc move. Changing place from the strip swaps the screen where it is.
 
@@ -410,7 +410,7 @@ which smoke passes change).
 | Companion pickers and rows (`companions.js`) | rows and popups | Character › **Companions** group (shown when the character has one) |
 | Grapple, Shove, Escape, Let go (`grapple.js`) | Attacks rows | Character › **Attack** (Grapple and Shove are Unarmed Strike's options) and **Move** (Escape) |
 | Short rest picker | popup | Character › **Rest** › Short rest (a level-3 screen) |
-| Drawer `#drawer` and its tabs | right side | **The menu.** Its tab strip becomes the first level (below). `#drawer-pin` stays (desktop: keep the menu open beside the map) |
+| Drawer `#drawer` and its tabs | right side | **The menu.** Its tab strip becomes the first level (below). The Pin button: Removed (owner, 28 Nov, #888). |
 | Turns / Party `#tab-turns`, `#tracker` | drawer | **Turns** (first level), unchanged inside |
 | Sheet `#tab-sheet`, `#sheet` | drawer | **Character › Sheet** sections (Abilities and skills, Features and traits, Spells known, Story) at the foot of the character screen |
 | Log `#tab-log`, `#log`, `#log-rewards`, `#note-form` | drawer | **Log and chat** (first level): the log by fight as built, a **Say** box (the engine's `say` action, which works with or without a scene) and the private note (`note`) |
@@ -483,7 +483,7 @@ tap outside clears it.** Reasons:
    the aim bar, the throw zone and End turn are all in the bottom two thirds.
 3. **One tree, two shapes.** The same items in the same order, so a player who uses a
    phone at the table and a laptop at home learns one menu. The width that chooses the
-   shape is the 900 px `table-ui.md` already uses for the pinned drawer.
+   shape is the 900 px `table-ui.md` uses.
 4. **It re-homes, it does not rebuild.** Every screen of today's drawer becomes a screen of
    the menu by re-parenting (as `table-ui.md` did when it made the drawer); the action
    panel's rows are kept and regrouped.
@@ -498,7 +498,7 @@ tap outside clears it.** Reasons:
   menu token sits": **bottom centre**, **bottom right**, **bottom left** (left-handed).
   On a wide screen the same three; bottom centre by default.
 - **The token stays put (round 6, R25).** The token is in one fixed place at every size and
-  whatever is open: a menu, a sheet, columns, the pinned menu, the dock, the aim bar's
+  whatever is open: a menu, a sheet, columns, the dock, the aim bar's
   neighbours. It never rides above a sheet, never rises with the dock, and never slides
   along when columns open; **everything else leaves room for it**. A phone's sheet and the
   columns keep a footer as tall as the token and its margin (84 px) empty at the bottom; the
@@ -590,8 +590,7 @@ inside them the same rule holds.
   (a shorter drag springs back). The map above and Escape still close it. A wide screen
   keeps its × (there is no handle there).
 - On a wide screen the visible map beside the columns is the clear zone, with the same
-  rule. A pinned menu (`hextable.drawerPin`, as today) is not closed by a tap on the map:
-  the map then plays as normal.
+  rule. A menu that stays open beside the map (the pin): Removed (owner, 28 Nov, #888).
 - Choosing a row that **arms an action** (a spell to aim, an attack to throw, Follow)
   closes the menu by itself and shows the aim bar or the throw zone: the map is what the
   player needs next.
@@ -828,7 +827,7 @@ becomes a list of level-3 screens, each today's section unchanged inside:
 | Group | Items |
 |---|---|
 | **Look** | Theme; floors; cut walls; caves; arena edge (as today) |
-| **The menu** | The menu token sits (bottom centre, right, left); **Menus: slide in and out / just appear** (`hextable.menuMotion`, Decision 6); Open my character at the start of my turn (question 3); Keep the menu open beside the map (wide screens, today's pin) |
+| **The menu** | The menu token sits (bottom centre, right, left); **Menus: slide in and out / just appear** (`hextable.menuMotion`, Decision 6); Open my character at the start of my turn (question 3); Keep the menu open beside the map (the pin): Removed (owner, 28 Nov, #888). |
 | **Controls** | Keys (the presets of `keyboard.md`, Show keys); Camera buttons on the map (off) |
 | **Dice and animation** | Dice (full throw, quick, off: today's); **Rolls stay on the board** (Decision 8); **Throw my dice with a flick** (on); Always throw my dice at once (today's); Animation (follow the table, flow, instant: today's) |
 | **For the DM, on this device** | Throw the monsters' dice for me (today's) |
@@ -1462,8 +1461,7 @@ How the prompt fits each table rule:
     free in `keys.js` today, the build checks).
   - **Enter** on the throw zone's die throws it.
 - **Screen readers.** The token: `button`, its name says the state (Decision 1). The menu:
-  `role="dialog"` with `aria-modal="true"` while it covers the map (phone, or wide and not
-  pinned), `role="complementary"` when pinned; each level a `nav` with a heading; the
+  `role="dialog"` with `aria-modal="true"` (the pinned `role="complementary"`: Removed (owner, 28 Nov, #888).); each level a `nav` with a heading; the
   breadcrumb is a `nav aria-label="Where you are"`. Opening moves focus to the level's
   heading; closing returns it to the token. The turn line is `role="status"`
   (`aria-live="polite"`, spoken once a turn, as the drawer's live region does today). The
@@ -1909,8 +1907,8 @@ Client only. `drawer.js` (`fold`, `folded`, the rule in `toggle`, `open` and `sy
 - **A prompt folds the menu and it stays folded.** `drawer.sync` sees a question (`prompt` or `pending`) arrive and calls `fold()`: the menu closes (no focus move), and its place (`path`, with the open section; each section already keeps its scroll) is remembered in `folded`. Answering the question does not reopen it.
 - **A card folds it the same way**, once, as it appears. The cards show and hide themselves from several places (a sync, a chip, a button of the DM's tools), so `app.js` watches the body's `df-open` and `cc-open` classes and folds on the way up.
 - **One tap on the die returns to the same screen.** From a fold, the next `toggle()` opens `folded` and not the arc. Anything else that opens the menu (a symbol, a key, code) forgets it first; so does closing the menu by hand and `reset()`. Escape, a tap on the map and a tap on the die still close the menu as before.
-- **A pinned column is folded too** (Decision 2 puts no exception: a question or a card is above the menu).
-- **Left as it was, on purpose.** (1) A person may open the menu on purpose while a *card* is up (the defeat smoke step "the menu open, closed or pinned" asks for exactly that): the card yields only when it arrives. (2) The sheet that opens by itself for an armed action's choices (#750 part 2, after 350 ms) and the menu that opens for a player with no character (#756, `renderPick`) are not "reopening by itself" after a fold; the second is refused while a question waits.
+- **A column is folded too** (Decision 2 puts no exception: a question or a card is above the menu; the pinned column: Removed (owner, 28 Nov, #888).).
+- **Left as it was, on purpose.** (1) A person may open the menu on purpose while a *card* is up (the defeat smoke step "the menu open, or closed" asks for exactly that): the card yields only when it arrives. (2) The sheet that opens by itself for an armed action's choices (#750 part 2, after 350 ms) and the menu that opens for a player with no character (#756, `renderPick`) are not "reopening by itself" after a fold; the second is refused while a question waits.
 - **Smoke.** `reactions`: Shield on "ask", the menu open on the sheet, the question folds it, "Do not react", the screen is clean (nothing reopens in 700 ms), one tap on the die shows the sheet again. `rewards` (a phone) and `defeat` (both sizes): the menu open on Log, the card folds it, the card goes, the screen stays clean, one tap on the die returns to Log. `openArc` in `lib.mjs` forgets a folded place first, so the passes that want the arc still get it.
 
 **Not built here.** A card shown again while the menu is open on purpose (the chip is hidden while the menu is modal, so only the DM's tools button can do it: it folds the menu, as it did in `foldMenu` for the Waiting card). The fidget die (D6).
