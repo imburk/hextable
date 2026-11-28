@@ -4,6 +4,7 @@
 import { key as cellKey, col as cellCol, gridOf } from './shared/grid.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
+import { destOf, askNow, originOf, offered, destWords } from './destaim.js';
 import { objectsFor, objectAt, objectOptions, objectWords, isObjectAim } from './objectaim.js';
 import { wallsFor, wallAt, wallOptions, stoneWords, wallArg, isWallAim, wallNeeded } from './wallpick.js';
 import { wallTap, wallToward, towardArg, wallWords, isWall, rollMode, rollWords, rollAct, rollers, isWard, wardKinds, wardToggle, wardArg, wardWords, wardOptions, reverseOptions } from './wallaim.js';
@@ -734,7 +735,7 @@ const spellMost = (e, sp) => (mode.item ? targetCount(sp.def, 1, mode.item.level
 // A spell with nothing to aim is cast on the spot, unless there is a slot to choose first: then it is armed, and the hint bar asks (Cast / Cancel).
 const selfCast = (e, id) => {
   const sp = SPELLS[id];
-  if (slotMenu(e, sp) || choicesOf(sp)) return setMode({ kind: 'spell', id, aim: null, keep: false, picked: [] });
+  if (destOf(sp) || slotMenu(e, sp) || choicesOf(sp)) return setMode({ kind: 'spell', id, aim: null, keep: false, picked: [], dest: null });
   act({ type: 'cast', actor: e.id, spell: id, ...slotArg(e, sp), ...chosen(sp) });
 };
 function startSpell(e, id, armed) {
@@ -1152,6 +1153,15 @@ function refresh() {
           else if (picked.length) hint = `${sp.name}: ${picked.map(name).join(', ')}. ${sp.repeat ? 'Tap a target again for another dart' : most > 1 ? 'Tap another, double-tap one to take it off' : 'Tap another to swap it'}, then tap the die`;
           else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}, then the die` : 'a target, then the die'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
         }
+        // #912: a teleport or a chosen-space move asks for one more tap, the space; the engine's own answer says which spaces it would take (destaim.js).
+        if (askNow(sp, mode.picked)) {
+          const d = destOf(sp), spots = destSpots(e, sp), G = gridOf(S.map);
+          if (mode.dest && spots.tried && !spots.lit.some((h) => cellKey(h) === cellKey(mode.dest))) mode.dest = null;
+          hl.range = spots.lit.filter((h) => !mode.dest || cellKey(h) !== cellKey(mode.dest)).map(cellKey);
+          hl.area = mode.dest ? [cellKey(mode.dest)] : [];
+          hint = gridWords(destWords(sp.name, d, { chosen: !!mode.dest, who: name(mode.picked?.[0]), tried: spots.tried, none: spots.why }), G);
+          go = !!mode.dest; multi = null;
+        }
       }
     }
   }
@@ -1498,6 +1508,29 @@ function aimTap(hex) {
   mode.aim = hex; mode.pinned = true;
   refresh();
 }
+// #912 (destaim.js): the space a teleport (Misty Step) or a chosen-space move (Telekinesis) goes to. A tap on a space the engine would refuse says its words and keeps the aim; a tap on the space
+// already marked (a moment later) confirms, as an area's does. `destAct` is the cast with a space, the one `dry` asks the engine about.
+const destArg = () => (mode.kind === 'spell' && mode.dest && destOf(SPELLS[mode.id]) ? { hex: { q: mode.dest.q, r: mode.dest.r } } : {});
+const destAct = (sp, hex) => castAct({ ...(sp.aim === 'creature' ? { target: mode.picked?.[0] } : {}), hex: { q: hex.q, r: hex.r }, ...chosen(sp, mode.picked?.[0] ?? null) });
+let destMemo = null;
+function destSpots(e, sp) {
+  const d = destOf(sp), who = mode.picked?.[0], origin = originOf(S, e, d, who), k = `${selId}|${mode.id}|${who ?? ''}|${slotOf(e, sp) ?? ''}|${mode.choice ?? ''}|${origin?.q},${origin?.r}`;
+  if (destMemo?.k === k && destMemo.S === S) return destMemo.v;
+  const v = origin ? offered(S, origin, d.feet, (h) => dry(destAct(sp, h))) : { lit: [], tried: false, why: '' };
+  destMemo = { k, S, v };
+  return v;
+}
+function destTap(e, sp, hex) {
+  if (!hex) return;
+  const why = dry(destAct(sp, hex));
+  if (why) return toast(why);
+  aimRefusal = null;
+  const same = mode.dest && cellKey(mode.dest) === cellKey(hex);
+  if (same && Date.now() - pinnedAt > 400 && waitFor) return confirmDie();
+  if (!same) pinnedAt = Date.now();
+  mode.dest = { q: hex.q, r: hex.r };
+  refresh();
+}
 // A tap while aiming a spell at an object (Knock): a lit object is chosen (another tap swaps it; a second tap on the chosen one confirms, as an area's does); a tap elsewhere says so and changes nothing.
 function objectTap(e, sp, hex) {
   const id = objectAt(S, objectsFor(S, e, sp), hex);
@@ -1550,6 +1583,7 @@ R.onTap = (hit) => {
   }
   if (mode.kind === 'spell') {
     const sp = SPELLS[mode.id];
+    if (askNow(sp, mode.picked) && (sp.aim === 'self' || sp.aim === 'none' || !tapped)) return destTap(e, sp, hex);       // #912: the space a teleport or a chosen move goes to
     if (sp.aim === 'self' || sp.aim === 'none') return;       // armed only to choose the slot: Cast or Cancel in the hint bar
     if (isObjectAim(sp)) return objectTap(e, sp, hex);
     if (isWallAim(sp)) return stoneTap(e, sp, hex);
@@ -1559,7 +1593,7 @@ R.onTap = (hit) => {
     const most = spellMost(e, sp);
     // A spell that changes a weapon, aimed at a creature with more than one it could change: the menu lists that creature's weapons, and Cast follows the choice.
     if (imbueOf(sp) && most <= 1 && mode.holder !== id && weaponsOf(S.entities[id], sp).length > 1) { mode.holder = id; mode.choice = null; mode.picked = [id]; return refresh(); }
-    if (most <= 1) { aimRefusal = null; lastTap = null; mode.picked = [id]; return refresh(); }       // one target: the tap chooses it (another tap swaps it) and the die casts
+    if (most <= 1) { aimRefusal = null; lastTap = null; mode.picked = [id]; mode.dest = null; return refresh(); }       // one target: the tap chooses it (another tap swaps it) and the die casts
     // Several targets (#750): each tap on the map chooses one and nothing is sent until the die is tapped. A double-tap (two taps within DOUBLE_MS and DOUBLE_PX on the same
     // creature) takes a target that was chosen before the pair off (not for darts: each tap on one is another dart, so a quick second tap is not a pair); on one that was not chosen it chooses it once (the pair's second tap does nothing more).
     const picked = mode.picked ?? (mode.picked = []), now = Date.now(), at = hit.at ?? null;
@@ -1636,7 +1670,7 @@ $('hint-go').onclick = () => {      // only the movement an Opportunity Attack g
 };
 function castAimed() {
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
-  else if (SPELLS[mode.id].aim === 'self' || SPELLS[mode.id].aim === 'none') act(castAct({ ...chosen(SPELLS[mode.id]) }));
+  else if (SPELLS[mode.id].aim === 'self' || SPELLS[mode.id].aim === 'none') act(castAct({ ...chosen(SPELLS[mode.id]), ...destArg() }));
   else if (isObjectAim(SPELLS[mode.id])) act(castAct({ object: mode.object, ...chosen(SPELLS[mode.id]) }));
   else if (isWallAim(SPELLS[mode.id])) {
     const sp = SPELLS[mode.id], pick = chosen(sp), o = wallNeeded(sp, pick.choice) && mode.wall ? wallsFor(S, S.entities[selId], sp).find((x) => x.id === mode.wall.id) : null;
@@ -1648,7 +1682,7 @@ function castAimed() {
     const spare = sp.def.zone?.spare ? Object.values(S.entities).filter((x) => !x.dead && x.id !== selId && !hostile(x, me)).map((x) => x.id) : null;
     act(castAct({ hex: mode.aim ?? undefined, ...(isWall(sp) ? towardArg(mode) : {}), ...(sp.area.choose ? { targets: mode.picked ?? [] } : {}), ...(spare ? { spare } : {}), ...chosen(sp) }));
   }
-  else { const sp = SPELLS[mode.id], one = spellMost(S.entities[selId], sp) <= 1 && !imbueOf(sp); act(castAct({ ...(one ? { target: mode.picked?.[0] } : { targets: mode.picked ?? [] }), ...chosen(sp, mode.picked?.[0] ?? null) })); }
+  else { const sp = SPELLS[mode.id], one = spellMost(S.entities[selId], sp) <= 1 && !imbueOf(sp); act(castAct({ ...(one ? { target: mode.picked?.[0] } : { targets: mode.picked ?? [] }), ...chosen(sp, mode.picked?.[0] ?? null), ...destArg() })); }
 }
 // The die (or Enter, or the second tap on an aimed spot) confirms what waits (#750). Nothing is sent before this. The action is the one the Cast button sent. The aim stays up until
 // the table has answered: a refusal leaves the choices where they were, with the reason in the note (T.on.error); an update ends it. Returns whether the tap was the confirm's.
