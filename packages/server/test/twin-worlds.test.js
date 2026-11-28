@@ -1841,6 +1841,32 @@ test("polymorph: a party member polymorphed beside hidden creatures that a Large
   assert.ok(JSON.stringify(r.hidden.raw.Pat).includes('"size":"large"'), "it became a Large Beast");
 });
 
+// ---- Animal Shapes and Shapechange (#786 B4, #903): a form wider than Polymorph's, a Large form beside a creature the party does not know of: a homebrew monster the DM hid ----
+// The hidden case itself is what differs: in one world a hidden creature of the DM's own pack stands where the Large form would overlap it, in the other the same cells are bare. A refusal or a smaller size or a note would tell a
+// player it is there; the DM alone is told (a `partial` manual). The refusals of these spells (a form the SRD forbids) name the form and the spell's own caps, never a creature.
+const familySetup = (w) => {
+  polySetup(w);
+  w.say("dm", { t: "pack", op: "add", pack: hbPack(true) });
+  Object.assign(w.state.entities.wizard, { level: 9, slots: { 8: 2, 9: 2 }, slotsMax: { 8: 2, 9: 2 } });
+  w.state.entities.wizard.spells.push("animal-shapes", "shapechange");
+};
+const familyRing = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
+const familyLurkers = { hide: (w) => familyRing.forEach(([dq, dr], i) => w.must({ type: "spawn", monster: WRAITH, at: { q: dq, r: dr }, name: `Lurker${i}`, hidden: true })), plain: (w) => familyRing.forEach(([dq, dr]) => burn(w, { q: dq + 8, r: dr - 6 })) };
+test("animal shapes: a party member made a Large Beast beside hidden homebrew monsters is sent the same as with bare cells (not refused, not made smaller, no note)", () => {
+  const script = { players: ["Pat", "Sam"], setup: familySetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "animal-shapes", targets: ["fighter"], choice: "brown-bear", slot: 8 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Grr." } }] };
+  const r = twin(script, familyLurkers);
+  for (const who of ["Pat", "Sam"]) { const raw = JSON.stringify(r.hidden.raw[who]); assert.ok(!raw.includes("Lurker") && ![HB_NAME, HB_TEXT, HB_ATTACK, WRAITH].some((x) => raw.includes(x)), `${who} is told of nothing`); }
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes('"size":"large"'), "it became a Large Beast");
+  assert.ok(JSON.stringify(r.hidden.raw.dm).includes("Lurker0"), "the DM has them in the hidden world");
+});
+test("shapechange: the caster made an Ogre beside hidden homebrew monsters is sent the same as with bare cells, and a form the spell forbids is refused alike in both worlds", () => {
+  const script = { players: ["Pat", "Sam"], setup: familySetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "shapechange", target: "wizard", choice: "zombie", slot: 9 } },
+    { by: "Sam", act: { type: "cast", actor: "wizard", spell: "shapechange", target: "wizard", choice: "ogre", slot: 9 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }] };
+  const r = twin(script, familyLurkers);
+  for (const who of ["Pat", "Sam"]) { const raw = JSON.stringify(r.hidden.raw[who]); assert.ok(!raw.includes("Lurker") && ![HB_NAME, HB_TEXT, HB_ATTACK, WRAITH].some((x) => raw.includes(x)), `${who} is told of nothing`); }
+  assert.ok(JSON.stringify(r.hidden.raw.Sam).includes('"form":"ogre"'), "it became an Ogre");
+});
+
 // ---- swimming (#836, E1): a creature under the water is in its level, so what hides a creature on land hides it there ----
 // A lake of water 15 feet deep from q = 1 east, its far water (q 5 and beyond) a region the party has not seen. The party's fighter swims in the near water, down
 // to 10 feet under the surface and across. A creature swimming under the far water (not hidden by the DM: hidden by the region), and a creature the DM hid there,

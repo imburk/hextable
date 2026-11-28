@@ -1318,7 +1318,7 @@ export const STEP_SENTENCES = {
     const wide = ['cr', 'types', 'not', 'size', 'keep', 'early'].some((k) => st[k] !== undefined);
     if (wide) {
       // A form wider than Polymorph's: what it may be, and what it keeps (engine/resolve.js `formWhy`; docs/specs/rules-expansion.md, "Build notes: manual spells B4").
-      if (typeof st.cr === 'number') this.num(`${at}.polymorph.cr`, st.cr, 'Challenge Rating');
+      if (typeof st.cr === 'number') this.num(`${at}.cr`, st.cr, 'Challenge Rating');
       const kind = Array.isArray(st.types) ? `a creature of type ${st.types.join(' or ')}` : Array.isArray(st.not) ? `a creature that is not a ${st.not.join(' or ')}` : 'a Beast';
       const keeps = (Array.isArray(st.keep) ? st.keep : []).map((k) => (k === 'mental' ? 'Intelligence, Wisdom and Charisma' : k === 'spellcasting' ? 'its Spellcasting feature (the engine does not yet let it cast in the form)' : 'its proficiencies')).join(' and ');
       say(`${Who} takes the form of ${kind} the caster chose${typeof st.cr === 'number' ? `, of Challenge Rating ${st.cr === 0.125 ? '1/8' : st.cr === 0.25 ? '1/4' : st.cr === 0.5 ? '1/2' : st.cr} or lower` : ', of a Challenge Rating no higher than its own (or its level, if it has none)'}${typeof st.size === 'string' ? `, ${st.size} or smaller` : ''}. A form the rules forbid is refused. The stat block replaces its game statistics${keeps ? `, but it keeps ${keeps}` : ''}; it keeps its Hit Points and Hit Point Dice, and gains the form's Hit Points as Temporary Hit Points${st.early === false ? ', which do not end the form when they are gone' : ' (the form ends when they are gone)'}.`);
