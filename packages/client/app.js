@@ -1938,7 +1938,7 @@ const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, 
 const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: an open scene ends when it starts.', true); } });
 const TC = initTableControls({ act, getState: () => S, isDM, toast });
 const RP = initReactionPrompt({ act, state: () => shownState(S), isDM });
-const LG = initLegendary({ mount: document.body.appendChild(document.createElement('div')), state: () => S, isDM, act: (a) => act(a), toast: (m) => toast(m), dry, mode: () => mode, setMode: (m) => setMode(m), move: MOVE, render: () => refresh() });      // the DM's legendary window (legendary.js)
+const LG = initLegendary({ mount: document.body.appendChild(document.createElement('div')), skip: () => skipping(), state: () => S, isDM, act: (a) => act(a), toast: (m) => toast(m), dry, mode: () => mode, setMode: (m) => setMode(m), move: MOVE, render: () => refresh() });      // the DM's legendary window (legendary.js)
 // The cards that come after a fight: the party has fallen (defeat.js). Drawn from the state once the beats that led to it have played.
 const DF = initDefeat({ state: () => S, isDM, solo: () => !!T?.solo, info: () => T?.undoInfo ?? {}, rewind: (to) => T.rewind?.(to) });
 const CC = initConclusion({ act, state: () => S, isDM, solo: () => !!T?.solo, code: () => T?.you?.code ?? 'solo', prefs, levelUp: (id) => QE.levelUp(id) });

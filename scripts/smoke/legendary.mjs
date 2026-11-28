@@ -127,6 +127,7 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await wait(dm, () => window.hextable.mode.target === 'fighter');
         await waitShown(dm, '#lg .lg-go');
         await shot(dm, 'aim-send');
+        await idle(dm); await wait(dm, () => !window.hextable.timeline.busy());
         await tapIt(dm.locator('#lg .lg-go'));
         try { await wait(dm, ([id, p]) => { const q = window.hextable.state.entities[id].pos; return q.q !== p.q || q.r !== p.r; }, [drake, start]); }
         catch (err) { throw new Error(`${err.message.slice(0, 80)} -- ${await dm.evaluate(() => JSON.stringify({ err: document.querySelector('#lg .lg-err')?.textContent, hint: document.querySelector('#hint-text')?.textContent, mode: window.hextable.mode, toast: document.body.innerText.slice(-200) }))}`); }      // it moved (an Opportunity Attack may stop it short of the place)
@@ -153,6 +154,7 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await wait(dm, () => window.hextable.mode.hex);
         await waitShown(dm, '#lg .lg-go');
         await shot(dm, 'aim-area');
+        await idle(dm); await wait(dm, () => !window.hextable.timeline.busy());      // a tap while the beats still play only skips them (legendary.js, as every control): wait for the picture to be still
         await tapIt(dm.locator('#lg .lg-go'));
         try { await wait(dm, () => !window.hextable.state.encounter.between); }      // paid and done: the dragon's own turn has begun, which gives its uses back
         catch (err) { throw new Error(`${err.message.slice(0, 80)} -- ${await dm.evaluate((p) => JSON.stringify({ spot: p, err: document.querySelector('#lg .lg-err')?.textContent, hint: document.querySelector('#hint-text')?.textContent, mode: window.hextable.mode, toast: document.querySelector('#toast')?.textContent, between: window.hextable.state.encounter?.between, acts: Object.values(window.hextable.state.entities).filter((e) => e.legend).map((e) => [e.id, e.legend.acts, e.pos]), turn: window.hextable.state.encounter?.order?.[window.hextable.state.encounter.turn]?.id }), spot)}`); }

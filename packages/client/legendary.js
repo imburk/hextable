@@ -120,7 +120,7 @@ export function bindSwitches(root, act) {
 }
 
 // ---------- the bar ----------
-// ctx: { mount, state(), isDM(), act(a), toast(m), dry(a), mode(), setMode(m), move (the idle mode), render() }
+// ctx: { mount, state(), isDM(), act(a), toast(m), dry(a), mode(), setMode(m), move (the idle mode), render(), skip() (true when the tap only skipped the beats) }
 export function initLegendary(ctx) {
   const { mount } = ctx;
   mount.id = 'lg'; mount.hidden = true; mount.setAttribute('role', 'region'); mount.setAttribute('aria-label', 'Legendary actions');
@@ -152,6 +152,9 @@ export function initLegendary(ctx) {
   mount.addEventListener('click', (ev) => {
     const b = ev.target.closest('button');
     if (!b || !ctx.isDM()) return;
+    // While the beats of what just happened still play (the 'wait' pace), a tap first skips them, as every control of the table does (app.js `skipping`):
+    // nothing is sent and an armed option stays armed, so the next tap sends it. Without this the tap was dropped by `act` and the aim lost.
+    if (ctx.skip?.()) return;
     const s = S();
     const m = armed();
     if (m && b.dataset.do === 'cancel') return ctx.setMode(ctx.move);
