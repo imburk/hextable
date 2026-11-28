@@ -165,6 +165,7 @@ function summarise(def) {
   if (kind === 'confuse') return { short: 'confused', long: `The target can take no Bonus Action or Reaction and acts at random on its turns for ${def.duration}${def.concentration ? ' (Concentration)' : ''}` };
   if (kind === 'arm') return { short: `${step.arm.damage} ${step.arm.type}`, long: `Gives the caster a ${step.arm.range ? `ranged spell attack within ${step.arm.range} feet` : 'melee spell attack'} for ${step.arm.damage}${step.arm.addMod ? ' plus the spellcasting modifier' : ''} ${step.arm.type} damage for as long as it lasts` };
   if (kind === 'water') return { short: step.water.mode === 'flood' ? 'flood the water' : 'part the water', long: step.water.mode === 'flood' ? `Raises the standing water in the area by up to ${step.water.by ?? 20} feet for ${def.duration}${def.concentration ? ' (Concentration)' : ''}; it comes down when the spell ends` : `Parts the water in the area to its bed for ${def.duration}${def.concentration ? ' (Concentration)' : ''}; the trench fills in when the spell ends` };
+  if (kind === 'overgrow') return { short: 'overgrow plants', long: 'Every plant in the area (grass and forest tiles) becomes thick and overgrown: a creature on foot spends 4 feet of movement for every 1 foot there, until the DM clears it from the map' };
   if (kind === 'light') return { short: `${step.light.bright} ft light`, long: `Sheds Bright Light for ${step.light.bright} feet and Dim Light for ${step.light.dim} feet more` };
   if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.map((c) => (c === 'exhaustionLevel' ? 'one Exhaustion level' : c === 'curse' ? 'one curse' : c === 'curses' ? 'all curses' : c)).join(', ')}` };
   if (kind === 'modifier') {
@@ -389,7 +390,7 @@ export function begin(s, { steps, actor, targets, src, shared = null }) {
     : { kind: 'each', steps, t: 0, actor, targets, src, shared });
   // A `water` step (Control Water) acts once for the cast, on the cells of its area, whether or not a creature stands in the area: it has a frame of its own, run first (the stack runs the last
   // pushed), which also says the spell's `manual` steps (they are said once, the `told` marks being shared with the creatures' frames, and an area with nobody in it would say nothing).
-  if (targets !== null && steps.some((st) => 'water' in st || st.once === true)) {
+  if (targets !== null && steps.some((st) => 'water' in st || 'overgrow' in st || st.once === true)) {
     const told = {};
     s.stack.at(-1).told = told;
     s.stack.push({ kind: 'seq', steps, path: '', i: 0, actor, target: null, src, shared: null, told, once: true });
@@ -451,7 +452,7 @@ function controlWaterStep(s, ev, f, step, handOver) {
 function exec(s, ev, kit, f, step, at) {
   const t = f.target === null ? null : s.entities[f.target];
   const kind = stepKind(step);
-  if (f.once && kind !== 'water' && kind !== 'manual') return;      // the once-only frame of `begin`: the rest is for the creatures
+  if (f.once && kind !== 'water' && kind !== 'overgrow' && kind !== 'manual') return;      // the once-only frame of `begin`: the rest is for the creatures
   const handOver = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text });
   const branch = (name, extra = {}) => {
     if (step[name]) s.stack.push({ kind: 'seq', steps: step[name], path: `${at}.${name}.`, i: 0, actor: f.actor, target: f.target, src: f.src, shared: f.shared,
@@ -462,6 +463,11 @@ function exec(s, ev, kit, f, step, at) {
   if (kind === 'water') {
     if (f.target !== null) return;
     return controlWaterStep(s, ev, f, step, handOver);
+  }
+  // Plant Growth: once for the cast, on the tiles of its area (map.js `overgrow`); the same once-only frame as Control Water.
+  if (kind === 'overgrow') {
+    if (f.target !== null) return;
+    return kit.overgrow(s, ev, f, handOver);
   }
   // Teleport (the Teleportation Outcome table): the engine rolls 1d100 for the familiarity the caster chose. A Mishap (3d10 Force damage to the caster, then a new roll) is applied;
   // Similar Area and Off Target are told to the DM alone (Off Target with its distance and direction rolled), who places the caster; On Target goes to the space the cast named.

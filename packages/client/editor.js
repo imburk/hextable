@@ -26,7 +26,7 @@ const HINTS = {
   region: 'Pick or name a room, then tap or drag across hexes to add them to it or take them out. Wall it in uses the kind chosen under Walls.',
   height: 'Tap a tile to raise or lower it by 2.5 ft. A rise of up to 2.5 ft per hex walks freely, up to 5 ft is Difficult Terrain, more is a climb.',
   stairs: 'Tap the hex at the bottom, then the hex at the top, in a straight line. The tiles between become even steps. They can be on different levels.',
-  props: 'Tap a door or thing to set its state, name, key, DCs and links.',
+  props: 'Tap a door or thing to set its state, name, key, DCs and links; tap overgrown ground to clear it.',
   start: 'Tap the hex where the party starts.',
   level: 'Add a level above or below, or pick which one to edit at the top. A background picture is the floor of its level: set its scale, then trace the walls over it.',
   file: 'Start a blank map or one of the stock maps, save this one to a file, or open one. Import reads a Universal VTT file (.dd2vtt, .df2vtt, .uvtt) from a map maker: its picture, walls and doors.',
@@ -383,7 +383,7 @@ export class Editor {
     }
     if (!found.length) {
       const t = l.tiles[Gr.col(h)];
-      if (t?.t === 'water') { this.props = null; $('ed-form').innerHTML = ''; this.wtile = { level: l.id, q: h.q, r: h.r }; return this.refresh(); }     // a water tile has a Depth of its own to change
+      if (t?.t === 'water' || t?.overgrown === true) { this.props = null; $('ed-form').innerHTML = ''; this.wtile = { level: l.id, q: h.q, r: h.r }; return this.refresh(); }     // a water tile has a Depth of its own to change; an overgrown one (Plant Growth) can be cleared
       return this.toast('There is no door or thing on that hex.', true);
     }
     this.wtile = null;
@@ -394,8 +394,16 @@ export class Editor {
   // The panel of a water tile picked with the Properties tool: its Depth, changed with a `tile` op that carries the tile with its new depth.
   #syncWaterTile() {
     const box = $('ed-wtile'), w = this.wtile, l = w && this.S.map.levels.find((x) => x.id === w.level), t = l?.tiles[Gr.col(w)];
-    if (this.tool !== 'props' || t?.t !== 'water') { this.wtile = null; box.hidden = true; box.dataset.sig = ''; box.textContent = ''; return; }
+    if (this.tool !== 'props' || (t?.t !== 'water' && t?.overgrown !== true)) { this.wtile = null; box.hidden = true; box.dataset.sig = ''; box.textContent = ''; return; }
     box.hidden = false;
+    if (t.t !== 'water') {                                    // grass or forest grown over by Plant Growth: say so, and a button takes the field off with a `tile` op (map.js)
+      const sg = `${w.level}|${w.q},${w.r}|overgrown`;
+      if (box.dataset.sig === sg) return;
+      box.dataset.sig = sg;
+      box.innerHTML = `<strong>${t.t === 'forest' ? 'Forest' : 'Grass'} at ${w.q},${w.r}</strong><span class="ed-note" id="ed-overnote">Overgrown (4 ft per foot)</span><button type="button" id="ed-clearover">Clear overgrowth</button>`;
+      $('ed-clearover').onclick = () => { const { overgrown, ...rest } = t; this.edit([{ op: 'tile', level: w.level, at: { q: w.q, r: w.r }, tile: rest }]); };
+      return;
+    }
     const sig = `${w.level}|${w.q},${w.r}|${t.depth ?? WATER_DEPTH.default}`;
     if (box.dataset.sig === sig) return;
     box.dataset.sig = sig;

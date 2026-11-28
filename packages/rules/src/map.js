@@ -99,6 +99,13 @@ export function imageProblem(img, where) {
   if (!pair(img.feet, true)) return `${where} has a background whose size is not two positive numbers of feet.`;
   if (!pair(img.origin, false)) return `${where} has a background whose corner is not two numbers.`;
 }
+// The tiles that hold plants (content/terrain.js TILES): the ones Plant Growth can make overgrown, and the only ones that may carry `overgrown: true`.
+// Stone, rock and water hold no plants. A tile of `overgrown` ground costs a creature on foot 4 feet of movement for every 1 foot (engine/world.js).
+export const VEGETATION = ['grass', 'forest'];
+// Plant Growth's sphere is 100 feet across its radius; a tile whose top lies more than that above or below the point it was aimed at is out of it.
+export const OVERGROW_REACH = 100;
+// What a foot of overgrown ground costs, in feet of movement (SRD Plant Growth: 4 feet for every 1 foot).
+export const OVERGROWN_COST = 4;
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const text = (v) => typeof v === 'string' && v.length > 0 && v.length <= 200;
 
@@ -107,6 +114,7 @@ function tileProblem(t, k, id, nested) {
   if (!t || typeof t !== 'object' || !Object.hasOwn(TILES, t.t)) return `The tile at ${k} on "${id}" has unknown terrain "${t?.t}".`;
   if ((t.h !== undefined && !num(t.h)) || (t.lift !== undefined && !num(t.lift))) return `The tile at ${k} on "${id}" has a height that is not a number.`;
   if (t.t === 'water' ? !depthOk(t.depth) : t.depth !== undefined) return t.t === 'water' ? `The water at ${k} on "${id}" has a depth of ${JSON.stringify(t.depth)} feet; it must be a multiple of ${WATER_DEPTH.step} from ${WATER_DEPTH.min} to ${WATER_DEPTH.max}.` : `The tile at ${k} on "${id}" has a depth, and only water has one.`;
+  if (t.overgrown !== undefined && !(t.overgrown === true && VEGETATION.includes(t.t))) return `The tile at ${k} on "${id}" is marked overgrown; only grass and forest can be, and it is written true.`;
   if (t.dry !== undefined) {
     if (nested) return `The tile at ${k} on "${id}" keeps a dry tile inside a dry tile.`;
     const w = tileProblem(t.dry, k, id, true);
@@ -289,6 +297,7 @@ export const EDITS = {
       delete next.dry;                                  // the DM's paint is the new dry ground: a `dry` sent with it would bring the old one back (tides.js)
       if (next.t === 'water' && next.depth === undefined) next.depth = WATER_DEPTH.default;
       else if (next.t !== 'water') delete next.depth;
+      if (!VEGETATION.includes(next.t)) delete next.overgrown;          // a client that sends the old tile with a new type must not leave overgrowth on stone
       l.tiles[col(at)] = next;
     }
     else {
@@ -367,3 +376,23 @@ export const EDITS = {
     for (const o of map.objects) if (o.level === level) delete map.seen.objects?.[o.id];
   },
 };
+
+// Plant Growth (docs/specs/rules-expansion.md, "Build notes: Plant Growth (#923)"): the map with `overgrown: true` on every vegetation tile in `hexes` (the cells of the spell's sphere) whose top lies
+// within `OVERGROW_REACH` feet of `origin.z`, on any level, except the cells named in `except` ("q,r" keys). Returns { map, cells } with `map` a new document (the old one is not written to) and `cells`
+// the number of tiles that changed; a tile already overgrown, and a cell that holds no plants, are left as they are. A water tile is not vegetation, so a flooded cell is left alone.
+export function overgrow(map, { hexes, origin, except = [] }) {
+  const keys = [...new Set(hexes.map((h) => col(h)))], spared = new Set(except), z0 = origin?.z ?? 0;
+  let cells = 0;
+  const levels = map.levels.map((l) => {
+    let tiles = l.tiles;
+    for (const k of keys) {
+      const t = l.tiles[k];
+      if (!t || spared.has(k) || t.overgrown === true || !VEGETATION.includes(t.t) || Math.abs(l.z + (t.h ?? 0) - z0) > OVERGROW_REACH) continue;
+      if (tiles === l.tiles) tiles = { ...l.tiles };
+      tiles[k] = { ...t, overgrown: true };
+      cells++;
+    }
+    return tiles === l.tiles ? l : { ...l, tiles };
+  });
+  return { map: cells ? { ...map, levels } : map, cells };
+}

@@ -184,6 +184,8 @@ const FIXTURES = [
     effects: [{ cut: 5, ifChoice: ['passage'] }, { manual: 'Any other shape is the DM\'s.', ifChoice: ['other'] }] }),
   base('stone-hide', 'Stone Hide', { level: 3, school: 'transmutation', range: 'touch', duration: '8 hours', target: { wall: {} }, tier: 'assist', kinds: ['utility'],
     effects: [{ meld: true }, { modifier: { on: 'check', op: 'disadvantage', scope: { skill: 'perception' } } }, { manual: 'Whether the wall is stone is the DM\'s.' }] }),
+  base('thick-growth', 'Thick Growth', { level: 3, school: 'transmutation', range: 150, duration: 'instant', target: { area: { shape: 'sphere', size: 100 } }, tier: 'assist', kinds: ['control'],
+    effects: [{ overgrow: true }, { manual: 'A plant the map holds no tile for is the DM\'s.' }] }),
   // Wave 5 part 3: an area laid out from a space (`area.space`) with a zone that goes off on foes the caster sees, moves with its caster and gives it a modifier beside it; and a circle (`zone.ward`, a choice of `ward`, `higher.slot.hours`).
   base('howling-pack', 'Howling Pack', { level: 3, school: 'conjuration', range: 60, duration: '10 minutes', concentration: true, tier: 'assist', kinds: ['damage'], roll: 'save:dex', target: { area: { shape: 'sphere', size: 10, space: 'large' } },
     zone: { on: ['enter', 'turnEnd'], once: 'turn', spare: true, seen: true, foes: true, move: 30, with: 'move', beside: { feet: 5, modifier: { on: 'save.str', op: 'advantage' } } },

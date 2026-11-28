@@ -585,6 +585,7 @@ export class ThreeRenderer {
       const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.matrixAutoUpdate = false; mesh.matrixWorldAutoUpdate = false; mesh.renderOrder = 1;
       this.scene.add(mesh); this.picMeshes.push(mesh);
     }
+    this.overgrown = built.overgrown;                                      // how many overgrown tiles the map drew (the smoke pass reads it)
     this.floorData = built.floorData; this.#measureBoard(built.terrain.d);
     this.terrain.set(built.terrain); this.grid.set(built.grid); this.shadows.set(built.shadows);
     const e = buildEdge({ map: s.map, enc: s.encounter, theme: this.theme, ceiling: this.ceiling }); this.edge.set(e.b); this.edgeBase = e.base;
