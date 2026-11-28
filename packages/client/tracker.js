@@ -73,9 +73,11 @@ export const turnsAway = (S, mine = () => false) => {
   }
   return 0;
 };
-export function screenTurnLine(S, mine = () => false) {
+export function screenTurnLine(S, mine = () => false, { dm = false } = {}) {
   const enc = S?.encounter; if (!enc) return null;
   const o = enc.order[enc.turn], round = `Round ${enc.round}`;
+  // The table waits between two turns for a legendary creature (legendary.js): a player is told only that, never for whom (Decision 9).
+  if (enc.between) return { text: dm ? `${round} \u00b7 Legendary actions` : 'Waiting for the DM', mine: false, waiting: !dm };
   const cur = o && !o.someone ? S.entities[o.id] : null, myTurn = !!cur && mine(cur);
   if (S.prompt?.waiting === true) return { text: 'Waiting for a reaction\u2026', mine: myTurn, waiting: true };
   const played = Object.values(S.entities).filter((e) => e.kind === 'pc' && mine(e));

@@ -94,6 +94,7 @@ const REGISTRY = {
   menushift: ['menushift'],
   seating: ['seating'],
   bringchar: ['bringchar'],
+  legendary: ['legendary'],
 };
 
 const only = process.env.SMOKE_ONLY;

@@ -1,0 +1,25 @@
+/* The DM's legendary window (legendary.js): a strip above the turn line on a wide screen, a bottom sheet on a phone. Under the reaction question (z 15). */
+#lg { position: fixed; z-index: 6; left: 50%; transform: translateX(-50%); width: min(760px, calc(100% - 24px)); bottom: calc(var(--dock-h, 80px) + var(--turn-h, 52px) + 12px); max-height: 50vh; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--panel-2); border: 2px solid var(--accent); border-radius: var(--radius); padding: 10px 12px; box-shadow: 0 8px 40px #000a; }
+#lg[hidden] { display: none; }
+body.drawer-open #lg { display: none; }
+.lg-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.lg-head b { font: 700 18px var(--display); color: var(--accent); } .lg-head span { color: var(--muted); flex: 1; }
+.lg-row { border-top: 1px solid var(--line); padding: 8px 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: start; }
+.lg-who { grid-column: 1 / -1; display: flex; gap: 10px; align-items: baseline; } .lg-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.lg-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+#lg button { min-height: 56px; padding: 6px 12px; }
+.lg-opt { display: flex; flex-direction: column; align-items: flex-start; text-align: left; min-width: 150px; flex: 1 1 150px; max-width: 100%; }
+.lg-opt small { color: var(--muted); font-weight: 400; font-size: 12px; line-height: 1.25; }
+.lg-opt.off { opacity: .5; }
+.lg-oname i { font-style: normal; font-weight: 400; color: var(--muted); }
+.lg-head .lg-done, .lg-btns .lg-go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.lg-armed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lg-armed .lg-step { flex: 1 1 100%; font-weight: 600; } .lg-btns { display: flex; gap: 8px; flex-wrap: wrap; width: 100%; } .lg-btns button { flex: 1 1 90px; }
+.lg-err { margin: 8px 0 0; padding: 8px 10px; border-radius: var(--radius); background: var(--bad); color: #fff; font-weight: 600; }
+.lg-cr { border-top: 1px solid var(--line); padding: 8px 0; } .lg-cr-head { display: flex; gap: 10px; justify-content: space-between; }
+.tr-leg { display: block; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  #lg { left: 0; right: 0; transform: none; width: auto; bottom: 0; max-height: 46vh; border-radius: var(--radius) var(--radius) 0 0; border-width: 2px 0 0; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .lg-opt { flex: 1 1 100%; }
+}
