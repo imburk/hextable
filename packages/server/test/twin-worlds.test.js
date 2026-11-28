@@ -2342,9 +2342,9 @@ test("legendary resistance: a dragon the party does not know of is sent the same
   for (const x of r.diffs) assert.fail(describe([x]));
 });
 
-// A question put to the DM about a dragon the party does not know of bumps the table's question counter (`s.asked`), so the next question a player is asked carries a number one
-// higher than in a world where that dragon is on `never` (#878: the proper fix is in engine.js, `apply`, and is its own issue). Left as a todo, not hidden.
-test("legendary resistance: a player's question after the DM was asked about a dragon they do not know of is numbered the same as with it on `never`", { todo: "#878: s.asked counts the DM's question about an unknown dragon" }, () => {
+// A question put to the DM about a dragon the party does not know of once bumped the table's question counter (`s.asked`), so the next question a player is asked carries a number one
+// higher than in a world where that dragon is on `never` (#878, fixed: a question put to the DM alone is numbered from `askedDM`).
+test("legendary resistance: a player's question after the DM was asked about a dragon they do not know of is numbered the same as with it on `never`", () => {
   const dragon = (how) => (w) => {
     const d = byName(w, "Verdigris");
     d.hidden = true;
