@@ -2205,6 +2205,7 @@ const lrSetup = (w) => {
   for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
   w.must({ type: "setting", key: "autoEngage", value: false });
   w.must({ type: "setting", key: "legendaryResistance", value: true });
+  w.must({ type: "setting", key: "legendaryWindows", value: false });     // these test the saves, not the window (on by default since L4b)
   w.must({ type: "spawn", monster: "adult-green-dragon", at: { q: -3, r: 2 }, name: "Verdigris" });
   w.must({ type: "startEncounter", center: { q: -6, r: 2 }, radius: 8 });
   for (const e of Object.values(w.state.entities)) if (e.side === "party") e.hp = e.maxHp = 900;
@@ -2258,6 +2259,7 @@ test("legendary resistance: a dragon the party does not know of, resisting a cal
     w.must({ type: "setting", key: "autoEngage", value: false });
     w.must({ type: "setting", key: "sight", value: "los" });
     w.must({ type: "setting", key: "legendaryResistance", value: true });
+    w.must({ type: "setting", key: "legendaryWindows", value: false });     // these test the saves, not the window (on by default since L4b)
     w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 2 }, name: "Foe" });
     w.putIn();
   };
@@ -2317,6 +2319,7 @@ test("legendary resistance: a dragon the party does not know of is sent the same
     w.must({ type: "setting", key: "autoEngage", value: false });
     w.must({ type: "setting", key: "sight", value: "los" });
     w.must({ type: "setting", key: "legendaryResistance", value: true });
+    w.must({ type: "setting", key: "legendaryWindows", value: false });     // these test the saves, not the window (on by default since L4b)
     w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 2 }, name: "Foe" });
     w.putIn();
   };
@@ -2358,6 +2361,7 @@ test("legendary resistance: a player's question after the DM was asked about a d
       for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
       w.must({ type: "setting", key: "autoEngage", value: false });
       w.must({ type: "setting", key: "legendaryResistance", value: true });
+      w.must({ type: "setting", key: "legendaryWindows", value: false });     // these test the saves, not the window (on by default since L4b)
       for (const [id, q, r] of [["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
       const sheet = { name: "Ka", class: "paladin", level: 5, subclass: "devotion", abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 16 }, skills: ["athletics", "religion"], choices: { "fighting-style": "defense" }, armour: "chain-mail", weapons: ["longsword"] };
       s.entities.fighter = makeEntity(derive(sheet).record, { id: "fighter", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: w.ids.Pat, ownerName: "Pat" });
