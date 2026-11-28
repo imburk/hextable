@@ -116,10 +116,12 @@ export function judge(tag, sit, s) {
 // Magic Circle (docs/specs/rules-expansion.md, "Build notes: wave 5 part 3"): a lasting zone with `ward: { types, reverse }`, a Cylinder of the cast's own cells and height. What a circle does to a
 // creature of one of its types: it cannot willingly move into it (`warded`; engine/world.js, movement), it has Disadvantage on attack rolls against targets within, and cannot give them the Charmed or Frightened
 // condition (`wardGuards`, `immuneTo` below). Reversed, all of that holds the other way round: it cannot willingly leave, and protects targets outside. A creature whose type the engine cannot tell is bound by none.
+// Hallow's ward is `zone.ward: 'bar'` (cast as `ward.bar`): the barrier and the Charmed and Frightened guard only, no Disadvantage, never reversed, and a sphere (it counts below its centre as well as above).
 export const wardsOf = (s) => (s?.effects ?? []).filter((fx) => fx.zone?.ward);
 export function inWard(s, fx, c, pos = c.pos) {
   const z = fx.zone, keys = new Set(z.hexes), tall = z.area.height ?? z.area.size, o = z.origin;
-  return footprint(c, pos, gridOf(s.map)).some((f) => keys.has(col(f))) && pos.z > o.z - FT / 2 && pos.z <= o.z + tall;
+  if (!footprint(c, pos, gridOf(s.map)).some((f) => keys.has(col(f)))) return false;
+  return z.area.shape === 'sphere' ? Math.abs(pos.z - o.z) <= z.area.size : pos.z > o.z - FT / 2 && pos.z <= o.z + tall;
 }
 const wardOfType = (fx, c) => { const ty = typeOf(c); return ty !== null && fx.zone.ward.types.includes(ty); };
 // The circles whose type list includes this creature's.
@@ -349,7 +351,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
     }
   }
   // Magic Circle: a creature of a chosen type has Disadvantage on attack rolls against targets the circle protects.
-  if (hook === 'attack.roll' && sit.target) for (const fx of wardsBinding(s, e)) if (wardCovers(s, fx, sit.target)) out.disadvantage.push(fx.name);
+  if (hook === 'attack.roll' && sit.target) for (const fx of wardsBinding(s, e)) if (!fx.zone.ward.bar && wardCovers(s, fx, sit.target)) out.disadvantage.push(fx.name);
   return out;
 }
 
