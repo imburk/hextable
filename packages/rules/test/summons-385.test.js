@@ -85,12 +85,12 @@ test("Phantom Steed (SRD 29404-29428): the Riding Horse block with Speed 100, an
   assert.equal(CONTENT.spells["phantom-steed"].tier, "assist", "it still does not end when the steed takes damage");
 });
 
-// The rest of the group (Conjure Animals went to assist as a zone, #833, with no summon step): each needs one mechanism the vocabulary does not have (the PR's table), so none has a summon
+// The rest of the group (Conjure Animals went to assist as a zone, #833, with no summon step; Conjure Elemental did the same as a zone that holds one creature, #921): each needs one mechanism the vocabulary does not have (the PR's table), so none has a summon
 // step and each keeps its tier. If one of these moves, its test belongs with the work that moved it.
 const LEFT = {
   "mage-hand": "manual", "floating-disk": "manual", "unseen-servant": "manual",
   "conjure-animals": "assist", "faithful-hound": "manual",
-  "arcane-hand": "manual", "conjure-elemental": "manual", "planar-ally": "manual",
+  "arcane-hand": "manual", "planar-ally": "manual",
   "arcane-sword": "manual", "finger-of-death": "assist", "simulacrum": "manual",
 };
 test("the spells of the group that need a mechanism the vocabulary lacks have no summon step and keep their tiers", () => {

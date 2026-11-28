@@ -365,7 +365,7 @@ test("L5: strict mode refuses the SRD pack id without being told it", () => {
 const SRD_WORK = (() => { let w = 0, a = 0; for (const [kind, e] of entries) { const r = workOf(kind, e); w = Math.max(w, r.work); a = Math.max(a, r.attacks); } return { work: w, attacks: a }; })();
 
 test("round 2: the attack ceiling is about twice what the SRD needs; the steps ceiling is measured (see the heaviest-cast and heaviest-turn tests), with the SRD maxima as printed in the PR", () => {
-  assert.equal(SRD_WORK.work, 150); // 120 until Guardian of Faith (#786) became data: a zone that goes off for each of the table's 30 creatures
+  assert.equal(SRD_WORK.work, 210); // 150 until Conjure Elemental (#921) became data: a zone that goes off for each of the table's 30 creatures, with an eachTurn that saves and hurts; 120 until Guardian of Faith (#786)
   assert.equal(SRD_WORK.attacks, 7);
   assert.equal(HOMEBREW_WORK.steps, 600);
   assert.ok(HOMEBREW_WORK.steps >= SRD_WORK.work, "every SRD entry fits");
@@ -522,8 +522,8 @@ test("round 3: a spell's growth is counted at the top (slot 9, level 20): the re
   refused(strict("spells", cantrip), /can run 660 steps/);
   // The slot's growth is only to the spell's own level up to 9: a 9th-level spell does not grow.
   assert.equal(workOf("spells", cast({ level: 9, higher: { slot: { targets: 20 } } })).work, 20 * 11);
-  // The SRD still passes with room: its largest is 150 (see the first test), a quarter of the ceiling.
-  assert.equal(SRD_WORK.work, 150); // 120 until Guardian of Faith (#786) became data: a zone that goes off for each of the table's 30 creatures
+  // The SRD still passes with room: its largest is 210 (see the first test), about a third of the ceiling.
+  assert.equal(SRD_WORK.work, 210); // 150 until Conjure Elemental (#921) became data: a zone that goes off for each of the table's 30 creatures, with an eachTurn that saves and hurts; 120 until Guardian of Faith (#786)
 });
 
 test("round 3: in text and dmNotes the only blank is U+0020 (and the line break); every other space or blank-looking character is refused", () => {

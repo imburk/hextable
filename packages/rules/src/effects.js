@@ -12,7 +12,7 @@
 import { BRANCHES, SIZES, SPELL_KINDS, SPELL_ROLLS, STEPS } from './content/schema.js';
 import { roll } from './rng.js';
 import { srcOf } from './homebrew.js';
-import { effectsOf, useUp } from './durations.js';
+import { effectsOf, release, useUp } from './durations.js';
 import { controlWater } from './tides.js';
 
 // A target above a step's `largest` (#495). The note about it names the creature that acted (`actor`), so the player's view keeps it only where it
@@ -94,7 +94,9 @@ export function scaleSteps(def, casterLevel = 0, slot = def.level) {
       const lead = first('damage');
       walk(steps, (st, at) => {
         if (!('eachTurn' in st)) return;
-        const inner = st.eachTurn.find((x) => 'damage' in x);
+        // The damage at the start of a turn is a step of the list, or one in the failure of a save in it (Conjure Elemental's 4d8).
+        let inner = st.eachTurn.find((x) => 'damage' in x);
+        if (!inner) walk(st.eachTurn, (x) => { if (!inner && 'damage' in x) inner = x; });
         if (!inner || inner === lead) return;
         const sum = addDice(inner.damage, bySlot.damage, up);
         if (sum) inner.damage = sum; else unscaled = `the extra ${bySlot.damage} per slot level above ${def.level} on the damage at the start of each turn`;
@@ -652,6 +654,7 @@ function exec(s, ev, kit, f, step, at) {
   if (kind === 'dispel') return kit.dispel(s, t, step, ev, f);
   if (kind === 'revive') return kit.revive(s, t, step, ev, f);
   if (kind === 'endSpell') return kit.endSpell(s, f, ev);
+  if (kind === 'release') return release(s, ev, effectsOf(s).find((x) => x.id === f.src.fxEnd), t.id);      // inside an `eachTurn`, which names the effect (`fxEnd`); durations.js
   if (kind === 'arm') return kit.arm(s, t, step, f, ev) || handOver(`${f.src.name} gives ${t.name} an attack for as long as it lasts, which the engine has no lasting effect to hang on (or no spell attack bonus to give it). The DM resolves the attack: a melee spell attack for ${step.arm.damage}${step.arm.addMod ? ' plus the spellcasting modifier' : ''} ${step.arm.type} damage.`);
   if (kind === 'confuse') return kit.confuse(s, t, step, f, ev) || handOver(`${f.src.name} confuses ${t.name}, which the engine has no lasting effect to hang on. The DM runs it: no Bonus Actions or Reactions, and a d10 for its behaviour at the start of each of its turns.`);
   if (kind === 'command') return kit.command(s, t, step, f, ev) || handOver(`${f.src.name} gives ${t.name} a command for its next turn, which the engine has no lasting effect to hang on. The DM applies it: ${step.command}.`);

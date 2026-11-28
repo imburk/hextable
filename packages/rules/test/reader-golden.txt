@@ -1262,6 +1262,41 @@ When it is cast, the DM is shown the author's description (unless a step has alr
 Not checked against any rulebook.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-binding-spirit
+"Binding Spirit" (level 5 conjuration, 60 feet, action, 10 minutes, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: damage and control.
+Its roll: the target makes a Dexterity saving throw.
+When casting it, the caster chooses a damage type (lightning, thunder, fire or cold); each step below that says "chosen" uses that choice.
+A 5-foot sphere stays for as long as the spell lasts. It stays where it was laid out.
+As it appears it affects nobody.
+From then on, the steps below run on a creature each time it enters the area (or the area reaches it) or starts its turn there. Each creature rolls its own damage.
+It never goes off on a creature on the caster's side (the caster would not force it), whether it was there when the spell was cast or came later; a creature that is not on the caster's side, newcomers included, is made to save unless the caster named it as spared.
+It goes off only on a creature the caster can see: not one that is Invisible to the caster, hiding from it, out of its sight, or one the DM has hidden. Nothing is rolled, said or sent of a creature it leaves alone.
+While a creature is Restrained by the spell it goes off on no one else: the steps wait until that creature is let go (or dies). A creature it Restrained and let go is the zone's no more, and the zone may take another.
+That creature makes a Dexterity saving throw.
+On a failure:
+  It takes 8d8 damage of the chosen type.
+  It has the Restrained condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
+    It lasts as long as the spell.
+  At the start of each of its turns in a fight, for as long as the spell lasts, the engine runs these steps on it, with the numbers of this casting:
+    It makes a Dexterity saving throw.
+    On a failure:
+      It takes 4d8 damage of the chosen type.
+    On a success:
+      The spell lets go of it: what it put on it (a condition, the steps it runs at the start of each turn) ends, and the spell goes on. A zone that holds one creature may then take another.
+    A creature that is down or dying gets them before its Death Saving Throw. Temporary Hit Points they give belong to the creature, and stay after the spell ends. Outside a fight there are no turns, so the engine runs nothing then.
+The sphere is centred on a point the caster picks within 60 feet; it catches every creature in it, the caster too if the caster is in it; it is not a point's sphere: it is laid out from a large space (the footprint of a large creature, anchored on the space picked), and is that space and every space within 5 feet of it (on hexes, the hexes within 1 of any of its hexes; on squares, the table rule for areas rounds the squares out from the space's box); a wall between the area's origin and a creature keeps that creature out.
+Saving throws are against the caster's spell save DC.
+Cast with a higher slot, +1d8 for each level above 5th. The damage it does at the start of a turn grows by the same dice.
+It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-warding-ring
 "Warding Ring" (level 3 abjuration, 10 feet, 1 minute, 1 hour).
 Components: Verbal, Somatic and Material (speaking it gives away a hidden caster); the Material component has a cost or is used up, so Subtle Spell cannot hide the casting.

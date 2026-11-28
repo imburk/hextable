@@ -302,20 +302,42 @@
             {
               "damage": "1d8",
               "type": "piercing"
+            },
+            {
+              "condition": "restrained"
+            },
+            {
+              "eachTurn": [
+                {
+                  "save": "dex",
+                  "onFail": [
+                    {
+                      "damage": "1d4",
+                      "type": "piercing"
+                    }
+                  ],
+                  "onSuccess": [
+                    {
+                      "release": true
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
       ],
       "tier": "auto",
       "checked": false,
-      "text": "A ring of thorns follows the caster and pricks any creature that enters it or starts its turn there.",
+      "text": "A ring of thorns follows the caster and pricks any creature that enters it or starts its turn there, and holds one at a time until it breaks free.",
       "zone": {
         "on": [
           "enter",
           "turnStart"
         ],
         "once": "turn",
-        "spare": true
+        "spare": true,
+        "hold": true
       }
     },
     {

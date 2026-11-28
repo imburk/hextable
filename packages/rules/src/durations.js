@@ -110,6 +110,14 @@ const targetsOf = (fx) => [...new Set(fx.parts.map((p) => p.target))];
 // and is freed, a foe.)
 export const holds = (s, e) => effectsOf(s).some((fx) => fx.id === e.bond?.fx && fx.parts.some((p) => (p.summon === true || p.bond === true) && p.target === e.id && !p.ended));
 
+// A creature is let go (a `release` step, Conjure Elemental): every part of the effect on it ends (its condition and its `eachTurn`), and is forgotten, so that an effect left with nothing on anyone is not
+// taken for spent (`spent`): the spell goes on, and a zone that `hold`s may hold another creature. Everything of other creatures stays.
+export function release(s, ev, fx, id) {
+  if (!effectsOf(s).includes(fx)) return;
+  for (const p of fx.parts) if (p.target === id) endPart(s, ev, fx, p);
+  fx.parts = fx.parts.filter((p) => p.target !== id);
+}
+
 export function endEffect(s, ev, fx, why) {
   if (!effectsOf(s).includes(fx)) return;
   s.effects = s.effects.filter((x) => x !== fx);
