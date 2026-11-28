@@ -13,6 +13,7 @@
 // shop's `shown` when it happened; view.js passes it only to a player in it and never sends the audience itself, live or from the
 // record. A joint purchase's id is in `joint`, never `id`, which names creatures.
 import { CONTENT } from '../content/index.js';
+import { spellItems } from '../content/srd52/spell-items.js';
 import { itemName } from '../derive.js';
 import { shownTo } from '../handouts.js';
 import { inArea } from '../space.js';
@@ -38,6 +39,9 @@ const textOk = (v, max, what) => { const t = cleanText(v, max); (t.length && t.l
 const oneBase = (b) => { const w = b?.weapon ?? b?.armour; return Array.isArray(w) && w.length === 1; };
 // The lookups market.js takes (its header): the table's weapons, armour and magic items (the SRD's and, inside `using`, the homebrew
 // packs'), the SRD's prices (P1) and the spells' levels.
+// What a spell makes (content/srd52/spell-items.js) has no price: it is not found or bought, and it goes when the spell does. `noSale` on the item says so to market.js.
+const SPELL_MADE = new Set(spellItems.map((x) => x.id));
+export const noSale = (id) => typeof id === 'string' && SPELL_MADE.has(id);
 export function marketEnv() {
   const P = CONTENT.prices;
   return {
@@ -50,7 +54,7 @@ export function marketEnv() {
       if (d.base && !oneBase(d.base)) needs.push('base');
       if (d.variant === 'damageType') needs.push('type');
       if (d.variant === 'spell') needs.push('spell');
-      return { name: d.name, kind: 'magic', rarity: d.rarity, ...((d.activate ?? []).some((u) => u?.consumed) ? { consumable: true } : {}), ...(scroll ? { scroll: true } : {}), ...(needs.length ? { needs } : {}) };
+      return { name: d.name, kind: 'magic', ...(noSale(id) ? { noSale: true } : {}), rarity: d.rarity, ...((d.activate ?? []).some((u) => u?.consumed) ? { consumable: true } : {}), ...(scroll ? { scroll: true } : {}), ...(needs.length ? { needs } : {}) };
     },
     rarityValue: (r) => { const x = (P?.rarities ?? []).find((y) => y.id === r); return x && Number.isFinite(x.gp) ? x.gp * 100 : null; },
     scrollCost: (lvl) => { const x = (P?.scrolls ?? []).find((y) => y.level === lvl); return x ? x.gp * 100 : null; },
@@ -473,6 +477,7 @@ export const handlers = {
     let key, name, base, cap = null;
     if (sell) {
       const c = carried(e, a.item);
+      !(c.x && noSale(c.x.item)) || fail(`${c.name} was made by a spell and has no price: it can't be sold.`);
       key = c.key; name = c.name;
       const offer = sellOffer(c.thing, shop, market, env);
       base = offer?.cp ?? null; cap = offer?.cap ?? null;
@@ -593,6 +598,7 @@ export const handlers = {
     shopper(s, e, ctx);
     where(s, shop, e, ctx);
     const c = carried(e, a.item);
+    !(c.x && noSale(c.x.item)) || fail(`${c.name} was made by a spell and has no price: it can't be sold.`);
     const qty = c.x ? qtyArg(a.qty, 1) : qtyArg(a.qty, (e.gear ?? []).filter((n) => String(n).toLowerCase() === c.key.toLowerCase()).length);
     if (c.x) (c.x.equipped !== true && c.x.attuned !== true) || fail(`Take ${c.name} off first.`);
     const q = (shop.quotes ?? []).find((x) => x.sell && x.for === e.id && x.item === c.key);
