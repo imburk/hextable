@@ -12,9 +12,21 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
   await scenario(`legendary actions: ${label}`, async (run) => {
     const dmCtx = await browser.newContext(dmOpts), plCtx = await browser.newContext(playerOpts);
     const phoneDM = !!dmOpts.hasTouch;
+    // #906: what was sent and answered, and every toast, kept from the start, so a step that times out can say why.
+    for (const c of [dmCtx, plCtx]) await c.addInitScript(() => {
+      const wire = (window.__wire = []), keep = (x) => { wire.push(x); if (wire.length > 40) wire.shift(); };
+      const send = WebSocket.prototype.send;
+      WebSocket.prototype.send = function (d) { try { const m = JSON.parse(d); keep({ out: m.t, a: m.action ? [m.action.type, m.action.actor, m.action.option ?? m.action.skip ?? m.action.done ?? ''].join(' ') : undefined }); } catch { /* not ours */ } return send.call(this, d); };
+      const Real = window.WebSocket;
+      window.WebSocket = class extends Real { constructor(...a) { super(...a); this.addEventListener('message', (e) => { try { const m = JSON.parse(e.data); keep({ in: m.t, ...(m.error ? { error: m.error } : {}), ...(m.events ? { ev: m.events.map((x) => x.type + (x.option ? ':' + x.option : '')).slice(-12) } : {}) }); } catch { /* not ours */ } }); } };
+      window.__toasts = [];
+      addEventListener('DOMContentLoaded', () => { const t = document.querySelector('#toast'); if (t) new MutationObserver(() => window.__toasts.push(t.textContent ?? '')).observe(t, { childList: true, characterData: true, subtree: true, attributes: true }); });
+    });
     try {
       const dm = await dmCtx.newPage(), pl = await plCtx.newPage();
       run.watch(dm, ' (DM)'); run.watch(pl, ' (player)');
+      const dump = (p) => p.evaluate(() => { const h = window.hextable, S = h.state; return JSON.stringify({ waiting: h.waiting, busy: h.timeline.busy(), mode: h.mode?.kind, pending: S.pending ? { reactor: S.pending.ask?.reactor ?? S.pending.reactor, type: S.pending.action?.type, keys: Object.keys(S.pending) } : null, between: S.encounter?.between, turn: S.encounter?.order?.[S.encounter.turn]?.id, acts: Object.values(S.entities).filter((e) => e.legend).map((e) => [e.id, e.legend.acts, e.legend.self]), rp: !document.querySelector('#rp')?.hidden ? document.querySelector('#rp')?.innerText.slice(0, 160) : '', toasts: (window.__toasts ?? []).filter((t, i, a) => t && t !== a[i - 1]).slice(-8), wire: (window.__wire ?? []).slice(-16) }); });
+      const explained = (fn) => async () => { try { await fn(); } catch (err) { throw new Error(`${err.message.slice(0, 400)} -- DM ${await dump(dm).catch(() => '?')} -- player ${await dump(pl).catch(() => '?')}`); } };
       let code, drake;
       const idle = (p) => wait(p, () => window.hextable.waiting === 0, null, 20000);
       const tapIt = (loc) => (phoneDM ? loc.tap() : loc.click());
@@ -95,12 +107,14 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
       // A tap on the map at a creature's place or a hex, on the canvas and not under the window.
       const tapSpot = async (pos, what) => {
         await dm.evaluate((p) => window.hextable.R.focus('fighter', true), pos); await sleep(700);
-        const pt = await dm.evaluate((p) => window.hextable.R.screenOf(p), pos);
-        if (!pt || !(await onCanvas(dm, pt.x, pt.y))) throw new Error(`${what} is not on the map to tap at ${JSON.stringify(pt)}`);
+        // #906: a toast ("To do: ...") can lie over the spot for a few seconds: wait for the map to be under it, and say what covers it if it never is.
+        let pt = null;
+        for (let i = 0; i < 16; i++) { pt = await dm.evaluate((p) => window.hextable.R.screenOf(p), pos); if (pt && (await onCanvas(dm, pt.x, pt.y))) break; await sleep(500); }
+        if (!pt || !(await onCanvas(dm, pt.x, pt.y))) throw new Error(`${what} is not on the map to tap at ${JSON.stringify(pt)}, under ${await dm.evaluate((q) => { const el = q && document.elementFromPoint(q.x, q.y); return el ? `${el.tagName}#${el.id}.${el.className}`.slice(0, 80) : 'nothing'; }, pt)}`);
         await tapAt(dm, phoneDM, pt.x, pt.y);
       };
 
-      await run.do('Pounce arms the aim bar: the destination first, then the target, then Send sends one action', async () => {
+      await run.do('Pounce arms the aim bar: the destination first, then the target, then Send sends one action', explained(async () => {
         await toWindow();
         await waitShown(dm, '#lg');
         await tapIt(dm.locator('#lg .lg-opt[data-opt="pounce"]'));
@@ -111,12 +125,12 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         if (await state(dm, (S) => !S.encounter.between)) throw new Error('the window closed on arming');
         await shot(dm, 'aim-move');
         const start = await state(dm, (S, id) => S.entities[id].pos, drake);
-        // A place the engine accepts for the move (the dragon is Huge: it needs room), within two hexes of the fighter and the nearest to the dragon.
+        // A place the engine accepts for the move (the dragon is Huge: it needs room), within four hexes of the fighter (the engine judges reach) and the nearest to the dragon.
         const where = await dm.evaluate(async (id) => {
           const { apply } = await import('./shared/engine.js'), S = window.hextable.state;
           const f = S.entities.fighter.pos, d = S.entities[id].pos, dist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
-          const ring = []; for (let q = -2; q <= 2; q++) for (let r = -2; r <= 2; r++) { const p = { q: f.q + q, r: f.r + r, z: f.z }; if (dist(p, f) <= 2 && dist(p, f) >= 1) ring.push(p); }
-          ring.sort((a, b) => dist(a, d) - dist(b, d));
+          const ring = []; for (let q = -4; q <= 4; q++) for (let r = -4; r <= 4; r++) { const p = { q: f.q + q, r: f.r + r, z: f.z }; if (dist(p, f) <= 4 && dist(p, f) >= 1) ring.push(p); }      // #906: up to four hexes (a Huge dragon needs room, and the valley's trees differ each run), the nearest to the fighter first (a far stop can sit on something at another height)
+          ring.sort((a, b) => (dist(a, f) > 2) - (dist(b, f) > 2) || dist(a, d) - dist(b, d));
           return ring.find((p) => apply(structuredClone({ ...S, timeline: [] }), { type: 'legendary', actor: id, option: 'pounce', to: p, target: 'fighter' }, { role: 'dm', userId: 'dm' }).ok) ?? null;
         }, drake);
         if (!where) throw new Error('no place the dragon could pounce from');
@@ -132,9 +146,9 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         try { await wait(dm, ([id, p]) => { const q = window.hextable.state.entities[id].pos; return q.q !== p.q || q.r !== p.r; }, [drake, start]); }
         catch (err) { throw new Error(`${err.message.slice(0, 80)} -- ${await dm.evaluate(() => JSON.stringify({ err: document.querySelector('#lg .lg-err')?.textContent, hint: document.querySelector('#hint-text')?.textContent, mode: window.hextable.mode, toast: document.body.innerText.slice(-200) }))}`); }      // it moved (an Opportunity Attack may stop it short of the place)
         if ((await dm.evaluate(() => window.hextable.mode.kind)) === 'legendary') throw new Error('the aim bar stayed armed after Send');
-      });
+      }));
 
-      await run.do('Noxious Miasma aims at a spot and Send; Cancel puts the bar back', async () => {
+      await run.do('Noxious Miasma aims at a spot and Send; Cancel puts the bar back', explained(async () => {
         await toWindow();
         await waitShown(dm, '#lg');
         await tapIt(dm.locator('#lg .lg-opt[data-opt="noxious-miasma"]'));
@@ -162,11 +176,14 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await waitShown(dm, '#lg .lg-go');
         await shot(dm, 'aim-area');
         await idle(dm); await wait(dm, () => !window.hextable.timeline.busy());      // a tap while the beats still play only skips them (legendary.js, as every control): wait for the picture to be still
+        const w0 = await state(dm, (S) => JSON.stringify(S.encounter.between));
         await tapIt(dm.locator('#lg .lg-go'));
-        try { await wait(dm, () => !window.hextable.state.encounter.between); }      // paid and done: the dragon's own turn has begun, which gives its uses back
+        // Paid and done: this window is gone. Not "no window at all" (#906): the fighter, dropped on purpose above, may have the next turn, which ends at once
+        // (a death save) and opens the next window.
+        try { await wait(dm, (w) => { const b = window.hextable.state.encounter?.between; return !b || JSON.stringify(b) !== w; }, w0); }
         catch (err) { throw new Error(`${err.message.slice(0, 80)} -- ${await dm.evaluate((p) => JSON.stringify({ spot: p, err: document.querySelector('#lg .lg-err')?.textContent, hint: document.querySelector('#hint-text')?.textContent, mode: window.hextable.mode, toast: document.querySelector('#toast')?.textContent, hp: [window.hextable.state.entities.fighter?.hp, window.hextable.state.entities.rogue?.hp], between: window.hextable.state.encounter?.between, acts: Object.values(window.hextable.state.entities).filter((e) => e.legend).map((e) => [e.id, e.legend.acts, e.pos]), turn: window.hextable.state.encounter?.order?.[window.hextable.state.encounter.turn]?.id }), spot)}`); }
         await dm.evaluate((hp) => { const h = window.hextable; h.act({ type: 'setHp', actor: 'fighter', hp: Math.max(hp.fighter, 1) }); h.act({ type: 'setHp', actor: 'rogue', hp: hp.rogue }); }, hp0); await idle(dm);      // back as they were (the fighter at least up), for the steps after
-      });
+      }));
 
       await run.do('a failed save asks for Legendary Resistance: the card, one tap, a success; the player is told nothing of it', async () => {
         await toWindow();
@@ -189,7 +206,7 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await waitShown(dm, '#lg');
       });
 
-      await run.do('the pick leads the bar; By themselves plays the window with no tap, Suggest waits, Off sends nothing', async () => {
+      await run.do('the pick leads the bar; By themselves plays the window with no tap, Suggest waits, Off sends nothing', explained(async () => {
         const auto = (on) => dm.evaluate((v) => { const c = document.getElementById('dm-auto'); c.checked = v; c.dispatchEvent(new Event('change')); }, on);
         const idleStill = async () => { await idle(dm); await wait(dm, () => !window.hextable.timeline.busy()); };
         await waitShown(dm, '#lg');
@@ -210,8 +227,11 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         if (!(await state(dm, (S) => !!S.encounter.between))) throw new Error('the window was played with Run monsters automatically off');
         await waitShown(dm, '#lg');
         // On: it plays by itself after the pause, with no tap, and the bar does not open.
+        // #906: the window played is gone. Not "no window at all": a Pounce that kills makes the dying creatures' turns end at once, each opening the next
+        // window, which plays by itself too, so the table can be between two turns at every look.
+        const w0 = await state(dm, (S) => JSON.stringify(S.encounter.between));
         await auto(true);
-        await wait(dm, () => !window.hextable.state.encounter.between, null, 20000);
+        await wait(dm, (w) => { const b = window.hextable.state.encounter?.between; return !b || JSON.stringify(b) !== w; }, w0, 20000);
         if (!(await dm.evaluate(() => window.__toasts.some((t) => /^Verdigris: /.test(t))))) throw new Error(`no toast said what was done: ${await dm.evaluate(() => JSON.stringify(window.__toasts))}`);
         await auto(false); await idleStill();
         // Suggest, on: nothing is sent while a creature set to Suggest is still to choose.
@@ -223,7 +243,7 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await waitShown(dm, '#lg');
         await auto(false);
         await dm.evaluate((id) => window.hextable.act({ type: 'legendarySet', actor: id, set: { self: false } }), drake);
-      });
+      }));
 
       await run.do("Turns counts the dragon's uses; DM tools has its switches and the two table settings", async () => {
         // The settings wait for the window to close (nothing but its own actions is accepted meanwhile); a dying creature's turn can open the next one, so Done is tapped until the table moves on.
