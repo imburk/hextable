@@ -9,6 +9,7 @@ import { conditionName } from './shared/modifiers.js';
 import { barFor } from './three-build.js';
 import { MONSTERS } from './shared/content/index.js';
 import { rowDotHTML } from './linkdot.js';
+import { countsText } from './legendary.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const WORD = { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' };
@@ -134,7 +135,7 @@ export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new 
       <span class="tr-init">${init !== undefined ? init : ''}</span>
       <button type="button" class="tr-main" data-do="pick"><span class="tr-name">${now ? '<b class="tr-turn" aria-hidden="true">\u25B6</b>' : ''}${esc(nm)}${now ? '<span class="sr-only"> (current turn)</span>' : ''}${dm && link(e) ? `<span class="tr-link">${rowDotHTML(link(e).state, link(e).who ?? e.name, link(e).text)}</span>` : ''}</span>
         ${bar.show ? `<span class="tr-hp"><span class="bar${bar.notch ? ' notch' : ''}"><i style="width:${bar.frac * 100}%"></i></span><span>${esc(hp)}</span></span>` : ''}
-        ${tags.length || conds.length || fx.length ? `<span class="tr-tags">${[...tags, ...conds, ...fx].map((t) => `<span>${esc(t)}</span>`).join('')}</span>` : ''}</button>${ctl ? `<span class="tr-ctl">${ctl}</span>` : ''}</li>`;
+        ${tags.length || conds.length || fx.length ? `<span class="tr-tags">${[...tags, ...conds, ...fx].map((t) => `<span>${esc(t)}</span>`).join('')}</span>` : ''}${dm && !e.dead && countsText(e) ? `<span class="tr-leg">${esc(countsText(e))}</span>` : ''}</button>${ctl ? `<span class="tr-ctl">${ctl}</span>` : ''}</li>`;
 }
 
 // ctx: { root, state(), isDM(), mine(e), act(a), pick(id), openSheet(id), toast(msg), link(e) } where link(e) is the connection state of the

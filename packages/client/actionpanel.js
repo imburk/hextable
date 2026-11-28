@@ -1012,7 +1012,7 @@ export function initActionPanel(ctx) {
 
   function reactionsPane(S, e, r) {
     const el = panes.reactions;
-    const html = `${r.pending ? '<p class="ap-q" role="status">A question is waiting.</p>' : ''}${!r.ok ? `<p class="ap-why-line">${esc(r.why)}</p>` : ''}${reactionsHtml(S, e, { panel: true })}`;
+    const html = `${r.pending ? '<p class="ap-q" role="status">A question is waiting.</p>' : ''}${!r.ok ? `<p class="ap-why-line">${esc(r.why)}</p>` : ''}${reactionsHtml(S, e, { panel: true, dm: ctx.isDM() })}`;
     if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; bindReactions(el, e, ctx.act); }
   }
   function downPane(S, e) {

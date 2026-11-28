@@ -20,7 +20,7 @@ body.drawer-open #lg { display: none; }
 .lg-cr { border-top: 1px solid var(--line); padding: 8px 0; } .lg-cr-head { display: flex; gap: 10px; justify-content: space-between; }
 .tr-leg { display: block; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 @media (max-width: 600px) {
-  #lg { left: 0; right: 0; transform: none; width: auto; bottom: 0; max-height: 46vh; border-radius: var(--radius) var(--radius) 0 0; border-width: 2px 0 0; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  #lg { left: 0; right: 0; transform: none; width: auto; bottom: var(--dock-h, 80px); max-height: min(46vh, calc(100vh - var(--dock-h, 80px) - 140px)); border-radius: var(--radius) var(--radius) 0 0; border-width: 2px 0 0; padding-bottom: 10px; }      /* the strip under it is the token's: the menu stays reachable */
   .lg-opt { flex: 1 1 100%; }
 }
 /* The Legendary Resistance card (reactionprompt.js): the same sheet as a reaction question, with thumb-sized answers. */

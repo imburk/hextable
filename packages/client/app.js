@@ -49,7 +49,7 @@ import { initTodo, waitingWords } from './todo.js';
 import { initPacks } from './packmanager.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
-import { initLegendary } from './legendary.js';
+import { initLegendary, creaturesHtml, bindSwitches } from './legendary.js';
 import { initClasses, formOf, formName, skillBonus, isLent, lentList, nice as niceId } from './classes.js';
 import { createDice, MAX_DICE, titleOf, nextSource } from './dice.js';
 import { createTimeline, paceFor, settle } from './timeline.js';
@@ -1261,7 +1261,7 @@ function renderSheet() {
     ${featuresHtml(e, mine(e))}
     ${Object.keys(e.features).length && !e.feats?.length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
     ${mine(e) ? pocketHtml(e) : ''}
-    ${mine(e) ? reactionsHtml(S, e) : ''}`)}
+    ${mine(e) ? reactionsHtml(S, e, { dm: isDM() }) : ''}`)}
     ${sec('spells', 'Spells known', `
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
@@ -1281,6 +1281,8 @@ function renderDM() {
   $('dm-end').disabled = !S.encounter; $('dm-start').disabled = !!S.encounter;
   $('dm-engage').checked = S.settings.autoEngage; $('dm-passive').value = S.settings.passiveFind ?? 'off'; $('dm-engage-range').value = String(S.settings.engageRange ?? 10);
   renderMarch();
+  { const box = $('dm-legendary'), html = creaturesHtml(S); if (box.dataset.sig !== html && !box.contains(document.activeElement)) { box.dataset.sig = html; box.innerHTML = html; } }
+  $('dm-legendary-windows').checked = S.settings.legendaryWindows === true; $('dm-legendary-resistance').checked = S.settings.legendaryResistance === true;
   $('dm-sight').value = S.settings.sight ?? 'rooms';
   $('dm-unseen-turns').value = S.settings.unseenTurns ?? 'say';
   $('dm-foe-health').value = S.settings.foeHealth ?? 'rough';
@@ -1770,6 +1772,9 @@ $('dm-engage').onchange = (ev) => act({ type: 'setting', key: 'autoEngage', valu
 $('dm-vertical').onchange = (ev) => act({ type: 'setting', key: 'vertical', value: ev.target.value });
 $('dm-cover').onchange = (ev) => act({ type: 'setting', key: 'cover', value: ev.target.value });
 $('dm-creature-cover').onchange = (ev) => act({ type: 'setting', key: 'creatureCover', value: ev.target.checked ? 'on' : 'off' });
+bindSwitches($('dm-legendary'), (a) => act(a));
+$('dm-legendary-windows').onchange = (ev) => act({ type: 'setting', key: 'legendaryWindows', value: ev.target.checked });
+$('dm-legendary-resistance').onchange = (ev) => act({ type: 'setting', key: 'legendaryResistance', value: ev.target.checked });
 $('dm-climb').onchange = (ev) => act({ type: 'setting', key: 'climbing', value: ev.target.checked ? 'on' : 'off' });
 $('dm-size').onchange = (ev) => { if (S.entities[selId]) act({ type: 'setSize', actor: selId, size: ev.target.value }); };
 // The DM's Bond control (companions.md, Decision 1): bind the selected creature to a master as a familiar, steed, pet and so on, or free it.

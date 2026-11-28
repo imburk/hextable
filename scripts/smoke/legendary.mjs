@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, tapAt, onCanvas } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, openMenu, tapAt, onCanvas } from './lib.mjs';
 
 // ---------- legendary actions: the DM's screen (docs/specs/legendary.md, stage L4a) ----------
 // A DM and a player at a table with an adult green dragon, "Verdigris", in a fight. After a turn the table waits for the dragon's windows: the DM plays them
@@ -110,14 +110,16 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         if (!/Pounce.*where/.test(hint1)) throw new Error(`the aim bar does not ask for the destination: ${hint1}`);
         if (await state(dm, (S) => !S.encounter.between)) throw new Error('the window closed on arming');
         await shot(dm, 'aim-move');
-        // A free place two hexes from the fighter (inside Rend's reach), the nearest to the dragon.
         const start = await state(dm, (S, id) => S.entities[id].pos, drake);
-        const where = await state(dm, (S, id) => {
+        // A place the engine accepts for the move (the dragon is Huge: it needs room), within two hexes of the fighter and the nearest to the dragon.
+        const where = await dm.evaluate(async (id) => {
+          const { apply } = await import('./shared/engine.js'), S = window.hextable.state;
           const f = S.entities.fighter.pos, d = S.entities[id].pos, dist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
-          const taken = Object.values(S.entities).map((e) => e.pos);
-          const ring = []; for (let q = -2; q <= 2; q++) for (let r = -2; r <= 2; r++) { const p = { q: f.q + q, r: f.r + r, z: f.z }; if (dist(p, f) === 2 && !taken.some((t) => t.q === p.q && t.r === p.r)) ring.push(p); }
-          return ring.sort((a, b) => dist(a, d) - dist(b, d))[0];
+          const ring = []; for (let q = -2; q <= 2; q++) for (let r = -2; r <= 2; r++) { const p = { q: f.q + q, r: f.r + r, z: f.z }; if (dist(p, f) <= 2 && dist(p, f) >= 1) ring.push(p); }
+          ring.sort((a, b) => dist(a, d) - dist(b, d));
+          return ring.find((p) => apply(structuredClone({ ...S, timeline: [] }), { type: 'legendary', actor: id, option: 'pounce', to: p, target: 'fighter' }, { role: 'dm', userId: 'dm' }).ok) ?? null;
         }, drake);
+        if (!where) throw new Error('no place the dragon could pounce from');
         await tapSpot(where, 'the destination');
         await wait(dm, () => window.hextable.mode.to);
         await wait(dm, () => /tap a target/.test(document.querySelector('#hint-text').textContent));
@@ -166,6 +168,33 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await wait(dm, (id) => window.hextable.state.entities[id].legend.resisted >= 1 && !window.hextable.state.pending, drake);
         await wait(pl, () => document.querySelector('#rp-wait').hidden);
         await waitShown(dm, '#lg');
+      });
+
+      await run.do("Turns counts the dragon's uses; DM tools has its switches and the two table settings", async () => {
+        // The settings wait for the window to close (nothing but its own actions is accepted meanwhile); a dying creature's turn can open the next one, so Done is tapped until the table moves on.
+        for (let i = 0; i < 8 && (await state(dm, (S) => !!S.encounter?.between)); i++) { await waitShown(dm, '#lg'); await tapIt(dm.locator('#lg [data-done]')); await sleep(500); await idle(dm); }
+        if (await state(dm, (S) => !!S.encounter?.between)) throw new Error('Done did not close the window');
+        await openTab(dm, 'turns');
+        await wait(dm, (id) => { const lg = window.hextable.state.entities[id].legend; return [...document.querySelectorAll('#tracker .tr-leg')].some((x) => x.textContent === `Legendary ${3 - lg.acts}/3 \u00b7 Resistance ${3 - lg.resisted}/3`); }, drake);      // what the dragon's own record says
+        if (await pl.evaluate(() => document.querySelectorAll('#tracker .tr-leg').length)) throw new Error('a player was shown the counters');
+        await shot(dm, 'turns');
+        await closeMenu(dm);
+        await openMenu(dm, 'dm/creatures');
+        await waitShown(dm, '#dm-legendary .lg-cr');
+        if (!/Only when it matters|Ask me every time/.test(await dm.$eval('#dm-legendary', (e) => e.innerText))) throw new Error('the Legendary Resistance instruction is not offered');
+        await dm.selectOption('#dm-legendary [data-lg-rx]', 'never');
+        await wait(dm, (id) => window.hextable.state.entities[id].reactions?.['legendary-resistance'] === 'never', drake);
+        await dm.locator('#dm-legendary [data-lg-set="show"]').check();
+        await wait(dm, (id) => window.hextable.state.entities[id].legend.show === true, drake);
+        await shot(dm, 'creatures');
+        await closeMenu(dm);
+        await openMenu(dm, 'dm/rules');
+        if (!(await dm.$eval('#dm-legendary-windows', (c) => c.checked)) || !(await dm.$eval('#dm-legendary-resistance', (c) => c.checked))) throw new Error('the table settings do not show as on');
+        await dm.locator('#dm-legendary-resistance').uncheck();
+        await wait(dm, () => window.hextable.state.settings.legendaryResistance === false);
+        await closeMenu(dm);
+        // A player sees the dragon's uses now that the DM shows them, and the setting that changed is sent as it is.
+        await wait(pl, (id) => window.hextable.state.entities[id].legend?.max === 3, drake);
       });
     } finally { await plCtx.close(); await dmCtx.close(); }
   });

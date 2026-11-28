@@ -87,6 +87,9 @@ const ORDER = ['matters', 'ask', 'always', 'never'];
 export function creatureRows(S) {
   return Object.values(S?.entities ?? {}).filter((e) => isLegendary(e) && !e.dead && !e.object);
 }
+// The lair and show switches of one creature (the DM's: `legendarySet`), without the instruction. Drawn in DM tools and on the creature's own Reactions tab.
+export const lairShowHtml = (e) => `<label class="check"><input type="checkbox" data-lg-set="lair"${e.legend.lair ? ' checked' : ''}${e.legendary.lair ? '' : ' disabled'}> In its lair${e.legendary.lair ? '' : ' (it has no lair numbers)'}</label>
+      <label class="check"><input type="checkbox" data-lg-set="show"${e.legend.show ? ' checked' : ''}${e.legendary.actions ? '' : ' disabled'}> Show its legendary uses to the players</label>`;
 export function creaturesHtml(S) {
   const rows = creatureRows(S);
   if (!rows.length) return '<p class="note">No legendary creature on the table. Add a dragon, a lich or another from the list above.</p>';
@@ -95,8 +98,7 @@ export function creaturesHtml(S) {
     const now = e.reactions?.[RESISTANCE] ?? 'matters';
     return `<div class="lg-cr" data-id="${esc(e.id)}"><div class="lg-cr-head"><b>${esc(e.name)}</b><span>${esc(countsText(e))}</span></div>
       ${e.legendary.resistance ? `<label class="assign">Legendary Resistance <select data-lg-rx aria-label="Legendary Resistance for ${esc(e.name)}">${ORDER.map((o) => `<option value="${o}"${o === now ? ' selected' : ''}>${esc(INSTRUCTION[o])}</option>`).join('')}</select></label>` : ''}
-      <label class="check"><input type="checkbox" data-lg-set="lair"${e.legend.lair ? ' checked' : ''}${e.legendary.lair ? '' : ' disabled'}> In its lair${e.legendary.lair ? '' : ' (it has no lair numbers)'}</label>
-      <label class="check"><input type="checkbox" data-lg-set="show"${e.legend.show ? ' checked' : ''}${e.legendary.actions ? '' : ' disabled'}> Show its legendary uses to the players</label></div>`;
+      ${lairShowHtml(e)}</div>`;
   }).join('')}`;
 }
 // Bind the switches drawn by `creaturesHtml` (or by the sheet's own copy) in `root`.
