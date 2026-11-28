@@ -91,10 +91,10 @@ export const spells9 = [
     time: "action", range: 60, components: ["v"],
     duration: "instant", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
-    effects: [{"manual":"Power Word Kill: the caster compels a visible creature in range to die: if it has 100 Hit Points or fewer it dies, otherwise it takes 12d12 Psychic damage. There is no saving throw. The engine cannot judge the Hit Point threshold, so the DM applies the right result."}],
+    effects: [{"kill":true,"when":["target.hpAtMost:100"]},{"damage":"12d12","type":"psychic","when":["target.hpAbove:100"]}],
     kinds: ["damage"],
     roll: "none",
-    tier: "manual", checked: true,
+    tier: "auto", checked: true,
     text: "A creature with 100 hit points or fewer dies outright; a tougher one takes 12d12 psychic damage.",
   },
   {

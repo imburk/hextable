@@ -101,7 +101,12 @@ export function judge(tag, sit, s) {
       return a && t ? Object.values(s.entities).some((o) => o.id !== a.id && upright(o) && !incapacitated(o) && o.side === a.side && apart(s, o, t) <= 1) : null;
     case 'enemy.adjacent':
       return a ? Object.values(s.entities).some((o) => upright(o) && o.side !== a.side && apart(s, o, a) <= 1) : null;
-    default: return null;
+    default: {
+      // `target.hpAtMost:N` / `target.hpAbove:N` (#907): the target's current Hit Points, never its Temporary Hit Points.
+      const m = typeof tag === 'string' ? /^target\.hp(AtMost|Above):([1-9]\d{0,2})$/.exec(tag) : null;
+      if (!m || !t || typeof t.hp !== 'number') return null;
+      return m[1] === 'AtMost' ? t.hp <= +m[2] : t.hp > +m[2];
+    }
   }
 }
 

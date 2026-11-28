@@ -2470,3 +2470,33 @@ test("legendary resistance: a visible dragon asked and declined, or on `never`: 
   const d = byName(r.hidden.w, "Verdigris");
   assert.ok(d.cond.paralyzed && d.legend.resisted === 0, "declined, so it applied, as on `never`");
 });
+
+// ---- Telekinesis (#911): a player's cast that moves a seen foe onto the space of a creature the party does not know of ----
+// The foe lands where it was put, as on a bare cell, and the DM alone is told to settle it (the teleport rule): moving it to the next free space
+// would tell the players something stands there.
+test("telekinesis: a seen foe moved onto a hidden creature's space is sent the same as onto an empty one; the DM is told", () => {
+  const { hidden } = twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", -6, 0], ["rogue", -6, 1], ["wizard", 0, 0], ["cleric", -6, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", level: 9, spells: [...s.entities.wizard.spells, "telekinesis"], slots: { ...s.entities.wizard.slots, 5: 1 }, slotsMax: { ...s.entities.wizard.slotsMax, 5: 1 } });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 4, r: 0 }, name: "Lifted" });
+      byName(w, "Lifted").saveBonus = { ...byName(w, "Lifted").saveBonus, str: -40 };
+      w.must({ type: "startEncounter", center: { q: 2, r: 0 }, radius: 8 });
+      turnOf(w, "wizard");
+    },
+    steps: [
+      { by: "Pat", act: (w) => ({ type: "cast", actor: "wizard", spell: "telekinesis", slot: 5, targets: [byName(w, "Lifted").id], hex: { q: 6, r: 3 } }) },
+      { by: "Pat", act: { type: "say", as: "wizard", text: "Stay there." } },
+    ],
+  }, {
+    // Spawned outside the arena (one spawned inside joins the fight and is revealed, by design), then stood on the space, out of the fight.
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -9, r: -3 }, name: "Ghost", hidden: true }); const g = byName(w, "Ghost"); g.pos = { ...g.pos, q: 6, r: 3 }; },
+    plain: (w) => { burn(w, { q: -9, r: -3 }); },
+  });
+  assert.ok(/did not know of/.test(JSON.stringify(hidden.raw.dm)), "the DM is told");
+});
