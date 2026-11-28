@@ -67,7 +67,7 @@ test("Conjure Elemental: a foe the caster can see that enters within 5 feet make
   const far = walk(s, "A", 8, 0);
   ok(far);
   assert.equal(saves(far, a.id).length, 0, "out of reach: nothing");
-  const r = ok(walk(s, "A", 6, 0));
+  const r = ok(walk(s, "A", 5, 0));
   const sv = saves(r, a.id);
   assert.equal(sv.length, 1);
   assert.equal(sv[0].abil, "dex");
@@ -83,7 +83,7 @@ test("Conjure Elemental: a foe the caster can see that enters within 5 feet make
   const t = field(), b2 = spawn(t, "goblin-warrior", 9, 2, "B");
   ok(cast(t));
   passes(b2);
-  const r2 = ok(walk(t, "B", 5, 1));
+  const r2 = ok(walk(t, "B", 4, 1));
   assert.equal(saves(r2, b2.id).length, 1);
   assert.ok(saves(r2, b2.id)[0].success);
   assert.equal(hits(r2, b2.id).length, 0);
@@ -96,11 +96,11 @@ test("Conjure Elemental: while one creature is Restrained the spirit forces no o
   const a = spawn(s, "goblin-warrior", 9, 0, "A"), b = spawn(s, "goblin-warrior", 9, 2, "B");
   ok(cast(s));
   fails(a); fails(b);
-  ok(walk(s, "A", 6, 0));
+  ok(walk(s, "A", 5, 0));
   assert.ok(a.cond.restrained);
   const hp = b.hp;
-  assert.ok(fxOf(s).zone.hexes.includes("5,1"), "B walks into the area");
-  const r = ok(walk(s, "B", 5, 1));
+  assert.ok(fxOf(s).zone.hexes.includes("4,1"), "B walks into the area");
+  const r = ok(walk(s, "B", 4, 1));
   assert.equal(saves(r, b.id).length, 0);
   assert.equal(r.events.filter((e) => e.type === "zone").length, 0, "the zone did not go off");
   assert.equal(hits(r, b.id).length, 0);
@@ -153,12 +153,12 @@ test("Conjure Elemental: after a release the spirit may hold another creature", 
   const a = spawn(s, "goblin-warrior", 9, 0, "A"), b = spawn(s, "goblin-warrior", 9, 2, "B");
   ok(cast(s));
   fails(a); fails(b);
-  ok(walk(s, "A", 6, 0));
+  ok(walk(s, "A", 5, 0));
   assert.ok(a.cond.restrained);
   fight(s);
   // A is released at the start of its turn; then B, standing in the zone, is forced at the start of its own
   passes(a);
-  ok(walk(s, "B", 5, 1));
+  ok(walk(s, "B", 4, 1));
   assert.ok(!b.cond.restrained, "held off while A is Restrained");
   nextTurnOf(s, a.id);
   for (let i = 0; i < 40 && a.cond.restrained; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
@@ -176,7 +176,7 @@ test("Conjure Elemental: the element sets the damage type, on both damage steps;
     const a = spawn(s, "goblin-warrior", 9, 0, "A");
     ok(cast(s, { choice }));
     fails(a);
-    const r = ok(walk(s, "A", 6, 0));
+    const r = ok(walk(s, "A", 5, 0));
     assert.equal(hits(r, a.id)[0].dtype, type);
     assert.deepEqual(fxOf(s).zone.steps[0].onFail[0], { damage: "8d8", type });
     assert.equal(fxOf(s).parts.find((p) => p.turn).turn.steps[0].onFail[0].type, type, "the repeated damage has it too");
@@ -194,7 +194,7 @@ test("Conjure Elemental: a higher slot adds 1d8 per level above 5 to the 8d8 and
   const a = spawn(s, "goblin-warrior", 9, 0, "A");
   ok(cast(s, { slot: 6 }));
   fails(a);
-  const r = ok(walk(s, "A", 6, 0));
+  const r = ok(walk(s, "A", 5, 0));
   assert.equal(hits(r, a.id)[0].dice.length, 9);
   const turn = fxOf(s).parts.find((p) => p.turn).turn.steps[0].onFail[0];
   assert.equal(turn.damage, "5d8");
@@ -205,14 +205,14 @@ test("Conjure Elemental: a higher slot adds 1d8 per level above 5 to the 8d8 and
 test("Conjure Elemental: an ally is spared, and so is a creature the caster cannot see", () => {
   const s = field();
   const f = s.entities.fighter, hid = spawn(s, "goblin-warrior", 9, 0, "Hid");
-  ok(apply(s, { type: "place", actor: "fighter", to: { q: 9, r: 3 } }, DM));
+  ok(apply(s, { type: "place", actor: "fighter", to: { q: 8, r: 1 } }, DM));
   ok(cast(s));
   fails(f); fails(hid);
   hid.hidden = true;
-  const r1 = ok(walk(s, "fighter", 5, 1));
+  const r1 = ok(walk(s, "fighter", 4, 1));
   assert.equal(r1.events.filter((e) => e.type === "zone").length, 0, "an ally is not forced");
   assert.ok(!f.cond.restrained);
-  const r2 = ok(walk(s, "Hid", 6, 0));
+  const r2 = ok(walk(s, "Hid", 5, 0));
   assert.equal(r2.events.filter((e) => e.type === "zone").length, 0, "one the caster cannot see is not forced");
   assert.ok(!hid.cond.restrained);
 });
@@ -222,7 +222,7 @@ test("Conjure Elemental: Concentration ending frees the held creature and ends t
   const a = spawn(s, "goblin-warrior", 9, 0, "A");
   ok(cast(s));
   fails(a);
-  ok(walk(s, "A", 6, 0));
+  ok(walk(s, "A", 5, 0));
   assert.ok(a.cond.restrained);
   const r = ok(apply(s, { type: "endEffect", actor: "cleric", effect: fxOf(s).id }, DM));
   assert.ok(r.events.some((e) => e.type === "condEnd" && e.id === a.id && e.cond === "restrained"));
@@ -239,9 +239,50 @@ test("Conjure Elemental: a held creature that dies no longer holds the spirit", 
   const a = spawn(s, "goblin-warrior", 9, 0, "A"), b = spawn(s, "goblin-warrior", 9, 2, "B");
   ok(cast(s));
   fails(a); fails(b);
-  ok(walk(s, "A", 6, 0));
+  ok(walk(s, "A", 5, 0));
   a.hp = 0; a.dead = true;
-  const r = ok(walk(s, "B", 5, 1));
+  const r = ok(walk(s, "B", 4, 1));
   assert.equal(saves(r, b.id).length, 1, "forced once the held one is dead");
   assert.ok(b.cond.restrained);
+});
+
+test("Conjure Elemental: entering the spirit's reach (5 feet) forces no one on entering, only entering its space does; a turn that starts in the reach does", () => {
+  const s = field();
+  const a = spawn(s, "goblin-warrior", 9, 0, "A");
+  ok(cast(s));
+  fails(a);
+  const r = ok(walk(s, "A", 6, 0));
+  assert.equal(saves(r, a.id).length, 0, "in the reach: not yet");
+  const r2 = ok(walk(s, "A", 5, 0));
+  assert.equal(saves(r2, a.id).length, 1, "in the spirit's space");
+});
+
+// A creature the spirit holds and the party does not know of; `casterSide` "dm" makes the caster a creature of the DM's side (the zone then forces the party).
+function hiddenHold(casterSide) {
+  const s = field();
+  const g = spawn(s, "goblin-warrior", -9, -3, "Ghost"), w = spawn(s, "goblin-warrior", 9, 2, "W");
+  if (casterSide === "dm") { s.entities.cleric.side = "dm"; for (const id of ["fighter"]) s.entities[id].side = "party"; }
+  ok(cast(s));
+  const fx = fxOf(s);
+  g.hidden = true; g.cond.restrained = { effect: fx.id }; fx.parts.push({ target: g.id, cond: "restrained" });
+  fails(w);
+  return { s, g, w };
+}
+test("Conjure Elemental: a held creature the party does not know of does not keep a party caster's zone from a foe; the DM alone is told", () => {
+  const { s, g, w } = hiddenHold("party");
+  const r = ok(walk(s, "W", 4, 1));
+  assert.equal(saves(r, w.id).length, 1, "forced as if the spirit held no one");
+  const note = r.events.find((e) => e.type === "manual" && /already holds/.test(e.text));
+  assert.ok(note && note.partial && note.text.includes(g.name), "the DM is told");
+});
+test("Conjure Elemental: a held creature the party knows of keeps the zone from a foe (the strict rule), and nothing is said", () => {
+  const s = field();
+  const g = spawn(s, "goblin-warrior", -7, 0, "Seen"), w = spawn(s, "goblin-warrior", 9, 2, "W");
+  ok(cast(s));
+  const fx = fxOf(s);
+  g.cond.restrained = { effect: fx.id }; fx.parts.push({ target: g.id, cond: "restrained" });
+  fails(w);
+  const r = ok(walk(s, "W", 4, 1));
+  assert.equal(saves(r, w.id).length, 0);
+  assert.ok(!r.events.some((e) => e.type === "manual" && /already holds/.test(e.text)));
 });

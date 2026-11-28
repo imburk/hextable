@@ -20,6 +20,7 @@
 import { gridOf, col, boxOf, squareAround } from './grid.js';
 import { begin, run, walk } from './effects.js';
 import { effectsOf, endEffect, thisTurn, turnKey } from './durations.js';
+import { unknown } from './vision.js';
 import { FT, footprint, gap, ground, hasColumn, rise, sizeOf } from './space.js';
 
 export const zonesOf = (s) => effectsOf(s).filter((fx) => fx.zone);
@@ -92,7 +93,8 @@ export function snapshot(s) {
   const zones = zonesOf(s);
   if (!zones.length) return null;
   const out = {};
-  for (const t of Object.values(s.entities)) if (!t.dead) out[t.id] = new Set(zones.filter((fx) => holds(s, fx, t)).map((fx) => fx.id));
+  // `fxN/body`: it is in the spirit's own cells (a hold zone: only entering those goes off on entering).
+  for (const t of Object.values(s.entities)) if (!t.dead) out[t.id] = new Set(zones.flatMap((fx) => [...(holds(s, fx, t) ? [fx.id] : []), ...(bodyRule(fx) && inBody(s, fx, t) ? [`${fx.id}/body`] : [])]));
   return out;
 }
 
@@ -104,7 +106,9 @@ export function entered(s, ev, kit, before, pre = () => {}) {
   for (const fx of zonesOf(s)) {
     if (!fx.zone.on.includes('enter')) continue;
     for (const t of Object.values(s.entities)) {
-      if (t.dead || before[t.id]?.has(fx.id) || !holds(s, fx, t)) continue;
+      if (t.dead || !holds(s, fx, t)) continue;
+      // A hold zone with the spirit's own cells: entering the spirit's own space is what goes off, not entering its reach.
+      if (bodyRule(fx) ? before[t.id]?.has(`${fx.id}/body`) || !inBody(s, fx, t) : before[t.id]?.has(fx.id)) continue;
       if (trigger(s, ev, kit, fx, t, 'enter', pre)) hit.push(t.id);
     }
   }
@@ -129,7 +133,10 @@ export function turnInZones(s, ev, kit, e, when) {
 // for it (view-fields.js says what every key of it is to a player), so it is read from the steps.
 const holding = (fx) => { let yes = false; walk(fx.zone.steps, (st) => { if ('release' in st) yes = true; }); return yes; };
 // Does a creature the zone Restrained, and still living, hold it now? Then the zone goes off on no one else.
-const holdsOne = (s, fx) => fx.parts.some((p) => p.cond === 'restrained' && !p.ended && s.entities[p.target] && !s.entities[p.target].dead);
+const heldBy = (s, fx) => fx.parts.find((p) => p.cond === 'restrained' && !p.ended && s.entities[p.target] && !s.entities[p.target].dead);
+// A hold zone that has the spirit's own cells (`body`) goes off on entering only when a creature enters one of them ("enters the spirit's space"); starting a turn keeps the whole area's reach.
+const inBody = (s, fx, t) => { const keys = new Set(fx.zone.body); return footprint(t, t.pos, gridOf(s.map)).some((f) => keys.has(col(f))); };
+const bodyRule = (fx) => !!fx.zone.body && holding(fx);
 
 // One zone goes off on one creature, at most once a turn if it says so. Returns whether it did.
 function trigger(s, ev, kit, fx, t, why, pre = () => {}) {
@@ -144,7 +151,14 @@ function trigger(s, ev, kit, fx, t, why, pre = () => {}) {
     if (!c || c.dead || (z.foes && t.side === c.side) || (z.seen && !kit.seen(s, c, t))) return false;
   }
   // `hold`: while the zone has a creature Restrained it forces no one else. Counted as nothing: no event, no turn used (a hidden creature that is held changes nothing a player is sent, bar that the zone is quiet).
-  if (holding(fx) && holdsOne(s, fx)) return false;
+  // A held creature the party does not know of does not keep a party caster's zone from a foe (it would tell the players something is held): the zone goes off, and the DM alone is told what the rules would have said.
+  const held = holding(fx) ? heldBy(s, fx) : null;
+  if (held) {
+    const h = s.entities[held.target];
+    // (The zone forces only foes of its caster, so the target is a creature of the DM's side when the caster is the party's: it is the caster's side that decides, not the target's.)
+    if (!(s.entities[fx.source]?.side === 'party' && (h.hidden || unknown(s, h)))) return false;
+    ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${fx.name} already holds ${h.name}, so by the rules it would not have forced ${t.name} to save. The engine did, because the party does not know of ${h.name}; undo it if you want the rule kept.` });
+  }
   if (z.once === 'turn' && now !== null && thisTurn(s, z.last[t.id])) return false;
   // `once: 'enter'` (Wall of Fire: "when it enters the wall for the first time on a turn or ends its turn there"): only entering is held to the one go; the end of a turn is its own.
   if (z.once === 'enter' && why === 'enter') {

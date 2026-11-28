@@ -113,7 +113,7 @@ export const spells5 = [
     kinds: ["damage", "control"],
     roll: "save:dex",
     tier: "assist", checked: true,
-    text: "A Large intangible spirit of air (Lightning), earth (Thunder), fire (Fire) or water (Cold) stays within 60 feet for up to 10 minutes of Concentration, blocking nothing. While it holds no Restrained creature, a foe the caster can see that enters within 5 feet of it or starts its turn there makes a Dexterity save (the engine forces it; the DM undoes it): 8d8 of the element and Restrained on a failure (+1d8 per slot above 5). The held creature repeats the save each turn: 4d8 on a failure, freed on a success. The DM judges that entering counts within 5 feet, not only in its space.",
+    text: "A Large intangible spirit of air (Lightning), earth (Thunder), fire (Fire) or water (Cold) stays within 60 feet for up to 10 minutes of Concentration, blocking nothing. While it holds no Restrained creature, a foe the caster can see that enters its space or starts its turn within 5 feet of it makes a Dexterity save (the engine forces it; the DM undoes it): 8d8 of the element and Restrained on a failure (+1d8 per slot above 5). The held creature repeats the save each turn: 4d8 on a failure, freed on a success.",
   },
   {
     id: "contact-other-plane", name: "Contact Other Plane", source: "SRD 5.2.1",

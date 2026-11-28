@@ -2541,9 +2541,8 @@ test("telekinesis: a seen foe moved onto a hidden creature's space is sent the s
 // ---- Conjure Elemental (#921): a zone that holds one creature, and a held creature the party does not know of ----
 // The spirit forces no one while a creature is Restrained by it. If that creature is one the party does not know of (hidden by the DM after it was held), the spirit holds it all the same
 // (the rule does not ask who knows), and a creature the party sees that starts its turn beside the spirit is simply not forced. The players are sent no event, so what they could tell is only that
-// the spirit did nothing to a creature it could have forced. The twin finds that difference (the plain world sends the save and the damage, the hidden one only the turn), so the test is a `todo`: the engine keeps
-// the rule (a hidden held creature still holds) and the gap is reported, not closed here (zones.js `holdsOne`).
-test("conjure elemental: a hidden creature held by the spirit changes what the party is sent: a seen foe beside the spirit is forced in one world and not in the other (a known gap, #921)", { todo: "a known gap of #921, issue to be filed by the lead: a held creature the party does not know of keeps the spirit from forcing a seen foe, so the players are sent no save where the plain world sends one" }, () => {
+// the spirit did nothing to a creature it could have forced. So for a party caster a held creature the party does not know of does not count (zones.js `trigger`): the zone goes off as if empty, and the DM alone is told.
+test("conjure elemental: a hidden creature held by the spirit changes what the party is sent: a seen foe beside the spirit is forced the same with and without it (the zone goes off as if empty, #921)", () => {
   twin({
     players: ["Pat"],
     setup(w) {
