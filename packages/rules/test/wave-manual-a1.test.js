@@ -37,8 +37,11 @@ test("the three entries are assist, checked, lint clean and say what stays the D
     assert.deepEqual(lint(def), [], id);
   }
   assert.ok(SPELLS["continual-flame"].def.effects.some((x) => "manual" in x));
-  // Wind Walk stays manual: its Fly Speed of 300 feet is above HOMEBREW_RANGES `speedModifier.value` (120), which schema.js owns (#859).
-  assert.equal(SPELLS["wind-walk"].def.tier, "manual");
+  // Wind Walk is assist (#901): resistance and Prone immunity run; its Fly Speed of 300 feet is above HOMEBREW_RANGES `speedModifier.value` (120), which schema.js owns, so the flight is a manual line (#859).
+  assert.equal(SPELLS["wind-walk"].def.tier, "assist");
+  assert.equal(SPELLS["wind-walk"].def.checked, true);
+  assert.deepEqual(lint(SPELLS["wind-walk"].def), []);
+  assert.ok(!json(SPELLS["wind-walk"].def.effects).includes("speed.fly"));
   assert.ok(SPELLS["conjure-celestial"].def.effects.some((x) => "manual" in x));
   assert.equal(SPELLS["conjure-fey"].def.effects[0].summon, "fey-spirit");
   assert.equal(CONTENT.summons["fey-spirit"].tier, "auto");
@@ -195,4 +198,15 @@ test("Conjure Fey at a 7th-level slot adds 1d12", () => {
   const a = ok(apply(s, { type: "act", actor: id, action: "fey-strike", target: g.id }, PAT));
   assert.ok(a.events.find((e) => e.type === "attack").hit);
   assert.equal(dice(a.events, "damage", g.id), 4, json(a.events.map((e) => [e.type, e.dice?.length])));
+});
+
+test("Wind Walk: the caster and a friend resist weapon damage and cannot be knocked Prone, for 8 hours without Concentration", () => {
+  const s = field();
+  s.entities.wizard.spells.push("wind-walk");
+  s.entities.wizard.slots[6] = s.entities.wizard.slotsMax[6] = 1;
+  const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "wind-walk", slot: 6, targets: ["wizard", "fighter"] }, DM));
+  const fx = s.effects.filter((x) => x.spell === "wind-walk");
+  assert.ok(fx.length >= 1, json(r.events.map((e) => e.type)));
+  assert.ok(fx.every((x) => !x.conc), "it needs no Concentration");
+  assert.ok(r.events.some((e) => e.type === "manual"), "the flight is handed to the DM");
 });
