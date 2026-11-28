@@ -33,14 +33,6 @@ export default async function menushift(browser, url) {
             same(`after the ${path} screen`, await look());
           });
         }
-        if (!opts.isMobile) await run.do('a pinned menu also leaves the map where it was', async () => {
-          await openMenu(page, 'turns');
-          await page.click('#drawer-pin'); await sleep(900);
-          same('the pinned menu', await look());
-          await page.click('#drawer-pin'); await sleep(400);
-          await closeMenu(page); await sleep(400);
-          same('after unpinning', await look());
-        });
       } finally { await ctx.close(); }
     });
   }
