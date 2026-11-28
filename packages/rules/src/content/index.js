@@ -42,6 +42,7 @@ import { multiclassSpellcaster } from './srd52/multiclass.js';
 import { advancement } from './srd52/advancement.js';
 import { feats } from './srd52/feats.js';
 import { items } from './srd52/magic-items.js';
+import { spellItems } from './srd52/spell-items.js';
 import { prices } from './srd52/prices.js';
 import { species } from './srd52/species.js';
 
@@ -56,7 +57,7 @@ export const PACKS = [{ pack, spells, monsters, summons, pregens, conditions, ob
 export { legacyMonster };                              // exported for tests
 const byId = (list) => Object.fromEntries(list.map((e) => [e.id, e]));
 export const CONTENT = { spells: byId(spells), monsters: byId(monsters), summons: byId(summons), pregens: byId(pregens), conditions: byId(conditions), objects: byId(objects),
-  classes: byId(classes), weapons: byId(weapons), armour: byId(armour), feats: byId(feats), items: byId(items), multiclass: multiclassSpellcaster, advancement, prices,
+  classes: byId(classes), weapons: byId(weapons), armour: byId(armour), feats: byId(feats), items: byId([...items, ...spellItems]), multiclass: multiclassSpellcaster, advancement, prices,
   // A table's homebrew subclasses, by id (docs/specs/homebrew-subclasses.md, Decision 3). Empty for the SRD, whose subclasses stay inside their
   // classes (`CONTENT.classes[id].subclass`), so nothing the SRD prints, counts or tests changes; the registry adds a table's.
   subclasses: {},

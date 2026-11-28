@@ -573,6 +573,19 @@ When it is cast, the DM is shown the author's description (unless a step has alr
 Not checked against any rulebook.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-berry-sprig
+"Berry Sprig" (level 1 evocation, self, action, 24 hours).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+The caster is given 10 goodberry to carry, for as long as the spell lasts.
+  Each one is marked as the spell's own. When the spell ends, every one that is left vanishes, whoever has it now or wherever it lies. A creature with no character sheet cannot carry the mark, so the engine leaves the items to the DM.
+It is aimed at the caster alone.
+It lasts up to 24 hours. The engine times it, and when it ends, so does everything it put on creatures.
+Tier: auto. The engine rolls and applies all of this.
+Not checked against any rulebook.
+
 == hb-test-honed-edge
 "Honed Edge" (level 2 evocation, touch, action, 1 hour).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

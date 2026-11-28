@@ -940,6 +940,39 @@
       "tier": "assist",
       "checked": false,
       "text": "Standing water in a small cube rises ten feet for a minute and sinks back when the spell ends."
+    },
+    {
+      "id": "hb-sample-berry-sprig",
+      "name": "Berry Sprig",
+      "source": "homebrew:sample",
+      "level": 1,
+      "school": "conjuration",
+      "classes": [
+        "druid"
+      ],
+      "time": "action",
+      "range": "self",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "1 hour",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "self": true
+      },
+      "effects": [
+        {
+          "grant": {
+            "item": "goodberry",
+            "count": 3
+          }
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "Three berries appear in the caster's hand for an hour; each is eaten as a Bonus Action for one hit point, and what is left vanishes when the spell ends."
     }
   ]
 }

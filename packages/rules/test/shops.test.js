@@ -510,3 +510,14 @@ test("a market's lines may be replaced by a list in the same edit that removes t
   ok(apply(s, { type: "shopEdit", shop, set: { lists: ["standard"] }, remove: ["rope"] }, DM));
   assert.equal(viewShops(s, PAT)[0].lines.find((l) => l.id === "rope").price, 100);
 });
+
+test("a berry a spell made can't be sold, and a hand-set sell quote for it is refused; nothing changes", () => {
+  const s = table(), shop = outfitter(s, { cleric: { gp: 5 } });
+  assert.ok(s.entities.cleric.sheet, "the cleric is a built hero, so its berry sits on its sheet");
+  ok(apply(s, { type: "give", actor: "cleric", item: "goodberry" }, DM));
+  const key = s.entities.cleric.sheet.items.find((x) => x.item === "goodberry").id;
+  const before = JSON.stringify(s);
+  no(apply(s, { type: "sell", actor: "cleric", shop, item: key }, DM), "Goodberry was made by a spell and has no price: it can't be sold.");
+  no(apply(s, { type: "quote", shop, for: "cleric", item: key, sell: true, price: "1 GP" }, DM), "Goodberry was made by a spell and has no price: it can't be sold.");
+  assert.equal(JSON.stringify(s), before, "a refusal changes nothing");
+});

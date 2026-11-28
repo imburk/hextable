@@ -154,7 +154,7 @@ export function unitValue(line, env) {
   const it = line?.item ? env?.item?.(line.item) : null;
   if (!it) return null;
   if (it.kind === 'weapon' || it.kind === 'armour') return parsePrice(it.cost);
-  if (it.kind !== 'magic') return null;
+  if (it.kind !== 'magic' || it.noSale) return null;
   let v;
   if (it.scroll) {
     const lvl = env.spellLevel?.(line.spell);
@@ -412,6 +412,7 @@ export function lintMarket(doc, env) {
     if (l.item !== undefined && l.kind !== undefined) say(at, 'kind is worked out for a pack item; leave it out.');
     for (const k of ['base', 'type', 'spell']) if (l[k] !== undefined && l.item !== undefined) id(l[k], at, k);
     if (it && typeof it === 'object') {
+      if (it.noSale) flaw(`${it.name ?? l.item} was made by a spell and has no price: it is not for sale.`);
       const needs = it.needs ?? [];
       for (const k of ['base', 'spell']) {
         if (needs.includes(k) && l[k] === undefined) flaw(`${it.name ?? l.item} needs a ${k}.`);

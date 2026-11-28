@@ -13,7 +13,8 @@ import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, level
 import { able, control, current, ent, fail, hostile, hpOpts, inFight, living, need, ownerOf, RuleError, up, walled } from './shared.js';
 import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
 import { cure } from './rolls.js';
-import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, refreshOne, remake, resheet, tellMissing } from './sheets.js';
+import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, refreshOne, remake, resheet, tellMissing, tryLand } from './sheets.js';
+import { effectsOf } from '../durations.js';
 import { handHolds } from '../weapons.js';
 import { rollScore, rollScores, mayReroll, tableRule, topThree } from '../scores.js';
 import { cleanPurse, COINS } from '../market.js';
@@ -608,8 +609,22 @@ function putIn(s, id, things, ev) {
   return things.map((x) => {
     if (x.spec && now.sheet) return { key: keys.shift() };
     now.gear.push(x.name);
+    if (x.spec?.from) ev.push({ type: 'manual', actor: id, name: x.name, partial: true, text: `${now.name} has no character sheet, so ${x.name} is kept by name only and the engine can no longer tell it from the others: when the spell that made it ends, the DM takes it away.` });
     return x.spec ? { nameOnly: true } : {};
   });
+}
+// A `grant` step (Goodberry): `count` of a pack item put among the carried gear of the creature the step works on, each marked `from` the lasting
+// effect it is part of (durations.js `vanishItems` takes them all when the effect ends); the effect gets a part that says so. Returns false where the
+// engine cannot: no lasting effect to hang it on, no such item at this table, a creature with no sheet (its gear is names, which carry no mark: the
+// DM hands the items out and takes them back), or a sheet that cannot hold them.
+export function grantItems(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null, { item, count } = step.grant;
+  if (!fx || fx.bound || !t.sheet || !Object.hasOwn(CONTENT.items, item)) return false;
+  const made = tryLand(s, t, Array.from({ length: count }, () => ({ item, from: fx.id })), ev);
+  if (!made) return false;
+  fx.parts.push({ target: t.id, items: { item, name: CONTENT.items[item].name } });
+  ev.push({ type: 'gear', id: t.id, item: `${count > 1 ? `${count} ` : ''}${CONTENT.items[item].name}`, pack: item, why: 'granted' });
+  return true;
 }
 const roomFor = (e, things) => {
   const names = things.filter((x) => !(x.spec && e.sheet)).length;

@@ -91,6 +91,8 @@ const FIXTURES = [
   base('tide-call', 'Tide Call', { level: 4, school: 'transmutation', range: 300, duration: '10 minutes', concentration: true, target: { area: { shape: 'cube', size: 100 } }, tier: 'assist', choice: { of: 'water' },
     effects: [{ water: { mode: 'flood', by: 15, size: 100 }, ifChoice: ['flood'] }, { water: { mode: 'part', size: 100 }, ifChoice: ['part'] }, { manual: 'The DM runs the rest.', ifChoice: ['redirect', 'whirlpool'] }] }),
   base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
+  // Items that last as long as the spell (#925): ten berries.
+  base('berry-sprig', 'Berry Sprig', { level: 1, range: 'self', duration: '24 hours', target: { self: true }, tier: 'auto', effects: [{ grant: { item: 'goodberry', count: 10 } }] }),
   // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.
   base('honed-edge', 'Honed Edge', { level: 2, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto',
     effects: [{ imbue: { weapons: ['club', 'quarterstaff'], melee: true, nonmagical: true, abil: 'spell', die: { byLevel: { 1: '1d8', 5: '1d10' } }, plus: { bySlot: { 2: 1, 3: 2 } }, attackAdd: { mod: 'cha', min: 1 }, types: ['force'] } }] }),

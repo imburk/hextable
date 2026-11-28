@@ -280,7 +280,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], grant: [], stabilize: [], resize: [], polymorph: ['cr', 'types', 'not', 'size', 'keep', 'early'], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when', 'atLeast', 'fades'];
 
@@ -1185,6 +1185,18 @@ export const STEP_SENTENCES = {
     if (/\.onKill\.\d+$/.test(at) || o.afterKill) return say(`What is left of its body is ${left}.`);
     say(`If it is dead, what is left of its body is ${left}. If it is not dead (a character at 0 Hit Points is not), the engine leaves it as it is and tells the DM, who applies the rest.`);
     this.dm(`Step ${at}: what is left of a body that is not dead.`);
+  },
+  // engine/characters.js `grantItems`: items put among a character's gear for as long as the lasting effect runs; each goes when it ends, wherever it has been taken.
+  grant({ st, at, depth, Who, say }) {
+    const g = isObj(st.grant) ? st.grant : {};
+    if (isInt(g.count)) this.num(`${at}.grant.count`, g.count, 'items'); else this.bad(`Step ${at}: the grant has no whole number of items.`);
+    if (typeof g.item !== 'string') this.bad(`Step ${at}: the grant names no item.`);
+    say(`${Who} is given ${isInt(g.count) ? g.count : 'some'} ${typeof g.item === 'string' ? g.item : 'item'} to carry, for as long as the spell lasts.`);
+    if (!this.fx || this.fx === 'bound' || this.obj) {
+      this.line(this.obj ? 'A thing on the map keeps no lasting effect, so the engine has nothing to hang this on: the DM applies it.' : 'The spell does not last, so the engine has nothing to hang this on: the DM hands the items out and takes them back.', depth + 1);
+      return this.dm(`The items of step ${at}: ${this.obj ? 'a thing on the map keeps no lasting effect' : 'the spell does not last'}.`);
+    }
+    this.line('Each one is marked as the spell\'s own. When the spell ends, every one that is left vanishes, whoever has it now or wherever it lies. A creature with no character sheet cannot carry the mark, so the engine leaves the items to the DM.', depth + 1);
   },
   // `imbue` (docs/specs/on-hit.md, Decision 8): one of the creature's weapons changes while the effect lasts.
   imbue({ st, at, Who, say }) {

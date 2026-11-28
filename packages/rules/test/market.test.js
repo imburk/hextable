@@ -672,3 +672,18 @@ test("migrateMarket fills the lists and leaves a document it cannot read for the
   assert.equal(migrateMarket(tmpl).stores[0].buys.magic, undefined, "defaults are read, not written");
   assert.equal(buysOf(migrateMarket(tmpl).stores[0].buys).magic, 70);
 });
+
+// ---- what a spell makes has no price (#925) ----
+import { marketEnv } from "../src/engine/trade.js";
+test("a berry a spell made is not for sale: a line naming it is refused, with or without a price, and it has no value", () => {
+  const real = marketEnv();
+  assert.equal(real.item("goodberry").noSale, true);
+  const withLine = (line) => { const d = doc(); d.lists[0].lines.push({ id: "berry", ...line }); return d; };
+  for (const line of [{ item: "goodberry" }, { item: "goodberry", price: "1 GP" }]) {
+    const p = lintMarket(withLine(line), real);
+    assert.equal(p.length, 1, JSON.stringify(p));
+    assert.match(p[0], /made by a spell and has no price/);
+  }
+  assert.equal(unitValue({ item: "goodberry" }, real), null);
+  assert.equal(sellOffer({ kind: "magic", item: "goodberry" }, doc().stores[0], doc(), real), null);
+});

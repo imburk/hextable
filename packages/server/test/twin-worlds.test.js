@@ -2565,3 +2565,42 @@ test("telekinesis: a seen foe moved onto a hidden creature's space is sent the s
   });
   assert.ok(/did not know of/.test(JSON.stringify(hidden.raw.dm)), "the DM is told");
 });
+
+// ---- Goodberry (#925): berries a hidden creature holds, and one it dropped, vanish when the spell ends without telling a player anything ----
+test("goodberry: berries a hidden creature holds, and a pile it left, vanishing with the spell's end are sent the same as with no creature there", () => {
+  const { hidden } = twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat" });
+      w.putIn();
+    },
+    steps: [
+      { by: "Pat", act: { type: "say", as: "fighter", text: "Nothing yet." } },
+      { by: "dm", act: { type: "advanceTime", minutes: 30 } },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "Half an hour." } },
+      { by: "dm", act: { type: "advanceTime", minutes: 31 } },          // the spell's hour is up
+      { by: "Pat", act: { type: "say", as: "fighter", text: "An hour." } },
+    ],
+  }, {
+    hide(w) {
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true });
+      const g = byName(w, "Ghost");
+      const fx = startEffect(w.state, { name: "Goodberry", spell: "goodberry", source: g.id, duration: "1 hour" });
+      g.sheet = { name: "Ghost", class: "druid", level: 3, subclass: "land", abilities: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 10 }, skills: ["nature", "perception"], choices: { "primal-order": "warden" }, weapons: ["quarterstaff"],
+        items: [{ id: "i1", item: "goodberry", from: fx.id }, { id: "i2", item: "goodberry", from: fx.id }] };
+      fx.parts.push({ target: g.id, items: { item: "goodberry", name: "Goodberry" } });
+      g.kind = "pc";
+      assert.ok(apply(w.state, { type: "drop", actor: g.id, item: "i2" }, { role: "dm", userId: "dm" }).ok);       // a pile of its own, which players are not told of (applied to the state: an action sent would be a message)
+    },
+    plain: (w) => { burn(w, { q: 5, r: 0 }); w.state.seq++; },
+  });
+  const g = byName(hidden.w, "Ghost");
+  assert.deepEqual(g.sheet.items ?? [], [], "the hidden creature's berries are gone");
+  assert.equal(hidden.w.state.map.objects.some((o) => o.contents?.some((x) => x.item === "goodberry")), false, "and the pile it left");
+  assert.ok(!JSON.stringify(hidden.raw.Pat).includes("oodberry"), "Pat was told nothing of them");
+  assert.ok(JSON.stringify(hidden.raw.dm).includes("Goodberry"), "the DM's own stream has the effect's end, so the check above is not empty");
+});
