@@ -18,6 +18,7 @@ import { entered, flushZones, snapshot, stepped, turnInZones } from '../zones.js
 import { canSee, COVER, coverOf, hiddenFrom, inViewOf } from '../sight.js';
 import { barriers, distToSegment, objectDef } from '../walls.js';
 import { LIGHTS } from '../content/lights.js';
+import { overgrow } from '../map.js';
 import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, incapacitatedBy, judge, modifiers, speedOf, untrainedGear, warded } from '../modifiers.js';
@@ -258,6 +259,18 @@ function teleport(s, t, step, to, ev, own = true) {
 }
 
 // ---------- Meld into Stone (docs/specs/rules-expansion.md, "Build notes: wave 4 part 10") ----------
+// The `overgrow` step (Plant Growth), once for the cast: the grass and forest tiles of the sphere the cast event names become overgrown (map.js `overgrow`), but for the cells the cast spared
+// (`f.src.except`, checked at the cast). A change of the map, as a tide is: no lasting effect holds it, so nothing undoes it but the DM's map edit. Every table is told the same words whatever the
+// ground held (a tile out of sight must not be given away by a count); the DM alone is told how many tiles changed.
+function overgrowTiles(s, ev, f, handOver) {
+  const cast = ev.findLast((x) => x.type === 'cast' && x.actor === f.actor && x.spell === f.src.spell), origin = f.src.origin;
+  if (!cast?.hexes || !origin || !s.map || s.map.holding) return handOver(`${f.src.name} makes the plants of its area overgrown, which the engine cannot find on this map. The DM paints the tiles overgrown in the map editor.`);
+  const r = overgrow(s.map, { hexes: cast.hexes, origin, except: f.src.except ?? [] });
+  s.map = r.map;
+  ev.push({ type: 'note', id: f.actor, text: `${f.src.name}: the plants in the area become thick and overgrown` });
+  ev.push({ type: 'manual', actor: f.actor, name: f.src.name, partial: true, text: r.cells ? `${f.src.name} made ${r.cells} tile${r.cells === 1 ? '' : 's'} overgrown (4 feet of movement for every 1 foot on foot).` : `${f.src.name} found no plants in its area that were not overgrown already.` });
+}
+
 // The `meld` step: the caster (`t`) is merged with the wall the cast aimed at (`f.src.wall`) for as long as the spell's effect lasts. The mark is `melded`
 // on the creature: { fx, level, x, y, at }, the effect that holds it, the point on the wall, and the space it went in from (its `pos` stays there; it
 // fills no space, see `living`). It has no hiding left to keep, and a hold or a ride is not part of this (the cast refuses a mounted caster). The effect's
@@ -2570,5 +2583,5 @@ export function polymorph(s, t, step, f, ev) {
 // "A creature you can see" (Conjure Animals, zones.js `seen`): `c` sees `t` by the sight rules (sight.js), and `t` is not hiding from it; for a caster of the party, not a creature the DM hid or one the party does not
 // know of either (what the players could not be shown is not forced to save). Judged on what the caster's side knows, never on who is there.
 const seenBy = (s, c, t) => canSee(s, c, t) !== 'no' && !hiddenFrom(t, c) && !(c.side === 'party' && (t.hidden || unknown(s, t)));
-export const KIT = { seen: seenBy, resize, polymorph, meldInto, expelMelded, confuse, wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, resistFailure, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, cutWall, sense, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { seen: seenBy, resize, polymorph, meldInto, expelMelded, confuse, wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, resistFailure, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, cutWall, sense, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon, overgrow: overgrowTiles };
 
