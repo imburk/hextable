@@ -228,7 +228,7 @@ function teleport(s, t, step, to, ev, own = true) {
     if (!warded(s, fx, t, t.pos, at)) continue;
     const dc = fx.zone.src?.dc;
     if (dc === undefined) { ev.push({ type: 'manual', actor: t.id, name: fx.name, partial: true, text: `${fx.name} calls for a Charisma save from ${t.name} to teleport ${fx.zone.ward.reverse ? 'out of' : 'into'} the circle, and no DC is known. The DM applies it.` }); continue; }
-    const { used, ...sv } = savingThrow(s, t, 'cha', dc, null, null, null, null, ev);
+    const { used, ...sv } = savingThrow(s, t, 'cha', dc, null, null, null, null, ev, null, true);      // a spell's circle
     const saved = { type: 'save', id: t.id, abil: 'cha', dc, ...sv };
     ev.push(saved);
     useUp(s, ev, used ?? []);
@@ -790,7 +790,7 @@ function drop(s, e, ev) {
 }
 // The rider's DC 10 Dexterity save against falling off. True if it stays on.
 function staysOn(s, r, ev) {
-  const { used, ...sv } = savingThrow(s, r, 'dex', RIDE_DC, null, null, null, null, ev);
+  const { used, ...sv } = savingThrow(s, r, 'dex', RIDE_DC, null, null, null, null, ev, null, false);
   const saved = { type: 'save', id: r.id, abil: 'dex', dc: RIDE_DC, ...sv, against: 'Falling Off' };
   ev.push(saved);
   useUp(s, ev, used ?? []);
@@ -1229,7 +1229,7 @@ function relentless(s, t, ev) {
   if (!f || !effectsOf(s).some((fx) => fx.source === t.id && fx.feature === f.relentless.while)) return;
   const r = f.relentless, n = t.uses?.[f.id] ?? 0, dc = r.dc + r.step * n;
   (t.uses ??= {})[f.id] = n + 1;
-  const { used, ...sv } = savingThrow(s, t, 'con', dc, null, null, null, null, ev);
+  const { used, ...sv } = savingThrow(s, t, 'con', dc, null, null, null, null, ev, null, false);
   const saved = { type: 'save', id: t.id, abil: 'con', dc, ...sv, against: f.name, ...srcOf(s, t.id) };
   ev.push(saved);
   useUp(s, ev, used ?? []);
@@ -1431,7 +1431,7 @@ export function castReaction(s, e, sp, slot, trigger, against, ev, targets = [e.
     ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...targets] });
   }
   const st = spellStats(e, s, sp.id), depth = s.stack?.length ?? 0;
-  const src = { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[castAbilOf(e, sp.id)] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(trigger === 'cast' ? { counters: true } : {}) };
+  const src = { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[castAbilOf(e, sp.id)] ?? 10), magic: true, ...(fx ? { fx: fx.id } : {}), ...(trigger === 'cast' ? { counters: true } : {}) };
   begin(s, { steps, actor: e.id, targets: [...targets], src });
   const mark = ev.length;
   run(s, ev, KIT, depth);
@@ -1707,7 +1707,7 @@ export function wardCheck(s, e, t, ev, what = 'attack') {
   if (!e || !t || e.id === t.id || e.object !== undefined || !e.abil) return false;           // a trap or other thing on the map does not choose a target
   for (const fx of effectsOf(s)) for (const p of fx.parts) {
     if (p.ended || p.target !== t.id || !p.ward) continue;
-    const { used, ...sv } = savingThrow(s, e, p.ward.save, p.ward.dc, null, null, null, null, ev);
+    const { used, ...sv } = savingThrow(s, e, p.ward.save, p.ward.dc, null, null, null, null, ev, null, fx.spell ? true : undefined);
     const saved = { type: 'save', id: e.id, abil: p.ward.save, dc: p.ward.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) };
     ev.push(saved);
     useUp(s, ev, used ?? []);
@@ -1774,7 +1774,7 @@ export function strikeOption(s, e, t, atk, option, shove, ev) {
   ev.push({ type: 'strikeOption', actor: e.id, target: t.id, option, ...(option === 'shove' ? { shove } : {}) });
   renew(s, e, t);                                                       // making an enemy save keeps a Rage going
   const about = option === 'grapple' ? ['grappled'] : shove === 'prone' ? ['prone'] : null, abil = bestSave(s, t, ['str', 'dex'], e, about);
-  const { used, ...sv } = savingThrow(s, t, abil, dc, null, e, null, null, ev, about);
+  const { used, ...sv } = savingThrow(s, t, abil, dc, null, e, null, null, ev, about, false);      // a Shove or Grapple is no magic
   const saved = { type: 'save', id: t.id, abil, dc, by: e.id, ...sv, ...srcOf(s, e.id) };
   ev.push(saved);
   useUp(s, ev, used ?? []);

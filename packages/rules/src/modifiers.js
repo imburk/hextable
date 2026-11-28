@@ -269,6 +269,7 @@ export function armourWorn(e) {
 //     dice: [{ dice, name }],       dice to roll and add when the roll is made
 //     min, max,                     the least and the most the number may be (Barkskin: AC at least 17)
 //     baseAc, baseAcFrom            the best base Armor Class a `baseAc` modifier gives (Mage Armor: 13 + Dexterity), or null, and whose it is
+//     unsure: [names]               on a save, the traits like Magic Resistance that could not be judged because the save's source is not said (`sit.magic`)
 //     from                          on the ac hook, the names of the effects whose other modifiers applied
 //     dealt: [{ value, types, name }]   for damage.dealt: extra damage of those types, or added to the damage
 //     used: [parts]                 single-use modifiers that applied, for the roll's maker to use up
@@ -283,7 +284,7 @@ export function armourWorn(e) {
 const D20_TESTS = ['attack.roll', 'check', 'save', 'initiative'];
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
-    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [], floor: null, floorBy: null, lent: [], baseAc: null, from: [] };
+    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [], floor: null, floorBy: null, lent: [], baseAc: null, from: [], unsure: [] };
   // Proficiency for a time (addition C): found first, so that a modifier that asks `check.proficient` (Reliable Talent) counts it, whichever comes first.
   if (hook === 'check') {
     for (const src of sources(s, e)) {
@@ -310,6 +311,9 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       if (m.spell !== undefined && sit.spellId !== m.spell) continue;                                 // only that spell's damage (Agonizing Blast)
       if (m.from !== undefined && !fromHolds(s, e, m, hook, sit)) continue;                          // only against creatures of those types (Protection from Evil and Good)
       if (!inScope(m, sit)) continue;
+      // Magic Resistance (`magic: true` on a saving throw): Advantage only when the save's source is magical (`sit.magic`, said by the one rolling it). A source the engine cannot classify
+      // (`sit.magic` left out) gives none, and is listed in `unsure` so the roll's maker can tell the DM; a source known to be mundane gives none and says nothing.
+      if (m.magic === true && m.op === 'advantage' && (hook === 'save' || hook.startsWith('save.')) && sit.magic !== true) { if (sit.magic === undefined) out.unsure.push(src.name); continue; }
       // Freedom of Movement: a Speed the creature keeps against spells (`speedOf`) leaves out what a spell's lasting effect takes off it.
       if (sit.keepSpeed && hook === 'speed' && src.magic && (m.op === 'set' || (m.op === 'add' && typeof value_(m, src) === 'number' && value_(m, src) < 0))) continue;
       // `stack: false`: of several of one name, the first applies and the rest wait (Sundering Blow).

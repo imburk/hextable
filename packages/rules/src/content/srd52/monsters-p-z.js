@@ -799,8 +799,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects."
       },
     ],
     actions: [
@@ -970,8 +970,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "divine-aid",
@@ -1322,8 +1322,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects."
       },
     ],
     actions: [
@@ -1553,8 +1553,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects."
       }
     ],
     actions: [
@@ -2710,8 +2710,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects."
       }
     ],
     actions: [
@@ -3691,8 +3691,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "divine-aid",
@@ -3970,8 +3970,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "burst-of-ingenuity",
@@ -4942,8 +4942,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "slow",
@@ -5367,8 +5367,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "reflective-carapace",
@@ -6060,8 +6060,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects."
       },
       {
         id: "unicorns-blessing",
@@ -6660,8 +6660,8 @@ export const monsters = [
       {
         id: "magic-resistance",
         name: "Magic Resistance",
-        modifiers: [],
-        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+        modifiers: [{ on: "save", op: "advantage", magic: true }],
+        text: "Advantage on saving throws against spells and other magical effects."
       },
     ],
     actions: [

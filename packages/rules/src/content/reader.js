@@ -1436,6 +1436,8 @@ function modPhrase(m, at) {
     else { this.bad(`${at}: the modifier's value is not a number${op === 'add' ? ' or dice' : ''}.`); v = '(an unreadable amount)'; }
   }
   if (op === 'add' && hook.startsWith('damage') && Array.isArray(m.types) && hook === 'damage.dealt') return `${v} ${list(m.types.map((t) => (t === 'chosen' ? 'damage of the chosen type' : `${t} damage`)), 'or')} added to the damage it deals`;
+  // Magic Resistance (engine/rolls.js `savingThrow`): only a save against a spell or another magical effect.
+  if (m.magic === true && op === 'advantage' && (hook === 'save' || hook.startsWith('save.'))) { if (Object.keys(m).length !== 3) this.bad(`${at}: a magic modifier on a saving throw is { on: "save", op: "advantage", magic: true }.`); return `${OP_WORDS[op](v, noun)} against spells and other magical effects`; }
   return OP_WORDS[op](v, noun);
 }
 // The rest of a modifier's fields, in one sentence.
