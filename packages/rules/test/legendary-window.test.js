@@ -321,3 +321,26 @@ test("with the table setting legendaryWindows off (the default) a dragon's fight
   for (let i = 0; i < 8; i++) { const r = end(s); assert.ok(r.ok, r.error); assert.ok(!s.encounter.between); assert.ok(!r.events.some((e) => e.type === "legendaryWindow")); }
   assert.equal(newGame(5).settings.legendaryWindows, undefined, "absent in a new game: no state changes");
 });
+
+// ---------- L4b: on by default ----------
+test("L4b: with both settings absent a window opens; set to false the fight plays as before (the state whole)", () => {
+  const run = (value) => {
+    const s = newGame(5);
+    ok(s, { type: "setting", key: "autoEngage", value: false });
+    if (value !== undefined) { ok(s, { type: "setting", key: "legendaryWindows", value }); ok(s, { type: "setting", key: "legendaryResistance", value }); }
+    const f = s.entities.fighter.pos;
+    ok(s, { type: "spawn", monster: "adult-green-dragon", at: { q: f.q + 3, r: f.r }, name: "Verdigris" });
+    ok(s, { type: "startEncounter", center: s.entities.fighter.pos });
+    return s;
+  };
+  const a = run(undefined), b = run(true);
+  assert.equal(a.settings.legendaryWindows, undefined, "absent");
+  const ra = end(a), rb = end(b);
+  assert.ok(!!a.encounter.between, "a window opens with the setting absent");
+  assert.deepEqual(types(ra), types(rb));
+  assert.deepEqual(a.encounter.between, b.encounter.between);
+  // false: no window, and the turn moves on as it did before L4.
+  const off = run(false);
+  assert.ok(end(off).ok);
+  assert.equal(off.encounter.between, undefined);
+});
