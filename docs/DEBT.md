@@ -172,7 +172,7 @@ at level 1; after: 14 auto, 13 assist, 30 manual at level 1, level 0 unchanged. 
 
 | Kind | Level 0 | Level 1 |
 |---|---|---|
-| Information, detection, utility with nothing to roll (the DM tells or applies it) | druidcraft, elementalism, mending, message, prestidigitation, thaumaturgy, spare the dying (no Stable condition to set), light (a lit object) | alarm, comprehend languages, create or destroy water, detect evil and good, detect magic, detect poison and disease, identify, illusory script, purify food and drink, speak with animals, goodberry |
+| Information, detection, utility with nothing to roll (the DM tells or applies it) | druidcraft, elementalism, mending, message, prestidigitation, thaumaturgy, spare the dying (no Stable condition to set), light (a lit object) | alarm, comprehend languages, create or destroy water, detect evil and good, detect magic, detect poison and disease, identify, illusory script, purify food and drink, speak with animals |
 | Illusions | minor illusion | disguise self, silent image |
 | Summons, companions, objects that act | dancing lights, mage hand | find familiar, floating disk, unseen servant |
 | A trigger on the caster's own hit (smites) | | divine smite, ensnaring strike, searing smite |
