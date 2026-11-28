@@ -261,7 +261,7 @@ tabs with the aim bar at the bottom.
 ```
 
 ```
- 1280 x 800, my turn, the drawer pinned on Turns
+ 1280 x 800, my turn, the drawer open on Turns (it was pinned; pin: Removed (owner, 28 Nov, #888).)
 ┌────────────────────────────────────────────────────────────┬──────────────┐
 │ Round 2 · Your turn                              ● Undo [☰]│ Turns        │
 │ [Wolf 1][Goblin Warrior 2][▶ Wren (you)][Goblin Warrior 3] │ Round 2      │

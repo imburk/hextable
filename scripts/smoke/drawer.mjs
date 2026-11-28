@@ -473,22 +473,18 @@ async function drawerPass(browser, url, label, opts) {
         if ((await strip()).filter((k) => k !== 'c').join() !== 'turns,dice,log,settings,dm') throw new Error(`the strip after Reset order: ${await strip()}`);
         await closeMenu(page);
       });
-      if (!phone) await run.do('pinned, the menu stays open and slides over the map, which does not move', async () => {
+      if (!phone) await run.do('the menu is a dialog that slides over the map, which does not move; a press on the map closes it', async () => {
         const c0 = await rectOf(page, '#gl');
-        await openMenu(page, 'turns');
-        await page.click('#drawer-pin'); await sleep(300);
+        await openMenu(page, 'turns'); await sleep(300);
         const c = await rectOf(page, '#gl');
-        if (JSON.stringify(c) !== JSON.stringify(c0)) throw new Error(`the canvas moved for the pinned menu: ${JSON.stringify(c0)} -> ${JSON.stringify(c)}`);
-        if ((await page.getAttribute('#drawer', 'role')) !== 'complementary') throw new Error('a pinned menu is a landmark, not a dialog');
-        if (await shown(page, '#drawer-scrim')) throw new Error('a pinned menu dims the map');
-        // A press and drag on the map (not a tap: the party stands near enemies, and a tap there starts a fight) must not close a pinned menu.
-        await page.mouse.move(1100, 300); await page.mouse.down(); await page.mouse.move(1100, 360, { steps: 4 }); await page.mouse.up(); await sleep(200);
-        if (!(await shown(page, '#drawer'))) throw new Error('a press on the map closed a pinned menu');
-        await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-pinned.png` : '/dev/null' }).catch(() => {});
-        await page.click('#drawer-pin'); await sleep(300);
+        if (JSON.stringify(c) !== JSON.stringify(c0)) throw new Error(`the canvas moved for the menu: ${JSON.stringify(c0)} -> ${JSON.stringify(c)}`);
+        if ((await page.getAttribute('#drawer', 'role')) !== 'dialog') throw new Error('the menu is a dialog');
+        if (!(await shown(page, '#drawer-scrim'))) throw new Error('the menu does not dim the map');
+        if (await page.$('#drawer-pin, #set-pin')) throw new Error('a Pin control is still there');
+        await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-modal.png` : '/dev/null' }).catch(() => {});
+        await closeMenu(page);
         const c2 = await rectOf(page, '#gl');
         if (c2.w !== c2.vw) throw new Error('the canvas is not full width');
-        await closeMenu(page);
       });
       await run.do('a reaction question folds the menu; after it the menu stays away until the die is tapped, which returns it to the same place (M2)', async () => {
         await openMenu(page, 'turns');

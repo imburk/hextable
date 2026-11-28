@@ -79,7 +79,7 @@ export default async function menuclose(browser, url) {
             fire('pointerdown', 0); for (const d of [20, 45, 70, 90]) { fire('pointermove', d); await new Promise((ok) => setTimeout(ok, 30)); } fire('pointerup', 90); }); }],
         ];
         const COLUMN_WAYS = [
-          ['the x beside Pin', async (name) => { const ok = await page.evaluate(() => { const x = document.getElementById('drawer-close').getBoundingClientRect(), p = document.getElementById('drawer-pin').getBoundingClientRect(); return x.width >= 44 && x.height >= 44 && Math.abs(x.left - p.right) < 16 && Math.abs(x.top - p.top) < 4; }); if (!ok) throw new Error(`${name}: the x is not beside Pin, or is under 44 px`); await page.click('#drawer-close'); }],
+          ['the x in the heading', async (name) => { const ok = await page.evaluate(() => { const x = document.getElementById('drawer-close').getBoundingClientRect(); return x.width >= 44 && x.height >= 44; }); if (!ok) throw new Error(`${name}: the x is under 44 px`); await page.click('#drawer-close'); }],
         ];
 
         await run.do('every state closes by a tap on the die, a tap on the map, Escape and M (and a tap does nothing else)', async () => {

@@ -80,13 +80,12 @@ export function initSettings(ctx) {
   $('set-arena-edge').onchange = (ev) => { prefs.set('hextable.arenaEdge', ev.target.value); ctx.look('arenaEdge', ev.target.value); };
 
   // The menu: where the token sits, whether menus slide or just appear (reduced motion always means appear), which side a wide
-  // screen's columns come from, and (wide screens) pinned.
+  // screen's columns come from.
   $('set-token').value = drawer.token; $('set-token').onchange = (ev) => drawer.setToken(ev.target.value);
   $('set-motion').value = drawer.motion; $('set-motion').onchange = (ev) => drawer.setMotion(ev.target.value);
   // The words under the symbols of the arc and the strip (Decision 4c): after 3 seconds on the arc, or always (then the strip shows them too).
   $('set-labels').value = drawer.labels; $('set-labels').onchange = (ev) => drawer.setLabels(ev.target.value);
   $('set-side').value = drawer.side; $('set-side').onchange = (ev) => drawer.setSide(ev.target.value);
-  $('set-pin').checked = drawer.pinned; $('set-pin').onchange = (ev) => drawer.setPin(ev.target.checked);
   // The camera buttons on the map (docs/specs/one-token-menu.md question 8): off by default; the map turns and zooms by touch, keys and wheel.
   const camOn = prefs.get('hextable.camButtons') === true;
   document.body.dataset.cam = camOn ? 'on' : 'off'; $('set-cam').checked = camOn;
@@ -125,7 +124,7 @@ export function initSettings(ctx) {
       // Characters and packs: the DM's tools for them are screens of DM tools; a player has their own character and asks the DM for the rest.
       $('set-sec-chars').hidden = !S; $('set-chars-dm').hidden = !dm; $('set-chars-pl').hidden = dm;
       $('set-chars-note').textContent = dm ? 'Who plays whom, adding a character, levelling up and the packs this table uses are DM tools.' : 'Your character\'s page has its sheet. Adding a character, levelling up and the table\'s packs are the DM\'s: ask the DM.';
-      $('set-token').value = drawer.token; $('set-motion').value = drawer.motion; $('set-labels').value = drawer.labels; $('set-side').value = drawer.side; $('set-pin').checked = drawer.pinned; $('set-theme').value = ctx.themeId();
+      $('set-token').value = drawer.token; $('set-motion').value = drawer.motion; $('set-labels').value = drawer.labels; $('set-side').value = drawer.side; $('set-theme').value = ctx.themeId();
       if (!S) return;
       const lines = rulesLines(S.settings), sig = JSON.stringify([lines, dm]);
       if (sig === last) return;
