@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup: the DM helper (#680, stage H0)</title>
+<!-- A picture to react to (docs/specs/dm-helper.md). Nothing here runs the game; the evening is scripted.
+     Self-contained: no network, no fonts fetched, no images. Tokens are copied from packages/client/style.css. -->
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #111614; color: #e8e4d8; font: 15px/1.4 'Segoe UI', system-ui, sans-serif; }
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; }
+
+/* ---------- the mockup's own controls (not part of the design) ---------- */
+#mock { position: sticky; top: 0; z-index: 30; background: #0b0f0d; border-bottom: 1px solid #333; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+#mock h1 { font-size: 14px; margin: 0; flex-basis: 100%; font-weight: 600; color: #bbb; }
+#mock .grp { display: flex; gap: 4px; align-items: center; }
+#mock .grp > b { font-size: 12px; color: #999; font-weight: 400; margin-right: 2px; }
+.tg, .nav button { font-size: 13px; padding: 6px 10px; min-height: 36px; border: 1px solid #444; border-radius: 4px; background: transparent; color: #ccc; cursor: pointer; }
+.tg[aria-pressed=true] { background: #ddd; color: #111; border-color: #ddd; }
+.nav { display: flex; gap: 6px; align-items: center; }
+.nav .pos { font-size: 12px; color: #999; min-width: 52px; text-align: center; }
+.nav button.go { background: #d7a84a; color: #1d2622; border-color: #d7a84a; font-weight: 600; }
+.nav button:disabled { opacity: .35; cursor: default; }
+@media (max-width: 760px) { #mock { position: static; } }
+#stage { padding: 10px 12px; display: flex; justify-content: center; }
+#fit { position: relative; }
+#cap { max-width: 1280px; margin: 0 auto; padding: 4px 12px 40px; }
+#cap h2 { font-size: 17px; margin: 8px 0 4px; }
+#cap p, #cap li { font-size: 14px; color: #cfcab9; max-width: 80ch; }
+#cap .box { border: 1px solid #3a463f; border-radius: 6px; padding: 8px 12px; margin: 10px 0; max-width: 80ch; }
+#cap .box h3 { margin: 0 0 4px; font-size: 13px; color: #d7a84a; }
+#cap .box ul { margin: 0; padding-left: 18px; }
+#cap .open h3 { color: #9fc4ff; }
+#cap .nav { margin-top: 12px; }
+.legend { font-size: 12px; color: #98a396; margin: 4px 0; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-left: 3px solid #d7a84a; background: #2c3a33; margin-right: 4px; vertical-align: -1px; }
+
+/* ---------- the game's look: tokens from style.css ---------- */
+.frame { --bg: #1d2622; --panel: #26322d; --panel-2: #31403a; --ink: #efe9d8; --muted: #a9b3a6; --accent: #d7a84a; --accent-ink: #1d2622; --line: #4a5a52; --good: #7fc48a; --bad: #e0685a; --info: #8fb4e8;
+  --display: 'Vollkorn SC', Georgia, serif; --body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif; --radius: 6px;
+  position: relative; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--body); border: 0; outline: 1px solid #444;
+  transform-origin: 0 0; display: flex; flex-direction: column; font-size: 15px; }
+.frame.phone { width: 390px; height: 844px; }
+.frame.wide { width: 1280px; height: 800px; display: grid; grid-template-columns: 1fr 400px; grid-template-rows: 44px 1fr; }
+.top { display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 44px; background: var(--panel); border-bottom: 1px solid var(--line); flex: none; }
+.wide .top { grid-column: 1 / 3; }
+.top .brand { font-family: var(--display); letter-spacing: .04em; color: var(--accent); font-size: 15px; }
+.top .sp { flex: 1; }
+.chip { font-size: 12px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); white-space: nowrap; }
+.chip.role { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+.chip.role.pl { background: var(--info); border-color: var(--info); }
+.mapw { position: relative; background: #2a3d2c; flex: none; overflow: hidden; }
+.phone .mapw { height: 214px; }
+.wide .mapw { height: 100%; }
+.mapw svg { width: 100%; height: 100%; display: block; }
+.mapw .hexp { fill: #3d5a39; stroke: #2f4a2f; stroke-width: 1; }
+.mapw .hexp.e { fill: #46653f; stroke: #7fa06a; stroke-width: 1.5; }
+.tok { stroke-width: 2; }
+.tk-t { font: 700 11px var(--body); fill: #fff; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.ring { fill: none; stroke: var(--accent); stroke-width: 3; }
+.nfring { fill: none; stroke: #fff; stroke-width: 2; stroke-dasharray: 3 3; }
+.maptag { position: absolute; left: 8px; bottom: 6px; font-size: 12px; background: #0008; padding: 2px 8px; border-radius: 4px; color: #ddd; }
+.side { display: flex; flex-direction: column; min-height: 0; flex: 1; background: var(--bg); }
+.wide .side { border-left: 1px solid var(--line); }
+.tabs { display: flex; flex: none; border-bottom: 1px solid var(--line); background: var(--panel); }
+.tabs span { flex: 1; text-align: center; padding: 10px 4px; min-height: 44px; font-size: 13px; color: var(--muted); }
+.tabs span.on { color: var(--accent); box-shadow: inset 0 -3px var(--accent); }
+.main { flex: 1; overflow-y: auto; padding: 8px 10px 10px; min-height: 0; }
+.tray { flex: none; max-height: 52%; overflow-y: auto; background: var(--panel); border-top: 2px solid var(--accent); padding: 8px 10px; }
+.wide .tray { order: -1; border-top: 0; border-bottom: 2px solid var(--accent); max-height: 60%; }
+.tray:empty { display: none; }
+.tray.pl { border-color: var(--info); }
+
+/* cards, bars, buttons */
+.card h3 { margin: 0 0 4px; font: 600 15px var(--display); letter-spacing: .02em; }
+.card p { margin: 4px 0; font-size: 14px; }
+.muted { color: var(--muted); }
+.small { font-size: 12.5px; }
+.btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.b { min-height: 44px; padding: 6px 12px; border: 1px solid var(--line); background: var(--panel-2); border-radius: var(--radius); cursor: pointer; font-size: 14px; }
+.b.pri { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.b.rec::after { content: " (recommended)"; font-size: 11px; opacity: .8; }
+.b.pri.rec::after { opacity: .75; }
+.b.dis { opacity: .45; cursor: default; }
+.b.sel { outline: 2px solid var(--accent); }
+.b.sm { min-height: 44px; padding: 4px 10px; font-size: 13px; }
+.bar { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.bar h3 { margin: 0; font: 600 15px var(--display); }
+.opt { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.opt:first-of-type { border-top: 0; }
+.opt .why { grid-column: 1; font-size: 12.5px; color: var(--muted); font-style: italic; }
+.opt .b { grid-row: 1 / 3; grid-column: 2; }
+.opt.first b.mv::before { content: "▸ "; color: var(--accent); }
+.yrun { font-size: 12.5px; color: var(--muted); margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
+.yrun b { color: var(--ink); font-weight: 600; }
+
+/* turns list */
+.gbar { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 6px 8px; margin-bottom: 6px; }
+.gbar .l1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.gbar .l1 b { font-size: 14px; }
+.gbar .sp { flex: 1; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.chips .b { min-height: 44px; padding: 4px 10px; }
+.chips .lab { width: 100%; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.row { background: var(--panel); border: 1px solid transparent; border-radius: var(--radius); padding: 6px 8px; margin-bottom: 4px; min-height: 44px; }
+.row.cur { border-color: var(--accent); }
+.row.gone { opacity: .5; }
+.row .r1 { display: flex; align-items: center; gap: 6px; }
+.row .r1 b { font-size: 14px; }
+.init { font-size: 12px; color: var(--muted); width: 26px; text-align: right; flex: none; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.s-party { background: #4f7fc0; } .s-foe { background: #b5483c; } .s-ally { background: var(--good); } .s-dragon { background: #5c9a4a; }
+.hp { margin-left: auto; width: 56px; height: 7px; background: #0006; border-radius: 4px; overflow: hidden; flex: none; }
+.hp i { display: block; height: 100%; background: var(--good); }
+.hp.mid i { background: var(--accent); } .hp.low i { background: var(--bad); }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.tag.nf { color: #fff; border-color: #fff; border-style: dashed; }
+.tag.hid { color: var(--info); border-color: var(--info); }
+.tag.bl { color: var(--bad); border-color: var(--bad); }
+.dmo { margin: 3px 0 0 26px; padding: 2px 0 2px 8px; border-left: 3px solid var(--accent); font-size: 13px; color: #e6d9b3; background: #d7a84a14; }
+.dmo .hd { font-size: 11px; color: var(--muted); }
+.sec { font: 600 12px var(--body); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 10px 0 4px; }
+.log { font-size: 13px; color: #cfcab9; }
+.log div { padding: 2px 0; border-bottom: 1px solid #ffffff10; }
+.log .dm { color: #e6d9b3; border-left: 3px solid var(--accent); padding-left: 6px; }
+.list { background: var(--panel); border-radius: var(--radius); padding: 6px 8px; margin-bottom: 6px; font-size: 13.5px; }
+.list .ln { padding: 4px 0; border-top: 1px solid var(--line); }
+.list .ln:first-child { border-top: 0; }
+.kv { display: grid; grid-template-columns: 70px 1fr; gap: 2px 8px; font-size: 13px; margin-top: 4px; }
+.kv span:nth-child(odd) { color: var(--muted); }
+label.tick { display: flex; gap: 8px; align-items: center; min-height: 44px; }
+.tick i { width: 22px; height: 22px; border: 2px solid var(--accent); border-radius: 4px; display: inline-block; text-align: center; line-height: 18px; font-style: normal; color: var(--accent); }
+.dlg { position: absolute; inset: 0; z-index: 10; background: #0009; display: flex; align-items: flex-end; justify-content: center; }
+.wide .dlg { align-items: center; }
+.dlg .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px 10px 0 0; padding: 12px; width: 100%; max-width: 420px; }
+.wide .dlg .card { border-radius: 10px; }
+.qm { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--info); color: var(--info); font-size: 11px; font-weight: 700; cursor: pointer; vertical-align: 1px; margin-left: 4px; background: transparent; padding: 0; }
+.qm::before { content: ""; position: absolute; width: 44px; height: 44px; margin: -13px; }
+.qm { position: relative; }
+.qpop { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 20; background: #0e1a2e; border: 1px solid var(--info); border-radius: 8px; padding: 8px 10px; font-size: 13px; color: #dbe7fb; }
+.toast { position: absolute; left: 10px; right: 10px; top: 52px; z-index: 20; background: #000d; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.pl-dm-note { font-size: 12px; color: var(--muted); padding: 6px 0; }
+</style>
+</head>
+<body>
+<div id="mock">
+  <h1>Mockup: the DM helper, the dragon evening (#680 stage H0). A picture to react to: nothing here runs the game.</h1>
+  <div class="grp"><b>Screen</b><button class="tg" data-who="dm" aria-pressed="true">DM</button><button class="tg" data-who="pl" aria-pressed="false">Player</button></div>
+  <div class="grp"><b>Size</b><button class="tg" data-size="phone" aria-pressed="true">Phone 390</button><button class="tg" data-size="wide" aria-pressed="false">Wide 1280</button></div>
+  <div class="nav"><button data-nav="-1" aria-label="Back">Back</button><span class="pos"></span><button class="go" data-nav="1" aria-label="Next">Next</button></div>
+</div>
+<div id="stage"><div id="fit"><div class="frame phone" id="frame"></div></div></div>
+<div id="cap"></div>
+
+<script>
+'use strict';
+/* ====== the map ====== */
+const POS = { Pal:[3,3], Sor:[2,5], Cle:[2,2], Ran:[1,4], Wiz:[1,6], Tam:[3,6], Ass:[6,3], G1:[6,5], G2:[5,2], G3:[7,4], G4:[6,1], V:[8,1] };
+const LAB = { Pal:'P', Sor:'S', Cle:'C', Ran:'R', Wiz:'W', Tam:'T', Ass:'A', G1:'1', G2:'2', G3:'3', G4:'4', V:'V' };
+const COL = { Pal:'#4f7fc0', Sor:'#4f7fc0', Cle:'#4f7fc0', Ran:'#4f7fc0', Wiz:'#4f7fc0', Tam:'#4fa070', Ass:'#8d2f26', G1:'#b5483c', G2:'#b5483c', G3:'#b5483c', G4:'#b5483c', V:'#3f7a38' };
+function hx(c, r) { return [26 + c * 34.64 + (r % 2 ? 17.32 : 0), 24 + r * 30]; }
+function mapSvg(st, who) {
+  let h = '<svg viewBox="0 0 372 264" preserveAspectRatio="xMidYMid slice" role="img" aria-label="The forest road, hex map">';
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 10; c++) {
+    const [x, y] = hx(c, r), e = (c === 0 || c === 9 || r === 0 || r === 7);
+    let p = ''; for (let k = 0; k < 6; k++) { const a = Math.PI / 180 * (60 * k - 30); p += (x + 20 * Math.cos(a)).toFixed(1) + ',' + (y + 20 * Math.sin(a)).toFixed(1) + ' '; }
+    h += `<polygon class="hexp${e && st.fight ? ' e' : ''}" points="${p}"/>`;
+  }
+  (st.on || []).forEach(n => {
+    if (who === 'pl' && (st.hid || []).includes(n)) return;
+    const [c, r] = (st.at && st.at[n]) || POS[n], [x, y] = hx(c, r), big = n === 'V' ? 17 : 13;
+    h += `<circle class="tok" cx="${x}" cy="${y}" r="${big}" fill="${COL[n]}" stroke="#101612"/>`;
+    if (st.cur === n) h += `<circle class="ring" cx="${x}" cy="${y}" r="${big + 4}"/>`;
+    if ((st.nf || []).includes(n)) h += `<circle class="nfring" cx="${x}" cy="${y}" r="${big + 4}"/>`;
+    h += `<text class="tk-t" x="${x}" y="${y}">${LAB[n]}</text>`;
+  });
+  return h + '</svg>';
+}
+
+/* ====== small builders ====== */
+const Q = (id, t) => `<button class="qm" data-q="${id}: ${t.replace(/"/g, '&quot;')}" aria-label="Open question ${id}">?</button>`;
+const B = (label, o = {}) => `<button class="b ${o.pri ? 'pri' : ''} ${o.rec ? 'rec' : ''} ${o.sm ? 'sm' : ''} ${o.dis ? 'dis' : ''} ${o.sel ? 'sel' : ''}" ${o.go ? 'data-go="1"' : ''} ${o.no ? `data-no="${o.no.replace(/"/g, '&quot;')}"` : ''} ${o.loc ? `data-loc="${o.loc}"` : ''}>${label}</button>`;
+const GO = (label, extra = {}) => B(label, { pri: true, go: true, ...extra });
+const NO = (label, msg, extra = {}) => B(label, { no: msg, ...extra });
+const SIDE_NO = 'In the evening this is not the one you tap; the mockup follows the dragon evening. In the game it would do what it says.';
+function row(n, side, o = {}) {
+  const hp = o.hp == null ? 100 : o.hp, cls = hp < 30 ? 'low' : hp < 60 ? 'mid' : '';
+  return `<div class="row ${o.cur ? 'cur' : ''} ${o.gone ? 'gone' : ''}" ${o.loc ? `data-loc="${o.loc}"` : ''}><div class="r1"><span class="init">${o.init ?? ''}</span><span class="dot s-${side}"></span><b>${n}</b>`
+    + (o.tags || []).map(t => `<span class="tag ${t[1] || ''}">${t[0]}</span>`).join('')
+    + `<span class="hp ${cls}"><i style="width:${hp}%"></i></span></div>`
+    + (o.line ? `<div class="dmo" data-dmonly><div class="hd">only you are sent this</div>${o.line}</div>` : '') + '</div>';
+}
+const goalName = { kill: 'Kill', repel: 'Drive them off', defend: 'Hold this place', stall: 'Buy time', parley: 'Talk', flee: 'Get away' };
+const goalLine = {
+  kill: 'Fight: Multiattack on the paladin (nearest)',
+  repel: 'Fight: keeps to its ground, hits what comes in reach, does not chase',
+  defend: 'Hold its post: stays within one move of the road, attacks what reaches it',
+  stall: 'Hold its post: Dodges while it waits for round 4',
+  parley: 'Talk: no harmful action, steps back if someone comes close',
+  flee: 'Leave: Disengage, then Dash for the east edge'
+};
+const intLine = {
+  fight: 'Fight: Multiattack on the paladin (nearest)',
+  post: 'Hold its post: stays within one move of its post; Dodges if nothing is in reach',
+  talk: 'Talk: no harmful action, no reaction',
+  withdraw: 'Leave: Disengage, then Dash for the east edge',
+  yield: 'Give up: ends its turn; not fighting'
+};
+function gbar(name, goal, resolve, o = {}) {
+  const open = o.open;
+  return `<div class="gbar"><div class="l1"><b>${name}</b><span class="tag">${goalName[goal] || goal}</span><span class="tag">${resolve}</span><span class="sp"></span>`
+    + B('Change', { sm: true, loc: o.chg || '' }) + B('Wrap up', { sm: true, no: 'Wrap up: [They run] [They give up] [Play it out]. One tap ends a fight that is already decided.' }) + '</div>'
+    + (open ? o.open : '') + '</div>';
+}
+function goalChips(cur, ally, loc) {
+  const g = (k) => {
+    const off = ally && (k === 'parley');
+    return B(goalName[k] + (off ? Q('dmh-10', 'Talk and Give up are not offered to an ally in the first build: they rest on the truce, which is for creatures not of the party. Flagged for the owner.') : ''), { sm: true, sel: cur === k, dis: off, loc: off ? '' : loc + '=' + k });
+  };
+  return `<div class="chips"><span class="lab">Goal</span>${['kill', 'repel', 'defend', 'stall', 'parley', 'flee'].map(g).join('')}`
+    + B('Take them alive', { sm: true, dis: true }) + B('Take something', { sm: true, dis: true })
+    + `<span class="lab small">Greyed: later, they need Knock out (H15) and carrying (the brain). The engine does not offer a goal it cannot play.</span>`
+    + `<span class="lab">Resolve</span>${B('To the death', { sm: true })}${B('Steady', { sm: true, sel: true })}${B('Wary', { sm: true })}`
+    + `<span class="lab">Leader: Assassin (highest Challenge Rating) &nbsp; Rules: asked at leader down, half down, last one</span></div>`;
+}
+const logL = (arr, dm) => `<div class="sec">Table log</div><div class="log">${arr.map(x => `<div>${x}</div>`).join('')}${(dm || []).map(x => `<div class="dm">${x} <span class="muted small">(DM log, never sent)</span></div>`).join('')}</div>`;
+const PCS = (o = {}) => [
+  row('Sorcerer', 'party', { init: 22, hp: 100, ...(o.Sor || {}) }), row('Paladin', 'party', { init: 18, hp: o.palHp ?? 84, ...(o.Pal || {}) }),
+  row('Cleric', 'party', { init: 15, hp: 90, ...(o.Cle || {}) }), row('Ranger', 'party', { init: 11, hp: 100, ...(o.Ran || {}) }), row('Wizard', 'party', { init: 7, hp: 100, ...(o.Wiz || {}) })];
+const TAM = (o = {}) => row('Tam the scout', 'ally', { init: 5, tags: [['ally you play']], ...o });
+const TABS = (on) => `<div class="tabs">${['Turns', 'Log', 'DM tools', 'Sheet'].map(t => `<span class="${t === on ? 'on' : ''}">${t}</span>`).join('')}</div>`;
+const PTABS = (on) => `<div class="tabs">${['Turns', 'Log', 'Sheet', 'Bag'].map(t => `<span class="${t === on ? 'on' : ''}">${t}</span>`).join('')}</div>`;
+
+/* ====== the evening ====== */
+const AMB = ['Ass', 'G1', 'G2', 'G3', 'G4'];
+const PARTY = ['Pal', 'Sor', 'Cle', 'Ran', 'Wiz'];
+const GLAD_LINE = 'Fight: Multiattack on the paladin (nearest)';
+const S = [];
+
+/* 0 */ S.push({
+  t: 'Setting it down', round: 'Not in a fight', on: [...PARTY, 'Tam', ...AMB, 'V'], hid: ['V', ...AMB],
+  say: 'The DM places an Assassin and four Gladiators on the forest road, and an Adult Green Dragon named Verdigris, hidden, further off. The Add list shows the difficulty line (advice, stage H11). Nothing about goals yet.',
+  hide: ['The difficulty line (XP against the party\'s budget)', 'Every creature the DM placed hidden', 'Everything on this screen but the party and the road: the players see the road and their own side'],
+  dm: { tab: 'DM tools', main: () => `<div class="sec">Creatures › Add</div><div class="list"><div class="ln">Assassin ×1 · Gladiator ×4 on the forest road</div><div class="ln">Verdigris (Adult Green Dragon), <span class="tag hid">hidden</span></div><div class="ln">Tam the scout (party side, you play)</div></div>
+    <div class="list"><div class="ln"><b>On the map: 11,100 XP.</b> Below Low for your party (Low 14,600 · Moderate 24,300 · High 31,800). With Verdigris: 24,100, Moderate. ${Q('open', 'The difficulty line is stage H11 and uses an XP budget table still to be entered as checked pack data. Shown as advice only; never sent to players.')}</div></div>
+    <div class="list"><div class="ln">Monsters' plans: <b>Ask me</b> (new tables) · Off · By themselves ${Q('dmh-8', 'Solo tables use "By themselves". The spec flags that this sits against dmh-1 to dmh-3.')}</div></div>
+    <div class="list"><div class="ln">Give them a goal… · Presets… · Offstage (none yet)</div></div>` },
+  pl: { tab: 'Turns', main: () => `<div class="pl-dm-note">The party is walking the forest road. Free roaming: no turn order yet.</div>${logL(['You are on the forest road, day 43.'])}` }
+});
+
+/* 1 */ S.push({
+  t: 'The fight starts: a proposal waits for OK', round: 'Round 1', fight: true, on: [...PARTY, 'Tam', ...AMB], hid: [...AMB.slice(0, 0)],
+  say: 'The ambushers strike. The initiative is rolled and a card waits in the tray. Nothing applies until the DM taps OK (dmh-1). Meanwhile each NPC\'s turn would still wait, with the move the brain makes today recommended. Identical Gladiators share one initiative number on a new table (dmh-13).',
+  hide: ['The proposal card: goal, leader, resolve, hands', 'Which creature is the leader', 'That anything is waiting for the DM'],
+  dm: { tab: 'Turns', tray: () => `<div class="card"><h3>Proposed for this fight ${Q('dmh-1', 'A proposed goal waits for your OK and nothing is automated; goals only shape the suggestions. Answered 23 Nov, reading to be confirmed by the owner.')}</h3>
+    <p><b>The ambushers</b> (Assassin, 4 Gladiators). Goal: <b>Kill</b>. They are <b>steady</b>: you are asked when the Assassin falls or when half are down. Each waits for your tap on its own turn, with its move ready.</p>
+    <p class="muted small"><b>Allies</b> (Tam the scout, you play): goal Kill. Tam's turn waits for you too. ${Q('dmh-10', 'Party-side NPC allies are in the first build.')}</p>
+    <div class="btns">${GO('OK')}${NO('Change', 'Change opens the goal chips, the resolve and the leader (step 7 shows them on the group bar).')}</div></div>`,
+    main: () => `<div class="sec">Turn order · round 1</div>${PCS().slice(0, 1).join('')}
+      ${row('Gladiators ×4', 'foe', { init: 19, tags: [['one roll for all four']] })}${Q('dmh-13', 'One Initiative roll for identical monsters is a table rule, on for new tables, off for saved ones.')}
+      ${PCS().slice(1, 2).join('')}${row('Assassin', 'foe', { init: 17 })}${PCS().slice(2).join('')}${TAM({})}${logL(['Ambush! Initiative is rolled.', 'The Assassin and four Gladiators step out of the trees.'])}` },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 1</div>${PCS().slice(0, 1).join('')}${row('Gladiator ×4', 'foe', { init: 19 })}${PCS().slice(1, 2).join('')}${row('Assassin', 'foe', { init: 17 })}${PCS().slice(2).join('')}${TAM({})}${logL(['Ambush! Initiative is rolled.'])}` }
+});
+
+/* 2 */ S.push({
+  t: 'OK: the queue appears in Turns', round: 'Round 1 · Sorcerer', fight: true, on: [...PARTY, 'Tam', ...AMB], cur: 'Sor',
+  say: 'One tap on OK. Turns now has the queue: under each NPC a second line, in the DM\'s colours, that says what it means to do. The group bar carries the goal and resolve with Change and Wrap up. Nothing moved by itself.',
+  hide: ['The gold-edged second lines (the queue)', 'The group bars', 'The hand marks'],
+  dm: { tab: 'Turns', main: () => gbar('The ambushers', 'kill', 'steady') + gbar('Allies', 'kill', 'steady', {}) +
+      `<div class="sec">Turn order · round 1</div>` + PCS({ Sor: { cur: true } }).slice(0, 1).join('') +
+      ['Gladiator 1', 'Gladiator 2', 'Gladiator 3', 'Gladiator 4'].map((n, i) => row(n, 'foe', { init: 19, tags: [['suggests']], line: GLAD_LINE })).join('') +
+      PCS().slice(1, 2).join('') + row('Assassin', 'foe', { init: 17, tags: [['suggests']], line: 'Fight: Multiattack on the cleric (nearest after Cunning Action)' }) +
+      PCS().slice(2).join('') + TAM({ line: 'Fight: shoots the Gladiator nearest the cleric', tags: [['ally you play'], ['suggests']] }) },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 1</div>${PCS({ Sor: { cur: true } }).slice(0, 1).join('')}${['Gladiator 1', 'Gladiator 2', 'Gladiator 3', 'Gladiator 4'].map(n => row(n, 'foe', { init: 19 })).join('')}${PCS().slice(1, 2).join('')}${row('Assassin', 'foe', { init: 17 })}${PCS().slice(2).join('')}${TAM({})}${logL(['Round 1. The sorcerer\'s turn.'])}` }
+});
+
+/* 3 */ S.push({
+  t: 'A Gladiator\'s turn: the move is ready', round: 'Round 1 · Gladiator 2', fight: true, on: [...PARTY, 'Tam', ...AMB], cur: 'G2',
+  say: 'Gladiator 2\'s turn comes. Like every NPC it waits for the DM, and the bar opens by itself with the recommended move ready: one tap plays it (dmh-2, dmh-4). No card opens first. A Gladiator has one line; "I\'ll play it" is there if the DM would rather do it by hand.',
+  hide: ['The turn bar and its reason', 'That the turn waited at all: the players only see the attack'],
+  dm: { tab: 'Turns', tray: () => `<div class="card"><div class="bar"><h3>Gladiator 2's turn · Fight</h3>${NO('I\'ll play it', 'Takes the turn by hand from the creature\'s own menu; the queue line stays to read.', { sm: true })}</div>
+    <div class="opt first"><b class="mv">Multiattack on the paladin (nearest)</b><span class="why">Its goal is Kill and the paladin is the nearest foe.</span>${GO('Do it', { sm: true })}</div></div>`,
+    main: () => gbar('The ambushers', 'kill', 'steady') + `<div class="sec">Turn order · round 1</div>` +
+      row('Gladiator 2', 'foe', { init: 19, cur: true, tags: [['suggests']], line: GLAD_LINE }) + row('Gladiator 3', 'foe', { init: 19, tags: [['suggests']], line: GLAD_LINE }) + row('Gladiator 4', 'foe', { init: 19, tags: [['suggests']], line: GLAD_LINE }) + PCS().slice(1, 2).join('') + row('Assassin', 'foe', { init: 17, tags: [['suggests']], line: 'Fight: Multiattack on the cleric' }) },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 1</div>${row('Gladiator 2', 'foe', { init: 19, cur: true })}${row('Gladiator 3', 'foe', { init: 19 })}${row('Gladiator 4', 'foe', { init: 19 })}${PCS().slice(1, 2).join('')}${row('Assassin', 'foe', { init: 17 })}${logL(['Gladiator 1 attacks the Paladin: hit.', 'Gladiator 2 moves next to the Paladin.'])}` }
+});
+
+/* 4 */ S.push({
+  t: 'An ally you play waits too', round: 'Round 1 · Tam the scout', fight: true, on: [...PARTY, 'Tam', ...AMB], cur: 'Tam',
+  say: 'Tam the scout is a party-side NPC with no player. Its turn waits for the DM like any NPC\'s, with a recommended move against the foes (dmh-10). It is worked out on the DM\'s side only; the party\'s own AI never reads the plan.',
+  hide: ['Tam\'s bar and the reason', 'Tam\'s group and goal', 'Tam is simply a party creature on your screen'],
+  dm: { tab: 'Turns', tray: () => `<div class="card"><div class="bar"><h3>Tam's turn · Fight ${Q('dmh-10', 'An ally is a group of its own; its goals in the first build are Kill, Drive them off, Hold this place, Buy time and Get away.')}</h3>${NO('I\'ll play it', 'Takes Tam\'s turn by hand.', { sm: true })}</div>
+    <div class="opt first"><b class="mv">Shoot Gladiator 1 (80 ft)</b><span class="why">Kill: it is the Gladiator nearest the cleric, and Tam is out of its reach.</span>${GO('Do it', { sm: true })}</div>
+    <div class="opt"><b>Move behind the wagon, then shoot</b><span class="why">Keeps cover; same target.</span>${NO('Do this', SIDE_NO, { sm: true })}</div></div>`,
+    main: () => gbar('Allies', 'kill', 'steady', {}) + `<div class="sec">Turn order · round 1</div>` + PCS().slice(0, 1).join('') + TAM({ cur: true, line: 'Fight: shoots Gladiator 1 (nearest to the cleric)', tags: [['ally you play'], ['suggests']] }) + row('Gladiator 1', 'foe', { init: 19, hp: 90, line: GLAD_LINE }) },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 1</div>${PCS().slice(0, 1).join('')}${TAM({ cur: true })}${row('Gladiator 1', 'foe', { init: 19, hp: 90 })}${logL(['Tam the scout shoots Gladiator 1: hit.'])}` }
+});
+
+/* 5 */ S.push({
+  t: 'An intention changed in two taps', round: 'Round 2', fight: true, on: [...PARTY, 'Tam', ...AMB], local: { int: 'fight' },
+  say: 'Between turns the DM taps Gladiator 4, then an intention chip. Try the chips: the second line changes at once. The card also has the hand, a focus and the NPC card. Hit and move comes later (H13), so it is not offered yet.',
+  hide: ['The NPC\'s card', 'The intention chips', 'The hand chips'],
+  dm: { tab: 'Turns', main: (L) => {
+    const cur = L.int || 'fight', names = { fight: 'Fight', post: 'Hold its post', talk: 'Talk', withdraw: 'Leave', yield: 'Give up' };
+    return `<div class="sec">Gladiator 4 · its card</div><div class="gbar"><div class="l1"><b>Gladiator 4</b><span class="tag">The ambushers</span><span class="tag">suggests</span></div>
+      <div class="chips"><span class="lab">Intention</span>${Object.keys(names).map(k => B(names[k], { sm: true, sel: cur === k, loc: 'int=' + k })).join('')}${B('Hit and move', { sm: true, dis: true })}
+      <span class="lab">Hand</span>${B('Suggests', { sm: true, sel: true })}${B('I\'ll play it', { sm: true })}${B('Plays itself', { sm: true })}${Q('dmh-8', 'Plays itself is the DM\'s own choice for a creature, never the default. The note for the mockup brief reads "bosses play themselves", which differs; for the owner to settle.')}
+      <span class="lab">Focus: none &nbsp; · &nbsp; NPC card: Wants, Voice, Secret, Attitude</span></div>
+      <div class="dmo" data-dmonly><div class="hd">queue line, as you see it now</div>${intLine[cur]}</div></div>`
+      + `<div class="sec">Turn order</div>` + row('Gladiator 3', 'foe', { init: 19, line: GLAD_LINE }) + row('Gladiator 4', 'foe', { init: 19, tags: [[names[cur]]], line: intLine[cur] }) + PCS().slice(1, 2).join('');
+  } },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 2</div>${row('Gladiator 3', 'foe', { init: 19 })}${row('Gladiator 4', 'foe', { init: 19 })}${PCS().slice(1, 2).join('')}${logL(['Round 2.'])}` }
+});
+
+/* 6 */ S.push({
+  t: 'The group\'s goal changed in two taps', round: 'Round 2', fight: true, on: [...PARTY, 'Tam', ...AMB], local: { goal: 'kill', open: 0 },
+  say: 'Change on the group bar, then a goal chip: two taps. Try it: every member\'s queue line follows the goal. The evening itself keeps Kill. Resolve and leader are on the same panel.',
+  hide: ['The group bar, its goal, resolve and leader', 'That the goal changed'],
+  dm: { tab: 'Turns', main: (L) => {
+    const g = L.goal || 'kill';
+    return gbar('The ambushers', g, 'steady', { chg: 'open=1', open: L.open ? goalChips(g, false, 'goal') : '' })
+      + (L.open ? '' : '<div class="legend">Tap Change.</div>') + (g !== 'kill' ? '<div class="legend">Applied for every member. (In the game: one line in your DM log; undo takes it back.)</div>' : '')
+      + `<div class="sec">Turn order</div>` + row('Gladiator 1', 'foe', { init: 19, line: goalLine[g] }) + row('Gladiator 2', 'foe', { init: 19, line: goalLine[g] }) + row('Gladiator 3', 'foe', { init: 19, line: goalLine[g] }) + row('Gladiator 4', 'foe', { init: 19, line: goalLine[g] }) + row('Assassin', 'foe', { init: 17, line: g === 'kill' ? 'Fight: Multiattack on the cleric' : goalLine[g] });
+  } },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 2</div>${['Gladiator 1', 'Gladiator 2', 'Gladiator 3', 'Gladiator 4'].map(n => row(n, 'foe', { init: 19 })).join('')}${row('Assassin', 'foe', { init: 17 })}${logL(['Nothing has changed that you could see.'])}` }
+});
+
+/* 7 */ S.push({
+  t: 'A moment: the leader falls. A card asks', round: 'Round 2', fight: true, on: [...PARTY, 'Tam', 'G1', 'G2', 'G3', 'G4'], at: {},
+  say: 'The Assassin drops. The engine notices the moment from the state and adds a card; it never acts. The recommended choice is marked and ready for one tap (dmh-3). The fight goes on meanwhile: the table is only waited for on a Gladiator\'s own turn.',
+  hide: ['The card and its three choices', 'That a rule exists for this moment', 'The words "leader" and "steady"'],
+  dm: { tab: 'Turns', tray: () => `<div class="card"><h3>The ambushers' leader has fallen</h3><p class="small muted">Steady groups are asked here.</p>
+    <div class="btns">${NO('Fight on', SIDE_NO)}${GO('Break and run', { rec: true })}${NO('Give up', SIDE_NO)}</div></div>`,
+    main: () => gbar('The ambushers', 'kill', 'steady') + `<div class="sec">Turn order</div>` + row('Gladiator 1', 'foe', { init: 19, line: GLAD_LINE }) + row('Gladiator 2', 'foe', { init: 19, line: GLAD_LINE }) + row('Gladiator 3', 'foe', { init: 19, line: GLAD_LINE }) + row('Gladiator 4', 'foe', { init: 19, line: GLAD_LINE }) + row('Assassin', 'foe', { init: 17, hp: 0, gone: true, tags: [['down', 'bl']] }) + logL(['The Assassin falls.']) },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 2</div>${['Gladiator 1', 'Gladiator 2', 'Gladiator 3', 'Gladiator 4'].map(n => row(n, 'foe', { init: 19 })).join('')}${row('Assassin', 'foe', { init: 17, hp: 0, gone: true, tags: [['down', 'bl']] })}${logL(['The Assassin falls.'])}` }
+});
+
+/* 8 */ S.push({
+  t: 'Break and run: they make for the edge', round: 'Round 3 · Gladiator 3', fight: true, on: [...PARTY, 'Tam', 'G1', 'G2', 'G4'], at: { G1: [8, 5], G2: [9, 2], G4: [8, 1] }, cur: 'G4',
+  say: 'The goal is now Get away, so each Gladiator\'s recommended move is to leave: Disengage where stepping away would draw an attack, else Dash. At the edge the DM taps Leave and the Gladiator goes. Gladiator 3 has gone; the log says it flees. Their XP is counted (dmh-5).',
+  hide: ['The goal Get away and the reason for each move', 'That leaving is the DM\'s tap'],
+  dm: { tab: 'Turns', tray: () => `<div class="card"><div class="bar"><h3>Gladiator 4's turn · Leave</h3>${NO('I\'ll play it', 'Takes the turn by hand.', { sm: true })}</div>
+    <div class="opt first"><b class="mv">Disengage, then Dash for the east edge</b><span class="why">Stepping away from the paladin would draw an Opportunity Attack, and it can still get clear.</span>${GO('Do it', { sm: true })}</div>
+    <div class="opt"><b>Fight on</b><span class="why">The group asked for Get away; this takes it back.</span>${NO('Do this', SIDE_NO, { sm: true })}</div></div>`,
+    main: () => gbar('The ambushers', 'flee', 'steady') + `<div class="sec">Turn order</div>` + row('Gladiator 1', 'foe', { init: 19, line: 'Leave: Dash for the east edge' }) + row('Gladiator 2', 'foe', { init: 19, line: 'Leave: at the edge; leaves on its turn' }) + row('Gladiator 3', 'foe', { init: 19, gone: true, tags: [['left']] }) + row('Gladiator 4', 'foe', { init: 19, cur: true, line: 'Leave: Disengage, then Dash for the east edge' }) + logL(['Gladiator 3 flees.']) },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 3</div>${row('Gladiator 1', 'foe', { init: 19 })}${row('Gladiator 2', 'foe', { init: 19 })}${row('Gladiator 4', 'foe', { init: 19, cur: true })}${logL(['Gladiator 3 flees.', 'Gladiator 4 moves away from the Paladin.'])}` }
+});
+
+/* 9 */ S.push({
+  t: 'The dragon arrives: its goal?', round: 'Round 3', fight: true, on: [...PARTY, 'Tam', 'G4', 'V'], at: { G4: [9, 3] },
+  say: 'The DM brings Verdigris in. A creature that joins a running fight with no group gets its own card. Tapping Talk next.',
+  hide: ['The card', 'Verdigris\'s group, goal and the reasons offered'],
+  dm: { tab: 'Turns', tray: () => `<div class="card"><h3>Verdigris joined. Its goal?</h3>
+    <div class="btns">${NO('Kill, with the ambushers', SIDE_NO)}${GO('Talk')}${NO('Other…', 'Opens the six goal chips. What Other… offers beyond them is not settled.')}${Q('open', 'The spec does not say what Other… opens (presumably the six goal chips). No owner question yet.')}</div>
+    <p class="small muted">Recommended: none. The game offers the likely ones and does not guess.</p></div>`,
+    main: () => `<div class="sec">Turn order</div>` + row('Verdigris', 'dragon', { tags: [['just arrived']], hp: 100, line: 'No goal yet. Its turn would wait for you, with today\'s move recommended.' }) + row('Gladiator 4', 'foe', { init: 19, line: 'Leave: at the edge' }) + PCS().slice(1, 2).join('') },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 3</div>${row('Verdigris', 'dragon', { tags: [['Adult Green Dragon']] })}${row('Gladiator 4', 'foe', { init: 19 })}${PCS().slice(1, 2).join('')}${logL(['A great green dragon lands at the edge of the clearing.'])}` }
+});
+
+/* 10 */ S.push({
+  t: 'Talk: "not fighting" on every screen', round: 'Round 3', fight: true, on: [...PARTY, 'Tam', 'G4', 'V'], at: { G4: [9, 3], V: [8, 1] }, nf: ['V'],
+  say: 'Verdigris is set to Talk. Its row shows the NPC card and what the DM runs. "Not fighting" is public, because it is what the characters see: walking near it starts nothing, and a player who taps Attack is asked first (dmh-6). Switch to the Player screen to see the question.',
+  hide: ['Its goal Talk, Wants, Voice, Secret, Influence DC', 'What the DM runs (legendary actions...)', 'The queue line'],
+  dm: { tab: 'Turns', main: () => gbar('Verdigris', 'parley', 'steady') + `<div class="sec">Turn order</div>` +
+      row('Verdigris', 'dragon', { tags: [['not fighting', 'nf'], ['suggests']], line: `Talk: stays 60 ft up, out of reach.
+        <div class="kv"><span>Wants</span><span>To learn who hired the ambushers; to be flattered.</span><span>Voice</span><span>Slow, amused.</span><span>Secret</span><span>(yours)</span><span>Speaks</span><span>Common and Draconic · Deception +9, Persuasion +9</span><span>Influence</span><span>DC 18 (its Intelligence)</span></div>
+        <div class="small muted" style="margin-top:4px">You run: Legendary actions, Legendary Resistance, Spellcasting.</div>` })
+      + row('Gladiator 4', 'foe', { init: 19, line: 'Leave: at the edge' }) },
+  pl: { tab: 'Turns', dlg: () => `<div class="dlg"><div class="card"><h3>Verdigris is not fighting. Attack anyway?</h3><p class="small muted">You tapped Attack on Verdigris. It has lowered its claws. Sent again, the attack goes through and ends the truce for everyone.</p><div class="btns">${GO('Cancel', {})}${NO('Attack anyway', 'Sends the attack with breach: the truce ends, everyone is told, and the DM is asked what Verdigris does.')}</div></div></div>`,
+    main: () => `<div class="sec">Turn order · round 3</div>${row('Verdigris', 'dragon', { tags: [['not fighting', 'nf']], hp: 100 })}${row('Gladiator 4', 'foe', { init: 19 })}${logL(['Verdigris is not fighting.'])}` }
+});
+
+/* 11 */ S.push({
+  t: 'The last Gladiator leaves: the fight ends', round: 'Out of the fight', fight: false, on: [...PARTY, 'Tam', 'V'], nf: ['V'],
+  say: 'The last Gladiator goes. Nobody is fighting, so the fight ends (dmh-7) and the rewards for the ambush wait for the DM, with every creature that left ticked as counted (dmh-5). The tick can still be removed.',
+  hide: ['The rewards form and its ticks', 'Whether a creature "left" or was "driven off" (the players are only told it fled)'],
+  dm: { tab: 'DM tools', main: () => `<div class="sec">Rewards · the ambush</div><div class="list"><div class="ln"><label class="tick"><i>✓</i> Assassin · defeated · 450 XP</label></div>
+    ${[1, 2, 3, 4].map(n => `<div class="ln"><label class="tick"><i>✓</i> Gladiator ${n} · <span class="tag">left: counted</span> ${n === 1 ? Q('dmh-5', 'A creature that left is always counted, ticked whether driven off, gave up or chose to go. The tick box stays so the DM can untick one.') : ''}</label></div>`).join('')}</div>
+    <div class="btns">${NO('Give XP and loot', 'Opens the rewards for the party as today.')}</div>${logL(['Gladiator 4 flees.', 'The fight is over.'])}` },
+  pl: { tab: 'Log', main: () => `<div class="pl-dm-note">The fight is over. Only the DM sees the rewards form.</div>${logL(['Gladiator 4 flees.', 'The fight is over.', 'Verdigris is not fighting.'])}` }
+});
+
+/* 12 */ S.push({
+  t: 'A roll of 1: three choices, one to tap', round: 'Out of the fight', fight: false, on: [...PARTY, 'Tam', 'V'], nf: ['V'],
+  say: 'The sorcerer tries to read its thoughts and rolls a 1. The choices sit on Verdigris\'s row. The DM taps the first. Once calling for rolls is built, they also appear on the roll\'s own result card (stage H14).',
+  hide: ['The three choices', 'What the DM decides about Verdigris'],
+  dm: { tab: 'Turns', tray: () => `<div class="card"><h3>Verdigris: the sorcerer rolled 1 ${Q('dmh-14', 'Calling for rolls (#676) is needed before the choices also sit on the roll\'s own card: stage H14. For now they sit on the row.')}</h3>
+    <div class="btns">${GO('It takes offence: Kill, and roll initiative', { rec: true })}${NO('It laughs: keep talking', SIDE_NO)}${NO('It leaves', SIDE_NO)}</div></div>`,
+    main: () => `<div class="sec">Creatures</div>` + row('Verdigris', 'dragon', { tags: [['not fighting', 'nf']], line: 'Talk: stays 60 ft up.' }) + logL(['Sorcerer casts Detect Thoughts on Verdigris.', 'Natural 1 on the sorcerer\'s check.']) },
+  pl: { tab: 'Log', main: () => `<div class="pl-dm-note">Your sorcerer tries to read Verdigris's mind. The dice show a 1. The DM is thinking.</div>${logL(['Sorcerer casts Detect Thoughts on Verdigris.'])}` }
+});
+
+/* 13 */ S.push({
+  t: 'The dragon\'s turn: three moves, the first ready', round: 'Round 1 · Verdigris', fight: true, on: [...PARTY, 'Tam', 'V'], at: { V: [6, 2] }, cur: 'V', local: { other: 0 },
+  say: '"Not fighting" drops off every screen and the fight starts like any fight. The dragon\'s bar opens by itself: the breath is recommended and ready; two other moves are one tap further (Other moves); "You run" is what the engine cannot play yet. Legendary actions are asked for early (dmh-11).',
+  hide: ['The bar, the three moves and the reasons', '"You run" and the counters'],
+  dm: { tab: 'Turns', tray: (L) => `<div class="card"><div class="bar"><h3>Verdigris's turn · Fight</h3>${NO('I\'ll play it', 'Takes the dragon\'s turn from its own menu.', { sm: true })}</div>
+    <div class="opt first"><b class="mv">Poison Breath on the sorcerer, the paladin and the cleric</b><span class="why">3 caught, from the air. Its breath is ready, and a limited ability is used as soon and as often as it can be.</span>${GO('Do it', { sm: true })}</div>
+    ${L.other === 0 ? `<div class="btns">${B('Other moves (2)', { sm: true, loc: 'other=1' })}</div>` : `
+    <div class="opt"><b>Rend three times at the sorcerer from 10 ft</b><span class="why">Outside a sword's reach.</span>${NO('Do this', SIDE_NO, { sm: true })}</div>
+    <div class="opt"><b>Back out of reach and talk again</b><span class="why">It was talking a round ago.</span>${NO('Do this', SIDE_NO, { sm: true })}</div>`}
+    <div class="yrun"><b>You run:</b> Mind Spike in place of one Rend · Legendary actions 3 of 3 · Legendary Resistance 3 of 3 ${Q('dmh-11', 'Legendary actions come before sharper tactics, so the helper should say "You run" only until they are built.')}</div></div>`,
+    main: () => `<div class="sec">Turn order · round 1</div>` + row('Verdigris', 'dragon', { init: 21, cur: true, tags: [['Fight'], ['suggests']], line: 'Fight: Poison Breath (3 caught)' }) + PCS().slice(0, 1).join('') + PCS().slice(1, 2).join('') + logL(['Verdigris is no longer holding back.']) },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 1</div>${row('Verdigris', 'dragon', { init: 21, cur: true })}${PCS().slice(0, 1).join('')}${PCS().slice(1, 2).join('')}${logL(['Verdigris snarls: the talking is over.', 'Initiative is rolled.'])}` }
+});
+
+/* 14 */ S.push({
+  t: 'It breathes; a legendary action may follow', round: 'Round 1 · Paladin done', fight: true, on: [...PARTY, 'Tam', 'V'], at: { V: [5, 1] },
+  say: 'One tap, and the dragon flies, breathes and ends its turn at the table\'s pace. After the paladin\'s turn a small card offers a legendary action. Damage, Place and Call for a save are beside it. The card never rolls or applies anything.',
+  hide: ['The legendary card and its counter', 'How many actions the dragon has left'],
+  dm: { tab: 'Turns', tray: () => `<div class="card"><h3>Verdigris may take a legendary action (3 left)</h3><p class="small">Pounce · Noxious Miasma · Mind Invasion ${Q('dmh-11', 'This card exists because the engine cannot run legendary actions yet (DEBT M5). It shrinks when M5 is built.')}</p>
+    <div class="btns">${GO('Used one')}${NO('Skip', SIDE_NO)}${NO('Damage', 'Opens the DM\'s damage tool.')}${NO('Place', 'Opens the place tool.')}${NO('Call for a save', 'Needs calling for rolls (#676), with several creatures and damage on a failed save (dmh-14).')}</div></div>`,
+    main: () => `<div class="sec">Turn order · round 1</div>` + PCS({ Sor: { hp: 55 }, palHp: 40, Cle: { hp: 60 } }).slice(0, 2).join('') + row('Verdigris', 'dragon', { init: 21, tags: [['breath spent'], ['legendary 3 of 3']], line: 'Fight' }) + logL(['Verdigris flies up and breathes poison. The sorcerer, the paladin and the cleric are caught.']) },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 1</div>${PCS({ Sor: { hp: 55 }, palHp: 40, Cle: { hp: 60 } }).slice(0, 2).join('')}${row('Verdigris', 'dragon', { init: 21 })}${logL(['Verdigris flies up and breathes poison. The sorcerer, the paladin and the cleric are caught.'])}` }
+});
+
+/* 15 */ S.push({
+  t: 'A moment: Bloodied. A card asks', round: 'Round 2', fight: true, on: [...PARTY, 'Tam', 'V'], at: { V: [6, 1] },
+  say: 'The paladin\'s smite is a Critical Hit and Verdigris is Bloodied. Bloodied is on every screen, so the card is not a hidden threshold. The recommended choice for a creature that is not fearless is Leave, for later.',
+  hide: ['The card and the three choices', 'Why Leave is recommended'],
+  dm: { tab: 'Turns', tray: () => `<div class="card"><h3>Verdigris is Bloodied</h3><p class="small muted">Recommended by its nerve: steady, not fearless.</p>
+    <div class="btns">${NO('Fight on', SIDE_NO)}${GO('Leave, for later', { rec: true })}${NO('Talk', SIDE_NO)}</div></div>`,
+    main: () => `<div class="sec">Turn order · round 2</div>` + row('Verdigris', 'dragon', { init: 21, hp: 46, tags: [['Bloodied', 'bl']], line: 'Fight' }) + PCS().slice(1, 2).join('') + logL(['Paladin smites Verdigris: Critical Hit.']) },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 2</div>${row('Verdigris', 'dragon', { init: 21, hp: 46, tags: [['Bloodied', 'bl']] })}${PCS().slice(1, 2).join('')}${logL(['Paladin smites Verdigris: Critical Hit.', 'Verdigris is Bloodied.'])}` }
+});
+
+/* 16 */ S.push({
+  t: 'Leave, for later: it flies off', round: 'Round 2 · Verdigris', fight: true, on: [...PARTY, 'Tam', 'V'], at: { V: [9, 0] }, cur: 'V',
+  say: 'On its turn the recommended move is to fly to the edge. Another tap and it leaves the fight, kept offstage with its wounds and the DM\'s note. The players read "Verdigris flies off". They are never told it was kept.',
+  hide: ['That it was kept "for later"', 'Its wounds, its spent breath, your note', 'The Offstage list'],
+  dm: { tab: 'Turns', tray: () => `<div class="card"><div class="bar"><h3>Verdigris's turn · Leave, for later</h3></div>
+    <div class="opt first"><b class="mv">Fly to the north edge, then leave the fight, kept for later</b><span class="why">It is Bloodied and at the edge after a Dash; a flyer at any height may leave.</span>${GO('Do it', { sm: true })}</div></div>`,
+    main: () => `<div class="sec">Turn order · round 2</div>` + row('Verdigris', 'dragon', { init: 21, cur: true, hp: 46, tags: [['Leave, for later']], line: 'Leave: flies to the north edge and goes, kept offstage.' }) + logL(['Verdigris flies off.']) },
+  pl: { tab: 'Turns', main: () => `<div class="sec">Turn order · round 2</div>${row('Verdigris', 'dragon', { init: 21, cur: true, hp: 46, tags: [['Bloodied', 'bl']] })}${logL(['Verdigris flies off.', 'The fight is over.'])}` }
+});
+
+/* 17 */ S.push({
+  t: 'Afterwards: Offstage and Bring back', round: 'Out of the fight · a month later', fight: false, on: [...PARTY, 'Tam'],
+  say: 'The rewards form lists Verdigris as "left: counted". DM tools › Creatures has an Offstage list with its wounds, what it spent and the DM\'s own note. Next month Bring back sets it down where the DM taps; "rested" is proposed because eight hours or more of game time have passed (dmh-9). It comes back with a new id.',
+  hide: ['The whole Offstage list', 'The chronicle entries the DM wrote', 'That Verdigris is the same dragon: a creature brought back is a new one to the client'],
+  dm: { tab: 'DM tools', main: () => `<div class="sec">Rewards</div><div class="list"><div class="ln"><label class="tick"><i>✓</i> Verdigris · <span class="tag">left: counted</span></label></div></div>
+    <div class="sec">Creatures › Offstage</div><div class="list"><div class="ln"><b>Verdigris</b> · left the forest road, day 43 · 98 of 207 HP · breath spent · Legendary Resistance 2 of 3 · your note: <i>furious at the sorcerer</i>
+      <div class="btns">${NO('Bring back…', 'Opens the dialog below.', { sm: true })}${NO('Card', 'Opens its NPC card.', { sm: true })}</div></div></div>
+    <div class="sec">Bring back · Verdigris</div><div class="list"><div class="ln">It was last seen 9 days ago, day 43; today is day 52.</div>
+      <div class="chips">${B('Rested', { sm: true, sel: true })}${B('As it left', { sm: true })}</div>
+      <div class="small muted">Rested is proposed: 8 hours or more of game time have passed. ${Q('dmh-9', 'Rested is proposed after eight hours or more on the world clock.')}</div>
+      <div class="btns">${NO('Tap the map to set it down', 'You tap a cell; it is placed there with a new id.')}</div></div>
+    ${logL([], ['Chronicle: Verdigris left the forest road, furious at the sorcerer.'])}` },
+  pl: { tab: 'Log', main: () => `<div class="pl-dm-note">The fight is over. Nothing about the dragon after "flies off".</div><div class="sec">Conclusion</div><div class="list"><div class="ln">Defeated: Assassin</div><div class="ln">Driven off: 4 Gladiators, Verdigris</div></div>${logL(['Verdigris flies off.'])}` }
+});
+
+/* 18 */ S.push({
+  t: 'A solo table: the plans play themselves', round: 'Solo · Round 2', fight: true, on: [...PARTY, 'G1', 'G2'], at: { G1: [5, 3], G2: [6, 3] },
+  say: 'Solo play is the exception: with Monsters\' plans set to "By themselves", the proposal applies itself, every "ask" rule takes its default answer, and the NPCs play themselves (dmh-8, dmh-15). The only trace is one DM log line per shift, with its reason. The spec flags that this sits against dmh-1 to dmh-3; answers dmh-15 and dmh-16 are not in the spec\'s question list, so they are marked.',
+  hide: ['Everything: a solo table has one screen'],
+  dm: { tab: 'Log', main: () => `<div class="pl-dm-note">Solo table. Monsters' plans: <b>By themselves</b> ${Q('dmh-8', 'Plans apply by themselves with their default answers. The spec flags this against dmh-1 to dmh-3.')} ${Q('dmh-15', 'The brief says solo is the exception and they play themselves; the spec text has only fourteen questions. Treated as the same as dmh-8; confirm.')}</div>
+    <div class="list"><div class="ln">Round 1. Plan applied: The ambushers, goal Kill, steady.</div><div class="ln">Gladiator 1 attacks the Paladin.</div></div>${logL(['Round 2.'], ['Plan: the Assassin fell, so the ambushers break and run (the recommended answer, taken for you).'])}
+    <div class="legend">dmh-16 (leave a thing out at first): the spec has no sixteenth question. Nothing is drawn for it. ${Q('dmh-16', 'No such question in the spec; nothing is shown for it in this picture.')}</div>` },
+  pl: { tab: 'Turns', main: () => `<div class="pl-dm-note">A solo player is also the DM. This screen is the same as the DM's.</div>${logL(['Round 2.'])}` }
+});
+
+/* ====== the engine of the page ====== */
+let i = 0, who = 'dm', size = 'phone', L = {};
+const $ = (s, r = document) => r.querySelector(s);
+const frame = $('#frame'), cap = $('#cap'), fit = $('#fit');
+function render() {
+  const st = S[i], v = st[who], isDm = who === 'dm', loc = L;
+  const tray = v.tray ? v.tray(loc) : '';
+  frame.className = 'frame ' + size;
+  frame.innerHTML = `<div class="top"><span class="brand">Hextable</span><span class="chip">${st.round}</span><span class="sp"></span><span class="chip role ${isDm ? '' : 'pl'}">${isDm ? 'DM' : 'Player'}</span></div>
+    <div class="mapw">${mapSvg(st, who)}<div class="maptag">Forest road${st.fight ? '' : ' · free roaming'}</div></div>
+    <div class="side">${isDm ? TABS(v.tab) : PTABS(v.tab)}<div class="main">${v.main(loc)}</div><div class="tray ${isDm ? '' : 'pl'}">${tray}</div></div>${v.dlg ? v.dlg() : ''}`;
+  $('.pos').textContent = (i + 1) + ' / ' + S.length;
+  document.querySelectorAll('[data-nav="-1"]').forEach(b => b.disabled = i === 0);
+  document.querySelectorAll('[data-nav="1"]').forEach(b => b.disabled = i === S.length - 1);
+  const qs = [...frame.querySelectorAll('.qm')].map(b => b.dataset.q), hid = st.hide || [];
+  cap.innerHTML = `<h2>${i + 1}. ${st.t}</h2><p>${st.say}</p><div class="legend"><i></i>Gold-edged lines and the tray are the DM's. The player screen never gets them.</div>`
+    + (isDm ? '' : `<div class="box"><h3>Not sent to this screen</h3><ul>${hid.map(h => `<li>${h}</li>`).join('')}</ul></div>`)
+    + (qs.length ? `<div class="box open"><h3>"?" on this step: left open, or flagged, in the spec</h3><ul>${qs.map(q => `<li>${q}</li>`).join('')}</ul></div>` : '')
+    + `<div class="nav"><button data-nav="-1">Back</button><span class="pos">${i + 1} / ${S.length}</span><button class="go" data-nav="1">Next</button></div>`
+    + (i === 0 ? '<div class="box"><h3>How to read this</h3><ul><li>Pick DM or Player and Phone or Wide at the top, then step with Next and Back.</li><li>Tap the gold buttons inside the screen too: the recommended one moves the evening along.</li><li>A "?" is something the spec leaves open or flags; tap it.</li></ul></div>' : '');
+  document.querySelectorAll('[data-nav="-1"]').forEach(b => b.disabled = i === 0);
+  document.querySelectorAll('[data-nav="1"]').forEach(b => b.disabled = i === S.length - 1);
+  scale();
+}
+function scale() {
+  const W = size === 'phone' ? 390 : 1280, H = size === 'phone' ? 844 : 800, pad = innerWidth <= 420 ? 0 : 24;
+  const k = Math.min(1, (document.documentElement.clientWidth - pad) / W);
+  frame.style.transform = k < 1 ? `scale(${k})` : '';
+  fit.style.width = W * k + 'px'; fit.style.height = H * k + 'px';
+}
+function go(n) { i = Math.max(0, Math.min(S.length - 1, i + n)); L = Object.assign({ other: 1 }, S[i].local || {}); render(); }
+function mark() { document.querySelectorAll('[data-who]').forEach(b => b.setAttribute('aria-pressed', b.dataset.who === who)); document.querySelectorAll('[data-size]').forEach(b => b.setAttribute('aria-pressed', b.dataset.size === size)); }
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.who) { who = t.dataset.who; mark(); render(); return; }
+  if (t.dataset.size) { size = t.dataset.size; mark(); render(); return; }
+  if (t.dataset.nav) { go(+t.dataset.nav); return; }
+  if (!frame.contains(t)) return;
+  const old = frame.querySelector('.qpop, .toast'); if (old) old.remove();
+  if (t.dataset.q) { if (old && old.dataset.k === t.dataset.q) return; const p = document.createElement('div'); p.className = 'qpop'; p.dataset.k = t.dataset.q; p.textContent = t.dataset.q; frame.appendChild(p); return; }
+  if (t.dataset.go) { go(1); return; }
+  if (t.dataset.loc) { const [k, vv] = t.dataset.loc.split('='); L[k] = isNaN(+vv) ? vv : +vv; const sc = frame.querySelector('.main').scrollTop; render(); frame.querySelector('.main').scrollTop = sc; return; }
+  if (t.dataset.no) { const p = document.createElement('div'); p.className = 'toast'; p.textContent = t.dataset.no; frame.appendChild(p); setTimeout(() => p.remove(), 3500); }
+});
+document.addEventListener('keydown', (e) => { if (e.target.tagName === 'BUTTON') return; if (e.key === 'ArrowRight') go(1); if (e.key === 'ArrowLeft') go(-1); });
+addEventListener('resize', scale);
+go(0);
+</script>
+</body>
+</html>
