@@ -306,7 +306,7 @@ test('a manual spell quotes its manual text and says the DM does this', () => {
 // ---------- every SRD spell ----------
 // Every number the entry holds, found without the reader: numeric leaves, strings with a digit (dice, "10 minutes"),
 // and the character levels that key `higher.level` and `higher.targets`. Ids and author text are not numbers.
-const NOT_NUMBERS = ['id', 'name', 'source', 'text', 'manual', 'summon', 'variants', 'blocks', 'set', 'spell', 'cost', 'classes', 'kinds', 'checked', 'resource'];
+const NOT_NUMBERS = ['id', 'name', 'source', 'text', 'manual', 'summon', 'variants', 'blocks', 'set', 'spell', 'cost', 'classes', 'kinds', 'checked', 'resource', 'on'];   // "on" names a hook: d20 is not a number (Raise Dead's penalty, #899)
 function numbersIn(v, path, out) {
   if (typeof v === 'number') out.push(`${path}=${v}`);
   else if (typeof v === 'string') { if (/\d/.test(v)) out.push(`${path}=${v}`); }

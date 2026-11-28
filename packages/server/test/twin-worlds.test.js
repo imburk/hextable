@@ -263,6 +263,40 @@ test("revivify: a seen body that died over a minute ago (the old-body note) is s
   });
 });
 
+// ---- the revive family (#899): Raise Dead and Resurrection, days and years after a death, the penalty that fades at a Long Rest ----
+test("revive family: a hidden body beside a player's Raise Dead (an aim at the hidden body too), then a Long Rest that fades its penalty, is sent the same as with no creature there", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", -8, 0], ["rogue", 1, 0], ["cleric", 0, 0], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.cleric, { owner: w.ids.Pat, ownerName: "Pat", level: 17, spells: [...new Set([...(s.entities.cleric.spells ?? []), "raise-dead", "resurrection"])] });
+      s.entities.cleric.slots = { ...s.entities.cleric.slots, 5: 3, 7: 2 };
+      s.entities.cleric.slotsMax = { ...s.entities.cleric.slotsMax, 5: 3, 7: 2 };
+      w.must({ type: "harm", actor: "rogue", amount: 999, dtype: "necrotic" });
+      assert.equal(s.entities.rogue.dead, true);
+      w.must({ type: "advanceTime", minutes: 5 * 1440 });
+    },
+    steps: [
+      { by: "Pat", act: (w) => ({ type: "cast", actor: "cleric", spell: "raise-dead", target: byName(w, "Ghost")?.id ?? "m99" }), allowError: true },     // refused the same words: nobody the party knows of
+      { by: "Pat", act: { type: "cast", actor: "cleric", spell: "raise-dead", target: "rogue" } },
+      { by: "dm", act: { type: "rest" } },
+      { by: "dm", act: { type: "rest" } },
+    ],
+  }, {
+    hide: (w) => {
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 1 }, name: "Ghost", hidden: true });
+      w.must({ type: "harm", actor: byName(w, "Ghost").id, amount: 999, dtype: "necrotic" });
+      assert.equal(byName(w, "Ghost").dead, true);
+      assert.ok(Number.isFinite(byName(w, "Ghost").diedAt));
+    },
+    plain: (w) => burn(w, { q: 1, r: 1 }),
+  });
+});
+
 // ---- grapple: a hidden creature beside a player's grapple and drag (was the hidden-grappler and drag cases of grapple*.test.js) ----
 test("grapple: grappling and dragging a seen creature sends the same with and without a hidden one beside the path", () => {
   const { plain } = twin({

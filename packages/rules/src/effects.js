@@ -151,7 +151,7 @@ function summarise(def) {
   if (kind === 'polymorph') return { short: 'becomes a Beast', long: `The target takes the form of a Beast the caster chooses, of a Challenge Rating no higher than its own, for ${def.duration}${def.concentration ? ' (Concentration)' : ''}: the Beast's stat block replaces its statistics (it keeps its Hit Points), the Beast's Hit Points are its Temporary Hit Points and the spell ends on it when they are gone; it cannot speak or cast spells` };
   if (kind === 'resize') return { short: step.resize === 'larger' ? 'one size larger' : 'one size smaller', long: `The target is one size category ${step.resize} for ${def.duration}${def.concentration ? ' (Concentration)' : ''}, as far as there is room; its size goes back when the spell ends` };
   if (kind === 'stabilize') return { short: 'stabilise', long: 'A creature at 0 Hit Points becomes Stable' };
-  if (kind === 'revive') return { short: 'revive', long: `Brings a creature that died within the last ${step.within === 1 ? 'minute' : `${step.within} minutes`} back to life with ${step.revive} Hit Point${step.revive === 1 ? '' : 's'}` };
+  if (kind === 'revive') return { short: 'revive', long: `Brings a creature that died within the last ${step.within === 1 ? (step.unit ?? 'minute') : `${step.within} ${step.unit ?? 'minute'}s`} back to life with ${step.revive === 'max' ? 'all its Hit Points' : `${step.revive} Hit Point${step.revive === 1 ? '' : 's'}`}` };
   if (kind === 'dispel') return { short: 'end spells', long: `Ends spells of level ${step.dispel} or lower on it; a check against DC ${step.dc} plus the level for each higher one` };
   if (kind === 'eachTurn') return { short: 'each turn', long: `At the start of each of its turns for ${def.duration}${def.concentration ? ' (Concentration)' : ''}: ${step.eachTurn.map((x) => ('heal' in x ? `heal ${x.heal}${x.addMod ? ' + the spellcasting modifier' : ''}` : 'tempHp' in x ? `${x.tempHp}${x.addMod ? ' + the spellcasting modifier' : ''} Temporary Hit Points` : 'damage' in x ? `${x.damage} ${x.type} damage` : 'save' in x ? `a ${x.save.toUpperCase()} save` : 'the DM applies a part')).join(', ')}` };
   if (kind === 'ward') return { short: 'ward', long: `Attackers and damaging spells aimed at the target need a ${step.ward.toUpperCase()} save first; the ward ends when the target attacks, casts a spell or deals damage` };
@@ -487,6 +487,7 @@ function exec(s, ev, kit, f, step, at) {
   // The source is a creature, or a thing on the map (a trap), for which the engine lends a stand-in.
   const e = f.actor === null ? kit.objectActor(s, f.src.object) : s.entities[f.actor];
   if (!e || (f.target !== null && !t)) return;
+  if (f.unrevived) return;            // a revive that did not bring the creature back: the steps after it (a cure, a penalty) have nothing to work on (rolls.js `revive`)
   if (f.src.turn && t?.dead) return;  // a turn's steps (eachTurn) stop when an earlier one killed the creature
   if (t === null) return handOver(`The engine has nobody to apply this part of ${f.src.name} to. ${kit.whyNobody?.(f.src) ?? ''}The DM applies it.`);
   for (const tag of step.when ?? []) {

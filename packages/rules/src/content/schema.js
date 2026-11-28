@@ -53,8 +53,8 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   // dispelling spell was cast with; for each higher one its caster makes an ability check with its spellcasting ability against `dc` plus that spell's level, and
   // on a success the spell ends. docs/specs/rules-expansion.md, "Build notes: Dispel Magic".
   'dispel',
-  // `revive: hitPoints` with `within` (Revivify): the dead creature it works on returns to life with that many Hit Points, if it died no more than `within` minutes ago
-  // (by the game clock). Only in a spell whose creature target says `dead: true`. docs/specs/rules-expansion.md, "Build notes: Revivify".
+  // `revive: hitPoints` with `within` (Revivify): the dead creature it works on returns to life with that many Hit Points (`'max'`: all of them), if it died no more than `within` ago (`unit`: minute, day or year; minutes by default)
+  // by the game clock. Only in a spell whose creature target says `dead: true`. docs/specs/rules-expansion.md, "Build notes: Revivify".
   'revive',
   // `eachTurn: [steps]` (Heroism, Regenerate): the creature it works on gets a part that runs those steps on it at the start of each of its turns, for as long as the lasting
   // effect it is part of holds. Only `heal`, `tempHp` and `manual` steps inside, and only in a spell with a duration. docs/specs/rules-expansion.md, "Build notes: Heroism and Regenerate".
@@ -97,6 +97,8 @@ export const BRANCHES = ['onHit', 'onMiss', 'onFail', 'onSuccess', 'blocked', 'o
 // What is left of a creature a spell killed: a `remains` step records it on the body.
 export const REMAINS = ['frozen-statue', 'dust'];
 // Where a modifier can attach.
+// The units of a revive step's `within`, and the most of each the linter allows (docs/specs/rules-expansion.md, "Build notes: manual spells B1").
+export const REVIVE_UNITS = { minute: 1440, day: 365, year: 500 };
 export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
   'spell.dc', 'spell.attack', 'hp.max', 'carry', 'speed.fly', 'd20',
@@ -293,7 +295,9 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   // whose use it spends, only if it succeeds.
   if (m.onFail !== undefined && !(m.onFail === true && m.op === 'add' && ['d20', 'attack.roll', 'save'].includes(m.on))) say('`onFail` is true, on an add to d20, attack.roll or save');
   if (m.cost !== undefined && !(m.onFail === true && ID.test(m.cost))) say('`cost` names a feature, with onFail');
-  if (m.on === 'd20' && !m.onFail) say('the d20 hook is for onFail dice');
+  if (m.on === 'd20' && !m.onFail && !(m.op === 'add' && isInt(m.value))) say('the d20 hook is for onFail dice, or an add of a whole number to every D20 Test');
+  // `fades: 'longRest'`: a number that is added and moves 1 toward 0 at each Long Rest of the creature it is on (Raise Dead's -4), gone at 0.
+  if (m.fades !== undefined && !(m.fades === 'longRest' && m.op === 'add' && isInt(m.value) && m.value !== 0 && !m.onFail)) say('`fades: "longRest"` goes with an add of a whole number other than 0');
   if (m.op === 'floor' && !(m.on === 'check' && isInt(m.value) && m.value >= 2 && m.value <= 20)) say('`floor` is on check, with a d20 value');
   if (m.on === 'opportunity' && m.op !== 'autoFail') say('the opportunity hook takes autoFail (no Opportunity Attacks)');
   // `from: [creature types]` (Protection from Evil and Good): the modifier holds only against a creature of one of those types: the attacker of an attack roll made against the creature (`attack.received`),
@@ -622,7 +626,12 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (kind === 'arm') { lintArm(step.arm, say); if (!seen.eachOk) say('an `arm` step is for a spell that lasts: the action it gives goes when the spell ends'); }
     if (kind === 'endSpell') { if (step.endSpell !== true) say('`endSpell` is true'); if (!seen.inTurn) say('an `endSpell` step goes inside an `eachTurn`: it ends the lasting effect those steps belong to'); }
     // `revive: hitPoints` with `within`: the Hit Points it returns with, and how many minutes after its death it may be done (Revivify: 1 and 1).
-    if (kind === 'revive') { if (!seen.reviveOk) say('a revive step is for a spell aimed at a dead creature'); seen.revive = true; if (!(isInt(step.revive) && step.revive >= 1 && step.revive <= 100 && isInt(step.within) && step.within >= 1 && step.within <= 1440)) say('a revive step is `revive` (the Hit Points it returns with, 1 to 100) with `within` (the minutes after its death it may be done, 1 to 1440)'); }
+    if (kind === 'revive') {
+      if (!seen.reviveOk) say('a revive step is for a spell aimed at a dead creature');
+      seen.revive = true;
+      const cap = REVIVE_UNITS[step.unit ?? 'minute'];
+      if (!((step.revive === 'max' || (isInt(step.revive) && step.revive >= 1 && step.revive <= 100)) && isInt(step.within) && cap !== undefined && step.within >= 1 && step.within <= cap)) say('a revive step is `revive` (the Hit Points it returns with, 1 to 100, or "max" for all of them) with `within` (how long after its death it may be done, 1 to 1440 minutes, 365 days or 500 years) and `unit` ("minute", the default, "day" or "year")');
+    }
     // `dispel: level` with `dc`: a spell level from 0 to 9, and the DC to which a higher spell's level is added.
     if (kind === 'dispel' && !(isInt(step.dispel) && step.dispel >= 0 && step.dispel <= 9 && isInt(step.dc) && step.dc >= 1 && step.dc <= 30)) say('a dispel step is `dispel` (the spell level up to which a spell ends outright, 0 to 9) with `dc` (what a higher spell\'s level is added to for the check, 1 to 30)');
     // `light: { bright, dim }`: feet of Bright Light and then of Dim Light, multiples of 5 (as the DM's `setLight` takes them).
@@ -3246,7 +3255,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [], water: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [], water: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3276,7 +3285,7 @@ const SHAPES = {
   target: { what: 'a target', keys: ['self', 'creature', 'area', 'near', 'object', 'wall'] },
   area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count', 'placed', 'space'] },
   creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'] },
-  modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when', 'atLeast'] },
+  modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when', 'atLeast', 'fades'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
   scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool', 'sense', 'surface'] },
   ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged', 'keeps'] },
@@ -3468,7 +3477,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
   // steps and modifiers
-  'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 2], 'step.feet': [5, 240], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000], 'step.cut': [5, 10],
+  'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 500], 'step.feet': [5, 240], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000], 'step.cut': [5, 10],
   'modifier.value': [-40, 40], 'modifier.atLeast': [1, 20], 'speedModifier.value': [-120, 120], 'senseModifier.value': [5, 240], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
   'ends.dc': [1, 50], 'zone.budget': [1, 120], 'zone.move': [5, 60], 'beside.feet': [5, 30], 'slot.hours': [1, 8],
   // items, feats, objects, weapons, armour
@@ -3725,6 +3734,13 @@ function lintNumbers(kind, e, say) {
   if (attacks > HOMEBREW_WORK.attacks) say(`its Multiattack makes ${thousands(attacks)} attacks; the most is ${HOMEBREW_WORK.attacks}`);
   else if (work > HOMEBREW_WORK.steps) say(`one use (its ${what}) can run ${thousands(work)} steps, counting every branch, every repeat and every creature it reaches (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${HOMEBREW_WORK.steps}`);
   else if (dice > HOMEBREW_WORK.dice) say(`one use (its ${diceWhat}) can roll ${thousands(dice)} dice, counting every repeat, the double dice of a critical hit and every creature that rolls its own (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${thousands(HOMEBREW_WORK.dice)}`);
+  // A homebrew revive (docs/specs/rules-expansion.md, B1): all its Hit Points (`'max'`) or a reach in days or years only as the SRD has them, in a spell of level 5 or
+  // more (Raise Dead and above); otherwise minutes, at most 2 (Revivify's own reach is 1). The 500 of `step.within` is the ceiling of a day- or year-long reach.
+  for (const st of (function* walk(v) { if (Array.isArray(v)) for (const x of v) yield* walk(x); else if (v && typeof v === 'object') { if ('revive' in v) yield v; for (const x of Object.values(v)) yield* walk(x); } })(e)) {
+    const long = st.revive === 'max' || (st.unit !== undefined && st.unit !== 'minute');
+    if (long && !(kind === 'spells' && Number.isInteger(e.level) && e.level >= 5)) say('a revive with all its Hit Points ("max") or a reach in days or years is for a spell of level 5 or more');
+    else if (!long && Number.isInteger(st.within) && st.within > 2) say(`a revive's reach of ${st.within} minutes is too long; the most is 2 (or days, in a spell of level 5 or more)`);
+  }
   for (const [ctx, v, path, g, owner, key] of numbersOf(kind, e)) {
     const r = (kind === 'subclasses' && (FORM_CR_PATH.test(path) ? FORM_CR : SUBCLASS_RANGES[`${owner}.${key}`])) || rangeOf(owner, key, g);
     if (!r) { say(`${path}: a number is not allowed here (no range is set for "${ctx}")`); continue; }
@@ -3771,7 +3787,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   target: { self: 'b', creature: 'o', area: 'o', near: 'i', object: 'o', wall: 'o' },
   area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i', placed: 'b', space: 's' },
   creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]', types: 's[]', dead: 'b' },
-  modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', from: 's[]', magic: 'b', when: 's[]', atLeast: 'i' },
+  modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', from: 's[]', magic: 'b', when: 's[]', atLeast: 'i', fades: 's' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
   scope: { skill: 's', ability: 's', condition: 's', tool: 's', sense: 's', surface: 's' },
   ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b', keeps: 'b' },
@@ -3832,7 +3848,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's', from: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a', familiarity: 's' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.polymorph': { polymorph: 's' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.water': { water: 'o' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.polymorph': { polymorph: 's' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i|s', within: 'i', unit: 's' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.water': { water: 'o' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's', range: 'i' },
   water: { mode: 's', by: 'i', size: 'i' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
