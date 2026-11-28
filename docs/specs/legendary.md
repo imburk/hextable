@@ -246,7 +246,7 @@ that has `legendary.actions` and:
 
 **Lead's default (V025), for the owner to confirm:** a legendary creature hidden from the party (one the party does not know of: DM-hidden, hiding, melded, unseen) is offered no window; its legendary actions wait until it is known. So a fight with only such creatures goes on exactly as a world without them, and players are never sent that the table waits for what they cannot see.
 
-**Until stage L4 lands the window is off unless the DM turns it on** (lead, V025): the table setting `legendaryWindows` is `false` when absent, and with it off every fight plays exactly as it did. L4 turns the default on.
+**Build note, L4b (#896): on by default.** The table settings `legendaryWindows` and `legendaryResistance` are on whenever they are absent, old saves included (no migration); only an explicit `false` turns one off, and then every fight plays exactly as it did before L4. The SRD monsters no longer carry the "Legendary Actions" and "Legendary Resistance" traits (their blocks say it all), the called-save note reads the block only, and the DM's "You run" card for a creature with a block lists its `manual` options (no `use`, `effects` or `move`) and Spellcasting, no trait. A creature with the traits still as text (homebrew, no block) keeps the old card.
 
 **If nobody is offered, nothing opens** and the next turn starts exactly as today, in the same
 action, with the same events. A fight with no legendary creature is byte for byte what it was.
