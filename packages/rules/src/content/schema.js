@@ -197,10 +197,13 @@ function findFunction(value, path = '') {
   return null;
 }
 
-function lintWhen(when, say) {
+// The two tags with a number (#907), judged on an effect step's `when` only: `target.hpAtMost:N` (the target's current Hit Points, not Temporary, are N or fewer) and
+// `target.hpAbove:N` (more than N). N is a whole number from 1 to 999. They are not in `TAGS`: a pattern, so the list does not grow.
+export const HP_TAG = /^target\.hp(AtMost|Above):([1-9]\d{0,2})$/;
+function lintWhen(when, say, numeric = false) {
   if (when === undefined) return;
   if (!Array.isArray(when)) return say('`when` must be a list of tags');
-  for (const t of when) if (!TAGS.includes(t)) say(`unknown situation tag "${t}"`);
+  for (const t of when) if (!TAGS.includes(t) && !(numeric && typeof t === 'string' && HP_TAG.test(t))) say(`unknown situation tag "${typeof t === 'string' ? t : JSON.stringify(t)}"`);
 }
 // A spell's choice made when it is cast (`choice: { of, from? }`); a modifier names it as "chosen".
 // `condition`: one condition a `cure` step ends (Lesser Restoration), from `from`.
@@ -540,7 +543,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     const kinds = STEPS.filter((k) => k in step);
     if (kinds.length !== 1) { say(`each effect step needs exactly one of: ${STEPS.join(', ')} (found ${kinds.length ? kinds.join(' and ') : 'none'})`); continue; }
     const kind = kinds[0];
-    lintWhen(step.when, say);
+    lintWhen(step.when, say, true);
     if (step.ifChoice !== undefined && !seen.choiceOk) say('`ifChoice` is for a step of a spell whose choice is of a curse, an affliction, a shape, a resize or a water effect');
     if (kind === 'attack') {
       if (!['melee', 'ranged'].includes(step.attack)) say('attack must be "melee" or "ranged"');
@@ -708,7 +711,9 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     for (const b of ['onZero', 'onKill']) if (step[b] !== undefined && kind !== 'damage') say(`\`${b}\` is for a damage step`);
     // `kill: true`: the creature dies, a character at 0 Hit Points too; `remains`: what is left of
     // the body. Both only under a damage step's onZero or onKill, where the damage brought it there.
-    if ((kind === 'kill' || kind === 'remains') && !under) say(`a \`${kind}\` step goes under a damage step's onZero or onKill`);
+    // A `kill` may also stand on a Hit Points tag of its own (#907: Power Word Kill, Divine Word): the target's Hit Points are what decide that it dies.
+    const hpGated = kind === 'kill' && Array.isArray(step.when) && step.when.some((t) => typeof t === 'string' && HP_TAG.test(t));
+    if ((kind === 'kill' || kind === 'remains') && !under && !hpGated) say(`a \`${kind}\` step goes under a damage step's onZero or onKill, or has a Hit Points tag in its \`when\``);
     if (kind === 'kill' && step.kill !== true) say('`kill` is true');
     // `endConcentration: true`: the creature loses Concentration on whatever it holds (Sleet Storm).
     if (kind === 'endConcentration' && step.endConcentration !== true) say('`endConcentration` is true');

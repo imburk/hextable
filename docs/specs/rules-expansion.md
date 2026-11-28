@@ -2374,5 +2374,19 @@ Numbers compared with `reference/srd52/srd52-flow.txt` (Telekinesis 31380: level
 
 **The move.** `effects.js` hands the step to `kit.teleport` with `forced: true` (the `moved` event carries `forced` and `teleport`): straight there, no path, no Opportunity Attack, no difficult terrain, zones it lands in go off, and Magic Circle's save is not asked (another creature's effect moves it). A cast with no space (not through `cast`) hands the move to the DM.
 
+**A creature the caster's side does not know of on the space** (#911 review). The cast is refused only for an occupant the caster knows of. At the move, a teleport's rule holds, with what the mover's side knows counted too (`step.by`): the target lands on the named space, as on a bare cell, and the DM alone is told to settle it. A twin() scenario holds it.
+
 **Gaps.** The client's aim for `hex` (DEBT T115).
 
+
+#### Build notes: manual spells B5a, Hit Point gates (amendment, #786, #907)
+
+Two situation tags with a number, judged on an effect step's `when` (effects.js already gates every step through `judge`): `target.hpAtMost:N` (the target's current Hit Points are N or fewer) and `target.hpAbove:N` (more than N). N is a whole number from 1 to 999, no sign, no leading zero. They are not in `TAGS`: `schema.js` `HP_TAG` is the pattern, and the linter takes it only on a step's `when` (a modifier's `when` and a save's or attack's `advantageIf` still name only `TAGS`). Temporary Hit Points are never counted. `judge` answers null with no target (or no number for Hit Points), so the step is handed to the DM as for any other tag it cannot judge. A `kill` step may stand at the top level, or under a save's `onFail`, when its `when` holds one of these tags (before, only under a damage step's `onZero` or `onKill`). The reader says them in words and lists N among the entry's numbers.
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Power Word Kill | manual | auto | nothing |
+| Power Word Stun | manual | auto | nothing |
+| Divine Word | manual | assist | ends the conditions after 1 hour, 10 minutes or 1 minute (a condition step cannot last a set time on an instant spell), and sends a Celestial, Elemental, Fey or Fiend that fails home for 24 hours |
+
+Divine Word's "each creature of your choice in range" is an Emanation of 30 feet with `choose: 20` (the highest count the vocabulary takes; the same as Aura of Life). Numbers compared with `reference/srd52/srd52-flow.txt` (Divine Word, Power Word Kill, Power Word Stun).
