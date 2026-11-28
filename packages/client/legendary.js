@@ -80,6 +80,14 @@ export function stepsOf(e, opt, pick) {
   return steps;
 }
 
+// The creature and option an armed mode is for, while the window still offers that creature; null once the window or the fight has moved on (the encounter
+// ended, the creature was skipped, removed or is done), so nothing draws or aims from a stale mode before the bar is redrawn.
+export function armedOf(S, m) {
+  if (!S?.encounter || !m || !windowRows(S).some((x) => x.id === m.actor)) return null;
+  const e = S.entities[m.actor], opt = e?.legendary?.actions?.options.find((o) => o.id === m.option);
+  return e && opt ? { e, opt } : null;
+}
+
 // ---------- the switches of DM tools > Creatures ----------
 export const INSTRUCTION = { matters: 'Only when it matters', ask: 'Ask me every time', always: 'Every failed save', never: 'Never' };
 const ORDER = ['matters', 'ask', 'always', 'never'];
@@ -116,7 +124,7 @@ export function bindSwitches(root, act) {
 export function initLegendary(ctx) {
   const { mount } = ctx;
   mount.id = 'lg'; mount.hidden = true; mount.setAttribute('role', 'region'); mount.setAttribute('aria-label', 'Legendary actions');
-  let sig = '', sent = null;
+  let sig = '';
   const S = () => ctx.state();
   const armed = () => { const m = ctx.mode(); return m?.kind === 'legendary' ? m : null; };
 
@@ -168,7 +176,7 @@ export function initLegendary(ctx) {
     ctx.act(action);
   }
   // ---- an option that moves or aims: the aim bar ----
-  const here = (m) => { const s = S(), e = s.entities[m.actor], opt = e?.legendary?.actions?.options.find((o) => o.id === m.option); return e && opt ? { s, e, opt } : null; };
+  const here = (m) => { const s = S(), h = armedOf(s, m); return h ? { s, ...h } : null; };
   const step = (m) => m.steps[m.i] ?? 'send';
   function arm(e, opt) {
     const m = { kind: 'legendary', actor: e.id, option: opt.id, pick: undefined, steps: stepsOf(e, opt), i: 0, to: null, stop: null, target: null, hex: null };
@@ -179,6 +187,7 @@ export function initLegendary(ctx) {
     const mv = opt.move, speed = speedOf(s, e, mv.mode ?? 'walk');
     const feet = mv.speed === 'full' ? speed : Math.floor(speed / 2 / FT) * FT;
     const bud = { move: feet, dashes: -1, diagonals: 0, out: true, ...(mv.provokes === false ? { free: true } : {}) };
+    if (!s.encounter) return { feet, stops: [] };
     const as = { ...s, encounter: { ...s.encounter, turn: s.encounter.order.findIndex((o) => o.id === e.id), budget: bud } };
     try { return { feet, stops: [...moveOptions(as, e, { through: true }).entries()].filter(([, v]) => v.canStop) }; } catch { return { feet, stops: [] }; }
   }
@@ -261,7 +270,6 @@ export function initLegendary(ctx) {
       if (st === 'send' && m.target) out.targets = [m.target];
       return out;
     },
-    refused() {},
-    fresh() { sig = ''; sent = null; mount.hidden = true; mount.textContent = ''; document.body.classList.remove('lg-open'); },
+    fresh() { sig = ''; mount.hidden = true; mount.textContent = ''; document.body.classList.remove('lg-open'); },
   };
 }

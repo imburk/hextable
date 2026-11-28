@@ -51,6 +51,20 @@ test('the window: one row for each creature still to choose, and the words after
   assert.deepEqual(L.windowRows({ encounter: { between: true }, entities: {} }), [], 'a player is sent true, which gives no rows');
 });
 
+test('an armed option goes stale when the window or the fight moves on: no creature, no option, nothing to aim from (review of #883)', () => {
+  const { s, d } = fight();
+  const m = { kind: 'legendary', actor: d.id, option: 'pounce' };
+  assert.equal(L.armedOf(s, m).opt.id, 'pounce');
+  assert.equal(L.armedOf(s, { ...m, option: 'nothing-such' }), null);
+  assert.equal(L.armedOf(s, { ...m, actor: 'fighter' }), null, 'a creature the window does not offer');
+  ok(apply(s, { type: 'endEncounter' }, DM));
+  assert.equal(s.encounter, null);
+  assert.equal(L.armedOf(s, m), null, 'the fight ended while Pounce was armed');
+  const { s: s2, d: d2 } = fight();
+  ok(apply(s2, { type: 'legendary', actor: d2.id, skip: true }, DM));
+  assert.equal(L.armedOf(s2, { ...m, actor: d2.id }), null, 'skipped');
+});
+
 test('what an option needs: a manual one is one tap, Pounce a move and a target, Miasma a spot', () => {
   const { d } = fight();
   const by = (id) => d.legendary.actions.options.find((o) => o.id === id);
