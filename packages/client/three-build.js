@@ -38,8 +38,8 @@ export function zoneHexes(state, fx) {
   }
   return { at: z.origin?.z ?? 0, hexes: (z.hexes ?? []).map((k) => cellParse(k)) };
 }
-// The edge of a fight (docs/specs/renderer.md, arena-edge notes): the lighting change (everything outside the arena dimmed) is always drawn;
-// the glowing edge (the light wall, the bright rim and grid) only when the device's `hextable.arenaEdge` is 'edge' (themes.js carries it
+// The edge of a fight (docs/specs/renderer.md, arena-edge notes): the lighting change (everything outside the arena dimmed) is always drawn,
+// and the arena's cells take the same rim and grid as any other floor; the glowing light wall only when the device's `hextable.arenaEdge` is 'edge' (themes.js carries it
 // as `arenaEdge`). A refused move flashes the edge cells nearest the hex it aimed at, whichever look is chosen.
 export const edgeLook = (th) => th?.arenaEdge === 'edge';
 // The cells ([col, ...]) on the border of the arena (a side faces outside it) nearest `hex`: the nearest ring and the one after it, at most eight.
@@ -252,8 +252,8 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
   for (const h of allTiles(map)) {
     if (h.z > ceiling) continue;
     if (pictured.has(h.level.id)) {
-      const w = G.toWorld(h), inFight = enc && enc.arena[cellCol(h)];
-      gb.flatHex(w.x, w.z, surfY(h.z, h.tile) + 0.012, 0.94, 1, inFight && edgeLook(th) ? [...th.arenaRim, 0.7] : shown(map, h.level.id, h) ? [0.06, 0.06, 0.08, 0.3] : [0.3, 0.4, 0.9, 0.35]);
+      const w = G.toWorld(h);
+      gb.flatHex(w.x, w.z, surfY(h.z, h.tile) + 0.012, 0.94, 1, shown(map, h.level.id, h) ? [0.06, 0.06, 0.08, 0.3] : [0.3, 0.4, 0.9, 0.35]);
       continue;
     }
     if (caves.has(h.level.id)) continue;
@@ -265,7 +265,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
     if (!shown(map, h.level.id, h)) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
     const f = seenShade(h.level.id, cellCol(h));
     if (f !== 1) c = c.map((v) => v * f);
-    const rim = enc && !locked && edgeLook(th) ? [...th.arenaRim, 1] : shade(c, th.rim);
+    const rim = shade(c, th.rim);
     if (!room) {
       b.flatHex(w.x, w.z, y, 0, 0.86, [...c, 1]);
       b.flatHex(w.x, w.z, y, 0.86, 1, rim);
@@ -295,8 +295,8 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
         if (!shown(map, lv.id, { ...hex, z: hz })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
         const f = seenShade(lv.id, key);
         if (f !== 1) c = c.map((v) => v * f);
-        const inArena = enc && !locked && edgeLook(th), grid = inArena ? [...th.arenaRim, 1] : shade(c, th.grid ?? 0.92);
-        const { inner, rim } = cellParts(cell, inArena ? 0.9 : 0.955, G);
+        const grid = shade(c, th.grid ?? 0.92);
+        const { inner, rim } = cellParts(cell, 0.955, G);
         const fan = (poly, col) => { const m = wpt(centroidOf(poly), y); for (let i = 0; i < poly.length; i++) b.tri(wpt(poly[(i + 1) % poly.length], y), wpt(poly[i], y), m, col); };
         if (inner) fan(inner, [...c, 1]);
         for (const r of rim) fan(r, grid);
