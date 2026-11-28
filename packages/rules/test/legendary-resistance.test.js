@@ -17,15 +17,17 @@ function game({ on = true, monster = "adult-green-dragon" } = {}) {
   ok(s, { type: "setting", key: "autoEngage", value: false });
   const f = s.entities.fighter.pos;
   ok(s, { type: "spawn", monster, at: { q: f.q + 3, r: f.r }, name: "Verdigris" });
-  if (on) ok(s, { type: "setting", key: "legendaryResistance", value: true });
+  ok(s, { type: "setting", key: "legendaryResistance", value: on });                   // since L4b a table with the setting absent has it on; `on: false` is the DM who switched it off
   const d = Object.values(s.entities).find((e) => e.name === "Verdigris");
   return { s, d };
 }
 const failed = () => ({ roll: 3, total: 3, success: false, dice: [3], bonus: 0 });
 
-test("1: the setting is off by default and the DM turns it on", () => {
+test("1: the setting is on when absent (old saves too) and the DM turns it off", () => {
+  const fresh = newGame(5);
+  assert.equal(fresh.settings?.legendaryResistance, undefined);
   const { s: a } = game({ on: false });
-  assert.notEqual(a.settings?.legendaryResistance, true);
+  assert.equal(a.settings.legendaryResistance, false);
   const { s: b } = game();
   assert.equal(b.settings.legendaryResistance, true);
   const r = apply(b, { type: "setting", key: "legendaryResistance", value: "yes" }, DM);
