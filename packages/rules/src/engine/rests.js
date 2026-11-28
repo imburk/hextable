@@ -84,6 +84,7 @@ export const handlers = {
       if (e.hitDice) e.hdBy = { ...e.hitDice };
       if (e.tempHp) { e.tempHp = 0; delete e.tempFx; }
       delete e.charges; delete e.spent;                                    // a monster's daily uses and spent recharges
+      if (e.legend) e.legend.resisted = 0;                                 // Legendary Resistance comes back only for a creature the Long Rest names (docs/specs/legendary.md, Decision 2; not the party's rest)
       const ex = e.cond.exhaustion;
       if (ex && (ex.level ?? 1) > 1) { ex.level = (ex.level ?? 1) - 1; ev.push({ type: 'cond', id: e.id, cond: 'exhaustion', level: ex.level }); }
       else if (ex) { delete e.cond.exhaustion; ev.push({ type: 'condEnd', id: e.id, cond: 'exhaustion' }); }
