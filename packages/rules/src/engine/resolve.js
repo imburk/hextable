@@ -206,7 +206,10 @@ function teleport(s, t, step, to, ev, own = true) {
     // Moving the teleporter anywhere else, or not at all, would tell the players something is there, so it arrives as
     // intended and shares the space for now; the DM settles it (the SRD wants an unoccupied space). The note is the DM's alone.
     const there = living(s).filter((o) => o.id !== t.id && overlapAt(o, o.pos, t, at, G));
-    const unknownToIt = (o) => hiddenFrom(o, t) || (t.side === 'party' && (o.hidden || unknown(s, o)));
+    // A creature moved by another's effect (`step.by`, Telekinesis): what the mover's side knows counts too, for a party caster's foe is moved where the
+    // players can see it land (#911 review: a monster moved onto a hidden one went to the next space, which told the players something stood there).
+    const by = step.by ? s.entities[step.by] : null;
+    const unknownToIt = (o) => hiddenFrom(o, t) || (by && hiddenFrom(o, by)) || ((t.side === 'party' || by?.side === 'party') && (o.hidden || unknown(s, o)));
     if (there.every(unknownToIt)) {
       ev.push({ type: 'manual', actor: t.id, name: step.name ?? (step.familiarity !== undefined ? 'Teleport' : 'Teleportation'), partial: true,
         text: `${t.name} ${step.said ?? 'teleported into'} the space where ${there.map((o) => o.name).join(' and ')} stands, which its side did not know of. The engine put ${t.name} there so the players learn nothing; the DM decides where each of them ends up (the spell wants an unoccupied space).` });

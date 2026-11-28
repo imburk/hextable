@@ -684,7 +684,7 @@ function exec(s, ev, kit, f, step, at) {
     // `dir: "chosen"`: put where the cast named (`f.src.to`, checked at the cast by `chosenSpot`): straight there by force, no path and no Opportunity Attack.
     if (step.dir === 'chosen') {
       if (!f.src.to) return handOver(`${f.src.name} names no space, so the engine cannot move ${t.name}. The DM moves it, up to ${step.move} ft.`);
-      return kit.teleport(s, t, { teleport: step.move, forced: true }, f.src.to, ev, false);
+      return kit.teleport(s, t, { teleport: step.move, forced: true, by: e.id, name: f.src.name, said: 'was moved into' }, f.src.to, ev, false);
     }
     return kit.push(s, t, step.move, step.dir, e.pos, ev);
   }

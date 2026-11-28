@@ -92,3 +92,17 @@ test("B5b: the Restrained condition ends with the caster's next turn", () => {
   }
   assert.ok(!s.entities[g].cond.restrained, "gone by the end of the caster's next turn");
 });
+
+// #911 review: a creature the party does not know of on the named space. Landing anywhere else would tell the players something stands there,
+// so the target lands where it was put, shares the space for now, and only the DM is told (as a teleport into an unknown creature's space).
+test("B5b: a hidden creature on the named space: the target lands there all the same and the DM alone is told", () => {
+  const { s, g } = field(); weak(s, g);
+  const r0 = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 3 } }, DM));
+  const h = Object.keys(s.entities).find((k) => k !== g && s.entities[k].side !== "party");
+  assert.ok(h && r0.ok);
+  s.entities[h].hidden = true;
+  const r = ok(cast(s, g, { q: 6, r: 3 }));
+  assert.deepEqual([s.entities[g].pos.q, s.entities[g].pos.r], [6, 3], "on the named space, as with nobody there");
+  assert.ok(r.events.some((e) => e.type === "moved" && e.id === g && e.path[0].q === 6 && e.path[0].r === 3));
+  assert.ok(r.events.some((e) => e.type === "manual" && /did not know of/.test(e.text)), "the DM is told");
+});
