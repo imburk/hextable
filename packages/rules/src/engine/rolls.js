@@ -288,7 +288,7 @@ export function rollMode(s, e, t, atk) {
 // within range with a feature reaction on `saveFailed` for those conditions (Countercharm) and a
 // standing instruction of `always` takes its Reaction to have the save rolled again with Advantage.
 // `onFail` is the steps the failure would run. Returns the new save, or null.
-export function rerollSave(s, t, abil, dc, onFail, from, ev) {
+export function rerollSave(s, t, abil, dc, onFail, from, ev, magic = undefined) {
   const conds = (onFail ?? []).filter((x) => 'condition' in x).map((x) => x.condition);
   if (!conds.length) return null;
   for (const o of living(s)) {
@@ -297,7 +297,7 @@ export function rerollSave(s, t, abil, dc, onFail, from, ev) {
     if (!r || (o.id !== t.id && apart(s, o, t) * FT > r.reaction.range)) continue;
     o.reactionUsed = true;
     ev.push({ type: 'reaction', id: o.id, reaction: r.id, name: r.name, trigger: 'saveFailed', against: t.id });
-    return savingThrow(s, t, abil, dc, null, from, null, r.name, ev, conds);
+    return savingThrow(s, t, abil, dc, null, from, null, r.name, ev, conds, magic);
   }
   return null;
 }
@@ -485,7 +485,7 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
 export function eachTurn(s, t, step, f, ev) {
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   if (!fx || fx.bound || t.dead) return false;
-  fx.parts.push({ target: t.id, turn: { steps: structuredClone(step.eachTurn), src: { name: f.src.name, ...(f.src.healMod !== undefined ? { healMod: f.src.healMod } : {}), ...(f.src.spell ? { spell: f.src.spell } : {}), ...(f.src.dc !== undefined ? { dc: f.src.dc } : {}) } } });
+  fx.parts.push({ target: t.id, turn: { steps: structuredClone(step.eachTurn), src: { name: f.src.name, ...(f.src.healMod !== undefined ? { healMod: f.src.healMod } : {}), ...(f.src.spell ? { spell: f.src.spell } : {}), ...(f.src.magic ? { magic: true } : {}), ...(f.src.dc !== undefined ? { dc: f.src.dc } : {}) } } });
   void ev;
   return true;
 }
@@ -718,8 +718,10 @@ export function bestType(s, t, types) {
 // `used`, the single-use parts the save took: the caller leaves it out of its event and passes it to useUp.
 // `from` is the creature or the point the effect comes from: cover against it helps a Dexterity save.
 // `about`: the conditions the save is to avoid or end, for a modifier scoped to one (Protection from Poison).
-export function savingThrow(s, t, abil, dc, extra = null, from = null, dis = null, adv = null, ev = null, about = null) {
-  const sit = { target: t, ability: abil, ...(about?.length ? { conditions: about } : {}) };
+// `magic`: whether the save's source is magical (a spell, a magic item's effect): true, false (a breath, a trap, damage: known not to be), or left out (not known). Magic Resistance
+// (`{ on: 'save', op: 'advantage', magic: true }`) gives Advantage only on true; on a source not known it gives none, and with `ev` the DM is told once for the action (a partial `manual` note).
+export function savingThrow(s, t, abil, dc, extra = null, from = null, dis = null, adv = null, ev = null, about = null, magic = undefined) {
+  const sit = { target: t, ability: abil, ...(about?.length ? { conditions: about } : {}), ...(magic === undefined ? {} : { magic }) };
   const m = modifiers(s, t, `save.${abil}`, sit, '');
   if (dis) m.disadvantage.push(dis);                       // Disadvantage from the caster's side (Heightened Spell)
   if (adv) m.advantage.push(adv);                          // Advantage on a reroll (Countercharm)
@@ -730,6 +732,11 @@ export function savingThrow(s, t, abil, dc, extra = null, from = null, dis = nul
     const x = modifiers(s, t, hook, sit, '');
     m.add += x.add; m.advantage.push(...x.advantage); m.disadvantage.push(...x.disadvantage); m.dice.push(...x.dice); m.used.push(...x.used);
     m.autoFail ||= x.autoFail; m.autoSucceed ||= x.autoSucceed;
+    m.unsure.push(...x.unsure);
+  }
+  // Magic Resistance on a save whose source the engine cannot classify: no Advantage, and the DM is told, once for each creature in an action's events.
+  if (m.unsure.length && ev && !ev.some((x) => x.type === 'manual' && x.unsure === t.id)) {
+    ev.push({ type: 'manual', actor: t.id, name: m.unsure[0], partial: true, unsure: t.id, text: `${t.name} has ${m.unsure[0]} (Advantage on saving throws against spells and other magical effects), and the engine cannot tell whether this ${abil.toUpperCase()} save is against one. It was rolled without the Advantage; if the source is magical, the DM has it rolled again with Advantage.` });
   }
   // A single-use modifier is spent by this save. `used` goes back to the caller, which records
   // the save and then ends what it used up (durations.useUp), so the log reads in that order.

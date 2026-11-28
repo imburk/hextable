@@ -151,7 +151,7 @@ function trigger(s, ev, kit, fx, t, why, pre = () => {}) {
 function fire(s, ev, kit, fx, t, why) {
   ev.push({ type: 'zone', fx: fx.id, name: fx.name, id: t.id, why });
   const from = ev.length;
-  begin(s, { steps: structuredClone(fx.zone.steps), actor: fx.source, targets: [t.id], src: { ...structuredClone(fx.zone.src), fx: fx.id } });
+  begin(s, { steps: structuredClone(fx.zone.steps), actor: fx.source, targets: [t.id], src: { ...structuredClone(fx.zone.src), fx: fx.id, ...(fx.spell ? { magic: true } : {}) } });
   run(s, ev, kit);
   // A zone with a `budget` (Guardian of Faith) is used up by the damage its steps deal: what its source dealt to this creature now is added, and at the budget the effect ends.
   if (fx.zone.budget && effectsOf(s).includes(fx)) {

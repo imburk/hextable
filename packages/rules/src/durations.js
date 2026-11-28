@@ -212,7 +212,7 @@ function boundary(s, ev, e, kit, when) {
       if (p.ended || !p.ends) continue;
       if (p.ends.on === when && whose(fx, p) === e.id && !(when === 'turnEnd' && thisTurn(s, p.born))) endPart(s, ev, fx, p);
       else if (p.ends.on === 'save' && p.ends.at === when && p.target === e.id) {
-        const { used, ...sv } = kit.savingThrow(s, e, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null);
+        const { used, ...sv } = kit.savingThrow(s, e, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null, fx.spell ? true : undefined);      // a spell's repeated save is magical; another's source is not known
         const saved = { type: 'save', id: e.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) };
         ev.push(saved);
         useUp(s, ev, used ?? []);
@@ -252,7 +252,7 @@ export function damaged(s, ev, t, by = null, kit = null) {
       if (p.ended || p.target !== t.id || !p.ends) continue;
       if ((p.ends.on === 'damaged' || p.ends.orDamaged) && (p.ends.by !== 'source' || (by !== null && side(by) !== undefined && side(by) === side(fx.source)))) endPart(s, ev, fx, p);
       else if (p.ends.on === 'save' && p.ends.at === 'damaged' && kit && !t.dead) {
-        const { used, ...sv } = kit.savingThrow(s, t, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null);
+        const { used, ...sv } = kit.savingThrow(s, t, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null, fx.spell ? true : undefined);
         const saved = { type: 'save', id: t.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) };
         ev.push(saved);
         useUp(s, ev, used ?? []);
@@ -286,7 +286,7 @@ export function concentrationCheck(s, ev, t, amount, kit) {
   const held = concentrating(s, t.id).filter((fx) => !(t.feats ?? []).some((f) => f.steadfast && f.steadfast.spell === fx.spell));
   if (!held.length || amount <= 0) return;
   const dc = Math.min(30, Math.max(10, Math.floor(amount / 2)));
-  const { used, ...sv } = kit.savingThrow(s, t, 'con', dc, 'concentration');
+  const { used, ...sv } = kit.savingThrow(s, t, 'con', dc, 'concentration', null, null, null, null, null, false);      // from damage, not from magic (SRD)
   const saved = { type: 'concentration', id: t.id, dc, ...sv, name: held.map((fx) => fx.name).join(', ') };
   ev.push(saved);
   useUp(s, ev, used ?? []);
