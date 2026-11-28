@@ -174,7 +174,7 @@ function take(s, a, ctx, ev, w, e) {
   }
 }
 
-const SET_KEYS = ['acts', 'resisted', 'lair', 'show'];
+const SET_KEYS = ['acts', 'resisted', 'lair', 'show', 'self'];
 
 export const handlers = {
   // { type: 'legendary', actor, skip: true }: the creature passes for this window. { type: 'legendary', done: true }: the DM closes it, which skips
@@ -204,20 +204,20 @@ export const handlers = {
     ev.push({ type: 'legendarySkip', actor: e.id });
     settle(s, ev);
   },
-  // { type: 'legendarySet', actor, set: { acts?, resisted?, lair?, show? } }: the DM's adjustments (Decision 2). `acts` and `resisted` are what is
+  // { type: 'legendarySet', actor, set: { acts?, resisted?, lair?, show?, self? } }: the DM's adjustments (Decision 2; `self` is the switch "By themselves", Decision 8, read by the DM's browser and kept on the creature's `legend`, never sent to a player). `acts` and `resisted` are what is
   // spent, as the state keeps them (0 to the most it may spend), so that marking the lair moves nothing that was spent. DM only, in a fight or not.
   legendarySet(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change a creature\'s legendary actions.');
     const e = ent(s, a.actor);
     (e.legendary && e.legend) || fail(`${e.name} has no legendary actions or resistance.`);
     const set = a.set;
-    (set && typeof set === 'object' && !Array.isArray(set) && Object.keys(set).length) || fail('Say what to set: acts, resisted, lair or show.');
-    for (const k of Object.keys(set)) SET_KEYS.includes(k) || fail(`${k} is not something to set: acts, resisted, lair or show.`);
+    (set && typeof set === 'object' && !Array.isArray(set) && Object.keys(set).length) || fail('Say what to set: acts, resisted, lair, show or self.');
+    for (const k of Object.keys(set)) SET_KEYS.includes(k) || fail(`${k} is not something to set: acts, resisted, lair, show or self.`);
     const lair = set.lair ?? e.legend.lair;
     const max = (lair && e.legendary.lair?.uses) || e.legendary.actions?.uses || 0, rmax = (lair && e.legendary.lair?.resistance) || e.legendary.resistance?.day || 0;
     if (set.acts !== undefined) (Number.isInteger(set.acts) && set.acts >= 0 && set.acts <= max) || fail(`${e.name} has spent from 0 to ${max} legendary actions.`);
     if (set.resisted !== undefined) (Number.isInteger(set.resisted) && set.resisted >= 0 && set.resisted <= rmax) || fail(`${e.name} has spent from 0 to ${rmax} uses of Legendary Resistance.`);
-    for (const k of ['lair', 'show']) if (set[k] !== undefined && typeof set[k] !== 'boolean') fail(`${k} is true or false.`);
+    for (const k of ['lair', 'show', 'self']) if (set[k] !== undefined && typeof set[k] !== 'boolean') fail(`${k} is true or false.`);
     for (const k of SET_KEYS) if (set[k] !== undefined) e.legend[k] = set[k];
     ev.push({ type: 'legendarySet', id: e.id, set: { ...set } });
   },
