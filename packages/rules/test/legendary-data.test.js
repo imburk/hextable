@@ -108,9 +108,9 @@ test("the reader says a block in plain words, and a bad one with a problem", () 
   assert.match(readEntry("monster", green((l) => { l.nope = 1; })).problems.join("\n"), /has a key "nope" the engine does not use/);
 });
 
-test("the twenty-one SRD blocks are entered, checked and lint clean; no other monster has one yet", () => {
+test("the thirty-two SRD blocks are entered, checked and lint clean; every monster with a legendary trait has one", () => {
   const have = SRD.filter((m) => m.legendary).map((m) => m.id).sort();
-  assert.deepEqual(have, ["adult-black-dragon", "adult-blue-dragon", "adult-brass-dragon", "adult-bronze-dragon", "adult-copper-dragon", "adult-gold-dragon", "adult-green-dragon", "adult-red-dragon", "adult-silver-dragon", "adult-white-dragon", "balor", "kraken", "lich", "mummy-lord", "pit-fiend", "solar", "sphinx-of-lore", "sphinx-of-valor", "tarrasque", "unicorn", "vampire"]);
+  assert.deepEqual(have, ["aboleth", "adult-black-dragon", "adult-blue-dragon", "adult-brass-dragon", "adult-bronze-dragon", "adult-copper-dragon", "adult-gold-dragon", "adult-green-dragon", "adult-red-dragon", "adult-silver-dragon", "adult-white-dragon", "ancient-black-dragon", "ancient-blue-dragon", "ancient-brass-dragon", "ancient-bronze-dragon", "ancient-copper-dragon", "ancient-gold-dragon", "ancient-green-dragon", "ancient-red-dragon", "ancient-silver-dragon", "ancient-white-dragon", "balor", "kraken", "lich", "mummy-lord", "pit-fiend", "solar", "sphinx-of-lore", "sphinx-of-valor", "tarrasque", "unicorn", "vampire"]);
   for (const m of SRD.filter((x) => x.legendary)) assert.equal(m.checked, true, m.id);
   // The numbers, as the SRD 5.2.1 stat blocks print them.
   const L = (id) => CONTENT.monsters[id].legendary;
@@ -133,6 +133,25 @@ test("the twenty-one SRD blocks are entered, checked and lint clean; no other mo
     const b = L(`adult-${id}-dragon`);
     assert.deepEqual([b.actions.uses, b.resistance.day, b.lair], [3, 3, { uses: 4, resistance: 4, xp }], id);
   }
+  // The eleven last L1e monsters: uses, Legendary Resistance and the lair numbers, and the DC, dice and size of each option, as the SRD 5.2.1 stat blocks print them.
+  assert.deepEqual([L("aboleth").actions.uses, L("aboleth").resistance.day, L("aboleth").lair], [3, 3, { uses: 4, resistance: 4, xp: 7200 }]);
+  assert.deepEqual(L("aboleth").actions.options.map((o) => o.id), ["lash", "psychic-drain"]);
+  for (const [id, xp] of [["black", 41000], ["blue", 62000], ["brass", 33000], ["bronze", 50000], ["copper", 41000], ["gold", 75000], ["green", 50000], ["red", 75000], ["silver", 62000], ["white", 33000]]) {
+    const b = L(`ancient-${id}-dragon`);
+    assert.deepEqual([b.actions.uses, b.resistance.day, b.lair], [3, 4, { uses: 4, resistance: 5, xp }], id);
+  }
+  const O = (id, o) => L(`ancient-${id}-dragon`).actions.options.find((x) => x.id === o);
+  const save = (id, o) => { const e = O(id, o).effects[0]; return [e.dc, e.onFail[0].damage]; };
+  assert.deepEqual(save("black", "cloud-of-insects"), [21, "6d10"]);
+  assert.deepEqual(save("brass", "scorching-sands"), [20, "8d8"]);
+  assert.deepEqual(save("bronze", "thunderclap"), [22, "3d8"]);
+  assert.equal(O("bronze", "thunderclap").target.area.range, 120);
+  assert.deepEqual(save("copper", "giggling-magic"), [21, "9d6"]);
+  assert.deepEqual(save("gold", "banish"), [24, "7d6"]);
+  assert.deepEqual(save("green", "noxious-miasma"), [21, "5d6"]);
+  assert.equal(O("green", "noxious-miasma").target.area.size, 30);
+  assert.deepEqual(save("silver", "cold-gale"), [23, "4d6"]);
+  assert.deepEqual(save("white", "freezing-burst"), [20, "4d6"]);
   assert.deepEqual(L("lich").actions.options.map((o) => o.id), ["deathly-teleport", "disrupt-life", "frightening-gaze"]);
   assert.equal(L("adult-green-dragon").actions.options[1].effects[0].dc, 17);
 });
