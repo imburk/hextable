@@ -39,8 +39,21 @@ async function solo(browser, url, label, opts) {
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Tavin' && !e.sheet));
         const tav = await tavinId(page);
         await calm(page);
+        // Mage Armor is a touch: the valley is not the same each time, so Tavin may have been put down out of Ria's reach. He is placed where the engine accepts the cast.
+        const why = await page.evaluate(async ([i, t]) => {
+          const { apply } = await import('./shared/engine.js'), h = window.hextable, S = h.state, cast = { type: 'cast', actor: i, spell: 'mage-armor', targets: [t] }, DM = { role: 'dm', userId: 'dm' };
+          const tryIt = (st) => apply(structuredClone({ ...st, timeline: [] }), cast, DM);
+          if (tryIt(S).ok) return '';
+          const r = S.entities[i].pos, ring = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]].map(([dq, dr]) => ({ q: r.q + dq, r: r.r + dr, z: r.z }));
+          for (const p of ring) { const c = structuredClone({ ...S, timeline: [] }); if (apply(c, { type: 'place', actor: t, to: p }, DM).ok && tryIt(c).ok) { h.act({ type: 'place', actor: t, to: p }); return ''; } }
+          return tryIt(S).error;
+        }, [ria, tav]);
+        if (why) throw new Error(`the engine refuses the cast: ${why}`);
+        await calm(page);
+        const sent = await page.evaluate(([i, t]) => { const S = window.hextable.state; return [S.entities[i].pos, S.entities[t].pos]; }, [ria, tav]);
         await page.evaluate(([i, t]) => window.hextable.act({ type: 'cast', actor: i, spell: 'mage-armor', targets: [t] }), [ria, tav]);
-        await wait(page, () => window.hextable.state.todo?.cards?.some((c) => c.name === 'Mage Armor'));
+        try { await wait(page, () => window.hextable.state.todo?.cards?.some((c) => c.name === 'Mage Armor')); }
+        catch (err) { throw new Error(`${err.message.slice(0, 80)} -- at ${JSON.stringify(sent)}, toast: ${await page.evaluate(() => document.querySelector('#toast')?.textContent)}`); }
         await wait(page, () => !document.getElementById('menu-badge').hidden);
         if ((await badge(page)) !== 1) throw new Error(`badge ${await badge(page)}`);
         await shot(page, `todo-${tag}-badge`);
