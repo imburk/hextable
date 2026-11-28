@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, tapAt, onCanvas } from './lib.mjs';
 
 // ---------- legendary actions: the DM's screen (docs/specs/legendary.md, stage L4a) ----------
 // A DM and a player at a table with an adult green dragon, "Verdigris", in a fight. After a turn the table waits for the dragon's windows: the DM plays them
@@ -42,11 +42,14 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
           h.act({ type: 'setting', key: 'autoEngage', value: false });
           h.act({ type: 'setting', key: 'legendaryWindows', value: true });
           h.act({ type: 'setting', key: 'legendaryResistance', value: true });
-          const f = S.entities.fighter.pos;
-          h.act({ type: 'spawn', monster: 'adult-green-dragon', at: { q: f.q + 3, r: f.r }, name: 'Verdigris' });
           return null;
         });
-        await wait(dm, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Verdigris'), null, 20000);
+        // One dragon, beside the fighter: where it fits is tried in turn (the valley's trees are not the same each time).
+        for (const [dq, dr] of [[3, 0], [-3, 0], [0, 3], [0, -3], [3, -3], [-3, 3]]) {
+          await dm.evaluate(([a, b]) => { const f = window.hextable.state.entities.fighter.pos; window.hextable.act({ type: 'spawn', monster: 'adult-green-dragon', at: { q: f.q + a, r: f.r + b }, name: 'Verdigris' }); }, [dq, dr]);
+          await sleep(600); await idle(dm);
+          if (await dm.evaluate(() => Object.values(window.hextable.state.entities).some((e) => e.name === 'Verdigris'))) break;
+        }
         drake = await state(dm, (S) => Object.values(S.entities).find((e) => e.name === 'Verdigris').id);
         await dm.evaluate(() => { const h = window.hextable; h.act({ type: 'startEncounter', center: h.state.entities.fighter.pos }); });
         await wait(dm, () => window.hextable.state.encounter, null, 20000); await idle(dm);
@@ -82,11 +85,66 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
 
       await run.do('one tap on a manual option spends the use and the player sees the event', async () => {
         await tapIt(dm.locator('#lg .lg-opt[data-opt="mind-invasion"]'));
-        await wait(dm, (id) => window.hextable.state.entities[id].legend.acts === 1, drake);
+        await wait(dm, (id) => window.hextable.state.entities[id].legend.acts >= 1 || !window.hextable.state.encounter.between, drake);
         await wait(dm, () => !window.hextable.state.encounter.between);
         await waitShown(dm, '#lg', false);
         await wait(pl, () => !window.hextable.state.encounter.between);
         await wait(pl, () => !/Waiting for the DM/.test(document.querySelector('#turn-text').textContent));
+      });
+
+      // A tap on the map at a creature's place or a hex, on the canvas and not under the window.
+      const tapSpot = async (pos, what) => {
+        await dm.evaluate((p) => window.hextable.R.focus('fighter', true), pos); await sleep(700);
+        const pt = await dm.evaluate((p) => window.hextable.R.screenOf(p), pos);
+        if (!pt || !(await onCanvas(dm, pt.x, pt.y))) throw new Error(`${what} is not on the map to tap at ${JSON.stringify(pt)}`);
+        await tapAt(dm, phoneDM, pt.x, pt.y);
+      };
+
+      await run.do('Pounce arms the aim bar: the destination first, then the target, then Send sends one action', async () => {
+        await toWindow();
+        await waitShown(dm, '#lg');
+        await tapIt(dm.locator('#lg .lg-opt[data-opt="pounce"]'));
+        await wait(dm, () => window.hextable.mode.kind === 'legendary');
+        await waitShown(dm, '#hint');
+        const hint1 = await dm.$eval('#hint-text', (e) => e.textContent);
+        if (!/Pounce.*where/.test(hint1)) throw new Error(`the aim bar does not ask for the destination: ${hint1}`);
+        if (await state(dm, (S) => !S.encounter.between)) throw new Error('the window closed on arming');
+        await shot(dm, 'aim-move');
+        // A free place two hexes from the fighter (inside Rend's reach), the nearest to the dragon.
+        const where = await state(dm, (S, id) => {
+          const f = S.entities.fighter.pos, d = S.entities[id].pos, dist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
+          const taken = Object.values(S.entities).map((e) => e.pos);
+          const ring = []; for (let q = -2; q <= 2; q++) for (let r = -2; r <= 2; r++) { const p = { q: f.q + q, r: f.r + r, z: f.z }; if (dist(p, f) === 2 && !taken.some((t) => t.q === p.q && t.r === p.r)) ring.push(p); }
+          return ring.sort((a, b) => dist(a, d) - dist(b, d))[0];
+        }, drake);
+        await tapSpot(where, 'the destination');
+        await wait(dm, () => window.hextable.mode.to);
+        await wait(dm, () => /tap a target/.test(document.querySelector('#hint-text').textContent));
+        await tapSpot(await state(dm, () => window.hextable.state.entities.fighter.pos), 'the fighter');
+        await wait(dm, () => window.hextable.mode.target === 'fighter');
+        await waitShown(dm, '#lg .lg-go');
+        await shot(dm, 'aim-send');
+        await tapIt(dm.locator('#lg .lg-go'));
+        await wait(dm, ([id, w]) => { const q = window.hextable.state.entities[id].pos; return q.q === w.q && q.r === w.r; }, [drake, where]);
+        const moved = await state(dm, (S, id) => S.entities[id].pos, drake);
+        if (moved.q !== where.q || moved.r !== where.r) throw new Error(`the dragon did not move where it was sent: ${JSON.stringify(moved)} vs ${JSON.stringify(where)}`);
+        if ((await dm.evaluate(() => window.hextable.mode.kind)) === 'legendary') throw new Error('the aim bar stayed armed after Send');
+      });
+
+      await run.do('Noxious Miasma aims at a spot and Send; Cancel puts the bar back', async () => {
+        await toWindow();
+        await waitShown(dm, '#lg');
+        await tapIt(dm.locator('#lg .lg-opt[data-opt="noxious-miasma"]'));
+        await wait(dm, () => window.hextable.mode.kind === 'legendary');
+        await tapIt(dm.locator('#lg [data-do="cancel"]'));
+        await wait(dm, () => window.hextable.mode.kind !== 'legendary');
+        await waitShown(dm, '#lg .lg-opt');
+        await tapIt(dm.locator('#lg .lg-opt[data-opt="noxious-miasma"]'));
+        await tapSpot(await state(dm, () => window.hextable.state.entities.fighter.pos), 'the spot');
+        await wait(dm, () => window.hextable.mode.hex);
+        await shot(dm, 'aim-area');
+        await tapIt(dm.locator('#lg .lg-go'));
+        await wait(dm, () => !window.hextable.state.encounter.between);      // paid and done: the dragon's own turn has begun, which gives its uses back
       });
     } finally { await plCtx.close(); await dmCtx.close(); }
   });

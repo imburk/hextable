@@ -128,7 +128,11 @@ export function initLegendary(ctx) {
 
   function draw() {
     const s = S(), rows = ctx.isDM() && s ? windowRows(s) : [];
+    const m = armed();
+    if (m && (!rows.some((e) => e.id === m.actor) || !ctx.isDM())) ctx.setMode(ctx.move);      // the window moved on without it
     if (!rows.length) { mount.hidden = true; mount.textContent = ''; sig = ''; document.body.classList.remove('lg-open'); return; }
+    const am = armed();
+    if (am) return drawArmed(s, am);
     const html = `<div class="lg-head"><b>Legendary actions</b><span>${esc(afterWords(s))}</span><button type="button" class="lg-done" data-done>Done</button></div>${rows.map(rowHtml).join('')}<p class="lg-err" role="alert" hidden></p>`;
     mount.hidden = false; document.body.classList.add('lg-open');
     if (html !== sig) { sig = html; mount.innerHTML = html; }
@@ -139,6 +143,11 @@ export function initLegendary(ctx) {
     const b = ev.target.closest('button');
     if (!b || !ctx.isDM()) return;
     const s = S();
+    const m = armed();
+    if (m && b.dataset.do === 'cancel') return ctx.setMode(ctx.move);
+    if (m && b.dataset.do === 'nomove') return goOn(m);
+    if (m && b.dataset.do === 'send') return sendArmed(m);
+    if (m && b.dataset.pick) { m.pick = b.dataset.pick; m.steps = m.steps.filter((x) => x !== 'aim'); const h = here(m); if (h && actionProfile(defNow(h.e, h.opt, m)).aim !== 'self') m.steps.push('aim'); return goOn(m); }
     if (b.hasAttribute('data-done')) return send({ type: 'legendary', done: true });
     if (b.dataset.skip) return send({ type: 'legendary', actor: b.dataset.skip, skip: true });
     if (b.dataset.opt) {
@@ -156,11 +165,100 @@ export function initLegendary(ctx) {
     if (why) return ctx.toast(why);
     ctx.act(action);
   }
-  function arm(e, opt) { ctx.toast('Aiming is not built yet.'); }
+  // ---- an option that moves or aims: the aim bar ----
+  const here = (m) => { const s = S(), e = s.entities[m.actor], opt = e?.legendary?.actions?.options.find((o) => o.id === m.option); return e && opt ? { s, e, opt } : null; };
+  const step = (m) => m.steps[m.i] ?? 'send';
+  function arm(e, opt) {
+    const m = { kind: 'legendary', actor: e.id, option: opt.id, pick: undefined, steps: stepsOf(e, opt), i: 0, to: null, stop: null, target: null, hex: null };
+    ctx.setMode(m);
+  }
+  // Where the move part may end: the engine's own search from a budget of the option's own (half or full of the Speed it moves in), as `legendaryStop` makes it.
+  function reach(s, e, opt) {
+    const mv = opt.move, speed = speedOf(s, e, mv.mode ?? 'walk');
+    const feet = mv.speed === 'full' ? speed : Math.floor(speed / 2 / FT) * FT;
+    const bud = { move: feet, dashes: -1, diagonals: 0, out: true, ...(mv.provokes === false ? { free: true } : {}) };
+    const as = { ...s, encounter: { ...s.encounter, turn: s.encounter.order.findIndex((o) => o.id === e.id), budget: bud } };
+    try { return { feet, stops: [...moveOptions(as, e, { through: true }).entries()].filter(([, v]) => v.canStop) }; } catch { return { feet, stops: [] }; }
+  }
+  const stopAt = (stops, hex) => stops.map(([, v]) => v).filter((v) => cellCol(v.h) === cellCol(hex) && (hex.z === undefined || v.h.z === hex.z))[0]
+    ?? stops.map(([, v]) => v).filter((v) => cellCol(v.h) === cellCol(hex))[0] ?? null;
+  // The creature as it will stand after the move, for judging reach and the area from there.
+  const after = (s, e, m) => (m.stop ? { ...s, entities: { ...s.entities, [e.id]: { ...e, pos: { ...m.stop } } } } : s);
+  const defNow = (e, opt, m) => defOf(e, opt, m.pick ?? (opt.use?.length > 1 && usable(e, opt).length === 1 ? usable(e, opt)[0] : undefined));
+  const foesOf = (s, e, def) => { try { return targetsFor(s, s.entities[e.id], { action: def.id }).filter((id) => s.entities[id] && hostile(s.entities[id], e)); } catch { return null; } };
+
+  function drawArmed(s, m) {
+    const h = here(m);
+    if (!h) { ctx.setMode(ctx.move); return; }
+    const { e, opt } = h, st = step(m);
+    const words = hintFor(m);
+    const btn = (k, label, cls = '') => `<button type="button" class="lg-b ${cls}" data-do="${k}">${esc(label)}</button>`;
+    const picks = st === 'pick' ? opt.use.filter((id) => usable(e, opt).includes(id)).map((id) => `<button type="button" class="lg-b" data-pick="${esc(id)}">${esc((e.actions ?? []).find((a) => a.id === id)?.name ?? id)}</button>`).join('') : '';
+    const html = `<div class="lg-armed"><b>${esc(e.name)}: ${esc(opt.name)}</b><span class="lg-step">${esc(words)}</span>
+      <div class="lg-btns">${picks}${st === 'move' ? btn('nomove', 'No move') : ''}${st === 'send' ? btn('send', 'Send', 'lg-go') : ''}${btn('cancel', 'Cancel')}</div><p class="lg-err" role="alert" hidden></p></div>`;
+    mount.hidden = false; document.body.classList.add('lg-open');
+    if (html !== sig) { sig = html; mount.innerHTML = html; }
+  }
+  function hintFor(m) {
+    const h = here(m); if (!h) return '';
+    const { s, e, opt } = h, st = step(m), name = opt.name;
+    if (st === 'pick') return `${name}: choose which action it makes.`;
+    if (st === 'move') { const { feet, stops } = reach(s, e, opt); return stops.length ? `${name}: tap where ${e.name} moves (up to ${feet} ft), or No move.` : `${name}: ${e.name} has nowhere to move to. Tap No move.`; }
+    const def = defNow(e, opt, m), p = def ? actionProfile(def) : null, S2 = after(s, e, m);
+    if (st === 'aim' && p?.aim === 'creature') { const ids = foesOf(S2, e, def); return ids === null || ids.length ? `${name}: tap a target.` : `${name}: nobody in reach${m.stop ? ' from there' : ''} (${p.far} ft).`; }
+    if (st === 'aim' && p?.aim === 'area') return `${name}: tap a spot for the area.`;
+    const bits = [m.to ? 'it moves' : '', m.target ? `at ${s.entities[m.target]?.name ?? 'the target'}` : '', m.hex ? 'on the spot you tapped' : ''].filter(Boolean);
+    return `${name}${bits.length ? `: ${bits.join(', ')}` : ''}. Send it.`;
+  }
+  function goOn(m) { m.i += 1; ctx.render(); }
+  function sendArmed(m) {
+    const h = here(m); if (!h) return;
+    const action = { type: 'legendary', actor: m.actor, option: m.option, ...(m.pick ? { pick: m.pick } : {}), ...(m.to ? { to: m.to } : {}), ...(m.target ? { target: m.target } : {}), ...(m.hex ? { hex: m.hex } : {}) };
+    const why = ctx.dry(action);
+    if (why) { const p = mount.querySelector('.lg-err'); if (p) { p.textContent = why; p.hidden = false; } return ctx.toast(why); }      // the engine's words; it stays armed to change the aim
+    ctx.act(action); ctx.setMode(ctx.move);
+  }
 
   return {
     sync: draw,
-    tap: () => false, hintFor: () => '', render: () => null,
+    hintFor: (m) => (m?.kind === 'legendary' ? hintFor(m) : ''),
+    // A tap on the map while an option is armed: the destination, then the target or the spot.
+    tap(mode, hex, id) {
+      if (mode.kind !== 'legendary') return false;
+      const h = here(mode); if (!h) { ctx.setMode(ctx.move); return true; }
+      const { s, e, opt } = h, st = step(mode);
+      if (st === 'move') {
+        if (!hex) return true;
+        const { stops } = reach(s, e, opt), v = stopAt(stops, hex);
+        if (!v) { ctx.toast(`${e.name} can't end its move there.`); return true; }
+        mode.to = { q: hex.q, r: hex.r, ...(hex.z !== undefined ? { z: hex.z } : {}) }; mode.stop = v.h; goOn(mode); return true;
+      }
+      if (st === 'aim') {
+        const def = defNow(e, opt, mode), p = def ? actionProfile(def) : null, S2 = after(s, e, mode);
+        if (p?.aim === 'creature') {
+          if (!id || !s.entities[id]) return true;
+          const ids = foesOf(S2, e, def);
+          if (ids && !ids.includes(id)) { ctx.toast(`${s.entities[id].name} is out of ${opt.name}'s reach${mode.stop ? ' from there' : ''}.`); return true; }
+          mode.target = id; goOn(mode); return true;
+        }
+        if (p?.aim === 'area' && hex) { mode.hex = hex; goOn(mode); return true; }
+      }
+      return true;
+    },
+    // The highlights: where the move may end, who may be a target, the area as aimed.
+    render() {
+      const m = armed(); if (!m || !ctx.isDM()) return null;
+      const h = here(m); if (!h) return null;
+      const { s, e, opt } = h, st = step(m), out = { move: [], area: [], targets: [] };
+      if (st === 'move') { const { stops } = reach(s, e, opt); out.move = stops.map(([k]) => k); out.moveBand = Object.fromEntries(out.move.map((k) => [k, 0])); }
+      const def = defNow(e, opt, m), p = def ? actionProfile(def) : null, S2 = after(s, e, m);
+      if (st === 'aim' && p?.aim === 'creature') out.targets = foesOf(S2, e, def) ?? [];
+      if (p?.aim === 'area' && (st === 'aim' || st === 'send')) {
+        try { const ee = S2.entities[e.id]; out.area = m.hex ? areaHexes(S2, ee, { area: p.area }, m.hex).map(cellKey) : []; } catch { /* no area to show */ }
+      }
+      if (st === 'send' && m.target) out.targets = [m.target];
+      return out;
+    },
     refused() {},
     fresh() { sig = ''; sent = null; mount.hidden = true; mount.textContent = ''; document.body.classList.remove('lg-open'); },
   };

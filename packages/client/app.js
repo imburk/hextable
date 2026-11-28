@@ -1164,7 +1164,9 @@ function refresh() {
   if (mode.kind === 'encounter') hint = gridWords('Tap the hex where the fight breaks out', gridOf(S.map));
   if (mode.kind === 'follow') hint = `Tap the party member ${name(selId)} should follow`;
   if (mode.kind === 'recall' || mode.kind === 'famAttack') hint = CP.hintFor(mode);
+  if (mode.kind === 'legendary') hint = LG.hintFor(mode);
   { const h = CP.render(); if (h) { hl.area = h.area; hl.targets = h.targets; hl.allies = h.allies; } }
+  { const h = LG.render(); if (h) { hl.move = h.move; hl.moveBand = h.moveBand; hl.area = h.area; hl.targets = h.targets; } }
   if (mode.kind === 'fly') go = !!(mode.marked && mode.point);
   // #750: what waits for the die. Not the movement an Opportunity Attack gave: that keeps its own two buttons.
   waitFor = hint && !owedUi && (go || multi) ? { name: mode.kind === 'fly' ? 'move' : mode.kind === 'action' ? e.actions.find((x) => x.id === mode.id)?.name ?? 'action' : mode.kind === 'spell' ? SPELLS[mode.id].name : mode.name ?? 'action', ...(multi ?? {}) } : null;
@@ -1520,6 +1522,7 @@ R.onTap = (hit) => {
   if (inZone.length && mode.kind === 'move') toast(inZone.join(', '), true);      // a lasting zone's name, for a tap (hover shows it on a mouse)
   if (WT.tap(hex)) return;
   if (CP.tap(mode, hex, id)) return;
+  if (LG.tap(mode, hex, id)) return;
   if (mode.kind === 'spawn') { FIND.note(mode.monster); return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked }); }
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
   if (mode.kind === 'encounter') { act({ type: 'startEncounter', center: hex }); return setMode(MOVE); }
