@@ -115,7 +115,7 @@ export const spells9 = [
     time: "action", range: "self", components: ["v","s","m"], costly: true,
     duration: "1 hour", concentration: true, ritual: false,
     target: {"self":true},
-    choice: {"of":"beast"},
+    choice: {"of":"form"},
     effects: [{"polymorph":"chosen","not":["construct","undead"],"keep":["mental","proficiencies","spellcasting"],"early":false},{"manual":"Shapechange: the engine turns the caster into the creature the caster chose, of a Challenge Rating no higher than the caster's level (or its Challenge Rating), not a Construct or an Undead, for up to 1 hour: the stat block replaces the caster's statistics but it keeps its creature type, alignment, personality, Intelligence, Wisdom and Charisma scores, Hit Points, Hit Point Dice and proficiencies, and has Temporary Hit Points equal to the form's Hit Points, which stay on the caster as a buffer (the form does not end when they are gone) and vanish when the spell ends. The DM applies the rest: that the caster has seen the sort of creature, a Magic action to change into a different eligible form, whether the gear drops or resizes to fit (each time), the ability to communicate, and the Spellcasting feature the caster keeps (the engine's cast refuses spells in any form, so the DM casts them)."}],
     kinds: ["utility"],
     roll: "none",

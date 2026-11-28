@@ -1867,6 +1867,20 @@ test("shapechange: the caster made an Ogre beside hidden homebrew monsters is se
   assert.ok(JSON.stringify(r.hidden.raw.Sam).includes('"form":"ogre"'), "it became an Ogre");
 });
 
+test("shapechange: a choice that is a homebrew monster's id (in the DM's pack in one world only) is refused the same as an id that does not exist", () => {
+  const setup = (w) => {
+    polySetup(w);
+    w.hb = false; w.putIn();
+    w.say("dm", { t: "pack", op: "add", pack: hbPack(w.hb) });
+    Object.assign(w.state.entities.wizard, { level: 9, slots: { 9: 2 }, slotsMax: { 9: 2 } });
+    w.state.entities.wizard.spells.push("shapechange");
+  };
+  const cast = (choice) => ({ by: "Sam", act: { type: "cast", actor: "wizard", spell: "shapechange", target: "wizard", choice, slot: 9 } });
+  const { hidden } = twin({ players: ["Pat", "Sam"], setup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, cast(WRAITH), cast("hb-no-such-form"), cast("ogre")] }, (w) => { w.hb = true; });
+  assert.ok(JSON.stringify(hidden.raw.dm).includes(HB_NAME), "the DM has the monster in the hidden world");
+  for (const who of ["Pat", "Sam"]) assert.ok(![HB_NAME, HB_TEXT, HB_ATTACK, WRAITH].some((x) => JSON.stringify(hidden.raw[who]).includes(x)), `${who} is told of nothing`);
+});
+
 // ---- swimming (#836, E1): a creature under the water is in its level, so what hides a creature on land hides it there ----
 // A lake of water 15 feet deep from q = 1 east, its far water (q 5 and beyond) a region the party has not seen. The party's fighter swims in the near water, down
 // to 10 feet under the surface and across. A creature swimming under the far water (not hidden by the DM: hidden by the region), and a creature the DM hid there,

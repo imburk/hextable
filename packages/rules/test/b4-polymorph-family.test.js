@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CONTENT, SPELLS } from "../src/content/index.js";
-import { FORMS, lintEntry } from "../src/content/schema.js";
+import { BEASTS, CHOICES, FORMS, lintEntry } from "../src/content/schema.js";
 import { readEntry } from "../src/content/reader.js";
 import { apply } from "../src/engine.js";
 import { takeForm, leaveForm, validForm } from "../src/forms.js";
@@ -42,15 +42,22 @@ test("B4: Animal Shapes and Shapechange are assist, lint, and read with no probl
 
 test("B4: every new key of the step is linted, and a bad one is refused", () => {
   const d = SPELLS["animal-shapes"].def, step = d.effects[0];
-  const with_ = (patch) => lint({ ...d, effects: [{ ...step, ...patch }, d.effects[1]] });
+  const with_ = (patch) => lint({ ...d, ...(patch.not && !patch.types ? { choice: { of: "form" } } : {}), effects: [{ ...step, ...patch }, d.effects[1]] });
   assert.deepEqual(with_({}), []);
   for (const bad of [{ cr: -1 }, { cr: "4" }, { cr: 0.1 }, { types: [] }, { types: ["fish"] }, { types: ["beast"], not: ["undead"] }, { not: ["beast", "beast"] }, { size: "enormous" }, { keep: ["luck"] }, { keep: [] }, { early: true }]) assert.ok(with_(bad).length, JSON.stringify(bad));
   for (const good of [{ cr: 0.5 }, { cr: 0 }, { types: ["beast", "monstrosity"], not: undefined }, { not: ["undead"], types: undefined }, { size: "tiny" }, { keep: ["mental"] }, { keep: ["mental", "proficiencies", "spellcasting"] }]) assert.deepEqual(with_(good), [], JSON.stringify(good));
   assert.ok(lint({ ...d, duration: "instant", concentration: false }).length, "a form must last");
 });
 
-test("B4: the choice is any stat block of the pack, and the list is the pack", () => {
+test("B4: Shapechange's choice is any stat block of the pack; Polymorph's and Animal Shapes' stay the Beasts", () => {
   assert.deepEqual([...FORMS].sort(), Object.keys(CONTENT.monsters).sort());
+  assert.equal(CHOICES.form, FORMS);
+  assert.equal(CHOICES.beast, BEASTS);
+  assert.equal(SPELLS.shapechange.def.choice.of, "form");
+  assert.equal(SPELLS["animal-shapes"].def.choice.of, "beast");
+  assert.equal(SPELLS.polymorph.def.choice.of, "beast");
+  assert.ok(lint({ ...SPELLS.shapechange.def, choice: { of: "beast" } }).length, "a `not` form draws from every stat block");
+  assert.ok(lint({ ...SPELLS["animal-shapes"].def, choice: { of: "form" } }).length, "a Beast form draws from the Beasts");
 });
 
 test("Animal Shapes: each willing creature takes the one Beast, no Concentration, for 24 hours; the Beast's Hit Points are a buffer, the form stays when they are gone", () => {
@@ -65,7 +72,8 @@ test("Animal Shapes: each willing creature takes the one Beast, no Concentration
     assert.equal(e.size, "large");
     assert.equal(e.hp, 40, "Hit Points kept");
   }
-  assert.deepEqual(f.abil, bear.abilities);
+  for (const a of ["int", "wis", "cha"]) assert.equal(f.abil[a], own.abil[a], `${a} stays the target's own`);
+  for (const a of ["str", "dex", "con"]) assert.equal(f.abil[a], bear.abilities[a]);
   const fx = fxOf(s, "Animal Shapes");
   assert.ok(fx && !fx.conc, "no Concentration");
   assert.equal(fx.lasts, "24 hours");
@@ -103,8 +111,9 @@ test("Animal Shapes: a form outside the caps is refused, and the state is compar
   refused(s, () => animal(s, ["fighter"], "giant-ape"), /Challenge Rating 7|huge/);
   refused(s, () => animal(s, ["fighter"], "elephant"), /Huge/i);                     // Challenge Rating 4, but Huge
   refused(s, () => animal(s, ["fighter"], "triceratops"), /Challenge Rating 5|huge/);
-  refused(s, () => animal(s, ["fighter"], "goblin-warrior"), /not a Beast/);
+  refused(s, () => animal(s, ["fighter"], "goblin-warrior"), /Choose a Beast/);
   refused(s, () => animal(s, ["fighter", "rogue"], "nothing"));
+  refused(s, () => animal(s, ["fighter"], "ogre"), /Choose a Beast/);                // a stat block of the pack that is not a Beast
   assert.equal(s.entities.wizard.slots[8], slots);
   // A rating of exactly 4 and a Large size are within.
   const big = Object.values(CONTENT.monsters).find((m) => m.type === "beast" && m.cr === 4 && m.size === "large");

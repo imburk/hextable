@@ -67,7 +67,7 @@ export const SUMMON_ONE_WORDS = {
 };
 export const CURSE_WORDS = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma', attacks: 'Disadvantage on attack rolls against the caster', dodge: 'the forced Dodge action', damage: 'extra Necrotic damage' };
 export const AFFLICTION_WORDS = { exhaustion: 'one level of Exhaustion', charmed: 'the Charmed condition', petrified: 'the Petrified condition', curse: 'a curse', 'ability-score': 'a reduction to an ability score', 'hit-point-maximum': 'a reduction to the Hit Point maximum' };
-export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse', familiarity: 'how familiar the destination is', affliction: 'which affliction it ends', shape: 'what to shape the stone into', resize: 'whether to enlarge or reduce', water: 'which effect on the water', ward: 'one or more kinds of creature to set it against', beast: 'a Beast to take the form of' };
+export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse', familiarity: 'how familiar the destination is', affliction: 'which affliction it ends', shape: 'what to shape the stone into', resize: 'whether to enlarge or reduce', water: 'which effect on the water', ward: 'one or more kinds of creature to set it against', beast: 'a Beast to take the form of', form: 'a creature to take the form of' };
 export const RESIZE_WORDS = { enlarge: 'Enlarge (one size category larger)', reduce: 'Reduce (one size category smaller)' };
 export const WATER_WORDS = { flood: 'Flood (the standing water rises)', part: 'Part Water (a trench opens)', redirect: 'Redirect Flow (the DM runs it)', whirlpool: 'Whirlpool (the DM runs it)' };
 export const SHAPE_WORDS = { passage: 'a 5-foot passage cut through a wall', other: 'any other shape (a weapon, a coffer, a statue, a door shaped shut)' };
@@ -1314,7 +1314,7 @@ export const STEP_SENTENCES = {
   // engine/resolve.js `polymorph`: the creature the step works on takes the Beast the caster chose, for as long as the lasting effect runs.
   polymorph({ st, at, Who, say }) {
     if (st.polymorph !== 'chosen') return this.bad(`Step ${at}: \`polymorph\` is "chosen".`);
-    if (!this.def.choice || this.def.choice.of !== 'beast') return this.bad(`Step ${at}: \`polymorph\` needs a spell with \`choice: { of: "beast" }\`.`);
+    if (!this.def.choice || this.def.choice.of !== (Array.isArray(st.not) ? 'form' : 'beast')) return this.bad(`Step ${at}: \`polymorph\` needs a spell with \`choice: { of: "${Array.isArray(st.not) ? 'form' : 'beast'}" }\`.`);
     const wide = ['cr', 'types', 'not', 'size', 'keep', 'early'].some((k) => st[k] !== undefined);
     if (wide) {
       // A form wider than Polymorph's: what it may be, and what it keeps (engine/resolve.js `formWhy`; docs/specs/rules-expansion.md, "Build notes: manual spells B4").

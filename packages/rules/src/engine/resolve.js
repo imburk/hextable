@@ -2539,7 +2539,8 @@ export function polymorph(s, t, step, f, ev) {
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   if (!fx || fx.bound) return false;
   if (t.dead || t.object || !t.pos) return true;
-  const id = step.polymorph, tpl = MONSTERS[id], m = CONTENT.monsters[id], name = f.src.name;
+  // `chosen`: put in by the cast for a `beast` choice (casting.js); a `form` choice (Shapechange) is read from the cast itself.
+  const id = step.polymorph === 'chosen' && RUN?.action?.type === 'cast' ? RUN.action.choice : step.polymorph, tpl = Object.hasOwn(MONSTERS, id) ? MONSTERS[id] : undefined, m = Object.hasOwn(CONTENT.monsters, id) ? CONTENT.monsters[id] : undefined, name = f.src.name;
   if (!tpl || !m) return false;
   const dm = (text) => ev.push({ type: 'manual', actor: f.actor ?? t.id, name, partial: true, text });
   // What the table may know is a refusal (nothing is changed, the cast is not made). A Challenge Rating above the target's own is too, where the number is the caster's own (a spell on itself) or the step's; a player is not told it of a creature that is not
