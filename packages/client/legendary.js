@@ -127,9 +127,9 @@ export function initLegendary(ctx) {
     <button type="button" class="lg-skip" data-skip="${esc(e.id)}">Skip</button></div>`;
 
   function draw() {
-    const s = S(), rows = ctx.isDM() && s ? windowRows(s) : [];
+    const s = S(), rows = ctx.isDM() && s && !s.pending ? windowRows(s) : [];      // a question waiting (a reaction, Legendary Resistance) is answered first
     const m = armed();
-    if (m && (!rows.some((e) => e.id === m.actor) || !ctx.isDM())) ctx.setMode(ctx.move);      // the window moved on without it
+    if (m && !s?.pending && (!rows.some((e) => e.id === m.actor) || !ctx.isDM())) ctx.setMode(ctx.move);      // the window moved on without it
     if (!rows.length) { mount.hidden = true; mount.textContent = ''; sig = ''; document.body.classList.remove('lg-open'); return; }
     const am = armed();
     if (am) return drawArmed(s, am);

@@ -23,3 +23,7 @@ body.drawer-open #lg { display: none; }
   #lg { left: 0; right: 0; transform: none; width: auto; bottom: 0; max-height: 46vh; border-radius: var(--radius) var(--radius) 0 0; border-width: 2px 0 0; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
   .lg-opt { flex: 1 1 100%; }
 }
+/* The Legendary Resistance card (reactionprompt.js): the same sheet as a reaction question, with thumb-sized answers. */
+.rp-lr .rp-take, .rp-lr .rp-no { min-height: 56px; margin-top: 8px; }
+.rp-lr .rp-uses { margin: 4px 0 8px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rp-lr .note { margin: 0 0 6px; }

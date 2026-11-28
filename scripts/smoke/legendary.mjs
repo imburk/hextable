@@ -111,6 +111,7 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         if (await state(dm, (S) => !S.encounter.between)) throw new Error('the window closed on arming');
         await shot(dm, 'aim-move');
         // A free place two hexes from the fighter (inside Rend's reach), the nearest to the dragon.
+        const start = await state(dm, (S, id) => S.entities[id].pos, drake);
         const where = await state(dm, (S, id) => {
           const f = S.entities.fighter.pos, d = S.entities[id].pos, dist = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
           const taken = Object.values(S.entities).map((e) => e.pos);
@@ -125,9 +126,8 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await waitShown(dm, '#lg .lg-go');
         await shot(dm, 'aim-send');
         await tapIt(dm.locator('#lg .lg-go'));
-        await wait(dm, ([id, w]) => { const q = window.hextable.state.entities[id].pos; return q.q === w.q && q.r === w.r; }, [drake, where]);
-        const moved = await state(dm, (S, id) => S.entities[id].pos, drake);
-        if (moved.q !== where.q || moved.r !== where.r) throw new Error(`the dragon did not move where it was sent: ${JSON.stringify(moved)} vs ${JSON.stringify(where)}`);
+        try { await wait(dm, ([id, p]) => { const q = window.hextable.state.entities[id].pos; return q.q !== p.q || q.r !== p.r; }, [drake, start]); }
+        catch (err) { throw new Error(`${err.message.slice(0, 80)} -- ${await dm.evaluate(() => JSON.stringify({ err: document.querySelector('#lg .lg-err')?.textContent, hint: document.querySelector('#hint-text')?.textContent, mode: window.hextable.mode, toast: document.body.innerText.slice(-200) }))}`); }      // it moved (an Opportunity Attack may stop it short of the place)
         if ((await dm.evaluate(() => window.hextable.mode.kind)) === 'legendary') throw new Error('the aim bar stayed armed after Send');
       });
 
@@ -145,6 +145,27 @@ async function legendary(browser, url, dmOpts, playerOpts, label) {
         await shot(dm, 'aim-area');
         await tapIt(dm.locator('#lg .lg-go'));
         await wait(dm, () => !window.hextable.state.encounter.between);      // paid and done: the dragon's own turn has begun, which gives its uses back
+      });
+
+      await run.do('a failed save asks for Legendary Resistance: the card, one tap, a success; the player is told nothing of it', async () => {
+        await toWindow();
+        await dm.evaluate((id) => { const h = window.hextable; h.act({ type: 'reactions', actor: id, set: { 'legendary-resistance': 'ask' } }); h.act({ type: 'save', who: id, ability: 'wis', dc: 40 }); }, drake);
+        await waitShown(dm, '#rp .rp-lr');
+        const txt = await dm.$eval('#rp', (e) => e.innerText);
+        if (!/Verdigris/.test(txt) || !/DC 40/.test(txt) || !/\d of 3 left/.test(txt) || !/Use it/.test(txt) || !/Let it fail/.test(txt)) throw new Error(`the card does not say what it should: ${txt}`);
+        const btn = await dm.$$eval('#rp button', (bs) => bs.map((b) => b.getBoundingClientRect().height));
+        if (btn.some((h) => h < 56)) throw new Error(`an answer is under 56 px: ${btn}`);
+        if (await shown(dm, '#lg')) throw new Error('the window stayed over the question');
+        await shot(dm, 'resistance-card');
+        await waitShown(pl, '#rp-wait');
+        const plTxt = await pl.evaluate(() => document.body.innerText);
+        if (/Legendary|Resistance/i.test(plTxt)) throw new Error(`the player can read what the question is: ${plTxt.slice(0, 300)}`);
+        await sleep(700);
+        await tapIt(dm.locator('#rp .rp-take'));
+        await waitShown(dm, '#rp', false);
+        await wait(dm, (id) => window.hextable.state.entities[id].legend.resisted >= 1 && !window.hextable.state.pending, drake);
+        await wait(pl, () => document.querySelector('#rp-wait').hidden);
+        await waitShown(dm, '#lg');
       });
     } finally { await plCtx.close(); await dmCtx.close(); }
   });
