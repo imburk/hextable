@@ -6,6 +6,7 @@ import { SPELLS, CONTENT } from "../src/content/index.js";
 import { lintEntry } from "../src/content/schema.js";
 import { apply, current } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
+import { speedOf } from "../src/modifiers.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -37,11 +38,11 @@ test("the three entries are assist, checked, lint clean and say what stays the D
     assert.deepEqual(lint(def), [], id);
   }
   assert.ok(SPELLS["continual-flame"].def.effects.some((x) => "manual" in x));
-  // Wind Walk is assist (#901): resistance and Prone immunity run; its Fly Speed of 300 feet is above HOMEBREW_RANGES `speedModifier.value` (120), which schema.js owns, so the flight is a manual line (#859).
+  // Wind Walk is assist (#901): resistance, Prone immunity and its Fly Speed of 300 feet run (#929); hovering and the revert are manual.
   assert.equal(SPELLS["wind-walk"].def.tier, "assist");
   assert.equal(SPELLS["wind-walk"].def.checked, true);
   assert.deepEqual(lint(SPELLS["wind-walk"].def), []);
-  assert.ok(!json(SPELLS["wind-walk"].def.effects).includes("speed.fly"));
+  assert.ok(json(SPELLS["wind-walk"].def.effects).includes("speed.fly"));
   assert.ok(SPELLS["conjure-celestial"].def.effects.some((x) => "manual" in x));
   assert.equal(SPELLS["conjure-fey"].def.effects[0].summon, "fey-spirit");
   assert.equal(CONTENT.summons["fey-spirit"].tier, "auto");
@@ -208,5 +209,7 @@ test("Wind Walk: the caster and a friend resist weapon damage and cannot be knoc
   const fx = s.effects.filter((x) => x.spell === "wind-walk");
   assert.ok(fx.length >= 1, json(r.events.map((e) => e.type)));
   assert.ok(fx.every((x) => !x.conc), "it needs no Concentration");
-  assert.ok(r.events.some((e) => e.type === "manual"), "the flight is handed to the DM");
+  assert.ok(r.events.some((e) => e.type === "manual"), "hovering and the revert are handed to the DM");
+  assert.equal(speedOf(s, s.entities.wizard, "fly"), 300);
+  assert.equal(speedOf(s, s.entities.fighter, "fly"), 300);
 });
