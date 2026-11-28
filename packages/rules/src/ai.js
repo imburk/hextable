@@ -14,7 +14,7 @@ import { submerged, waterAt } from './space.js';
 import { apart, apartAt, ground } from './space.js';
 import { canSee, hiddenFrom } from './sight.js';
 import { silentAt } from './terrain.js';
-import { range as hexesWithin, dist as hexDist } from './hex.js';
+import { gridOf } from './grid.js';
 import { unknown } from './vision.js';
 
 // Does this creature know where that one is? Not if it is hiding from it, unless Tremorsense
@@ -755,9 +755,9 @@ export function legendaryPick(s, id) {
           if (ok(e.pos)) { tries.push({ cls, n: 1, i, action: { ...base, target: t.id }, why: `${opt.name} at ${t.name}${limited ? ', which it can take only so often' : ''}.` }); break; }
           if (!mv || mv.after) continue;
           // It moves first: the places beside this foe it could stop at, nearest to where it stands first.
-          const reach = Math.max(1, Math.ceil(p.far / FT)), cands = hexesWithin(t.pos, Math.min(reach, 6))
+          const G = gridOf(s.map), reach = Math.max(1, Math.ceil(p.far / FT)), cands = G.range(t.pos, Math.min(reach, 6))
             .filter((h) => (h.q !== e.pos.q || h.r !== e.pos.r) && from(h, t) && apartAt(s, e, h, t, t.pos) < apart(s, e, t))
-            .sort((x, y) => hexDist(x, e.pos) - hexDist(y, e.pos) || x.q - y.q || x.r - y.r).slice(0, MOVE_TRIES);
+            .sort((x, y) => G.dist(x, e.pos) - G.dist(y, e.pos) || x.q - y.q || x.r - y.r).slice(0, MOVE_TRIES);
           for (const h of cands) tries.push({ cls, n: 1, i, action: { ...base, to: { q: h.q, r: h.r }, target: t.id }, why: `${opt.name}: moves up on ${t.name} first.` });
           if (cands.length) break;
         }
