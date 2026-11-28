@@ -3830,6 +3830,23 @@ export const monsters = [
         text: "Casts solar spells."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "blinding-gaze", name: "Blinding Gaze", again: "nextTurn",
+            target: { creature: { range: [120, 120] } },
+            effects: [{ save: "con", dc: 25, half: false, onFail: [
+              { manual: "The target has the Blinded condition for 1 minute. The DM applies and ends it." }] }],
+            text: "One creature it sees within 120 feet makes a Constitution save or is Blinded for 1 minute. Not again before its next turn." },
+          { id: "radiant-teleport", name: "Radiant Teleport",
+            manual: "Teleports up to 60 feet to an unoccupied space it can see. Each creature in a 10-foot emanation from the solar at its destination space makes a Dexterity save (DC 25) or takes 11 (2d10) Radiant damage, half as much on a success.",
+            text: "Teleports up to 60 feet to a free space it sees; each creature within 10 feet of where it lands makes a Dexterity save or takes radiant damage, half on a success." },
+        ],
+      },
+      resistance: { day: 4 },
+    },
     tier: "assist",
     checked: true,
     text: "A mighty angel with a flying sword and a slaying bow."
@@ -4157,6 +4174,24 @@ export const monsters = [
         text: "Casts sphinx spells."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "arcane-prowl", name: "Arcane Prowl", use: ["claw"],
+            manual: "First teleports up to 30 feet to an unoccupied space it can see.",
+            text: "Teleports up to 30 feet to a free space it sees, then makes one Claw attack." },
+          { id: "weight-of-years", name: "Weight of Years", again: "nextTurn",
+            target: { creature: { range: [120, 120] } },
+            effects: [{ save: "con", dc: 16, half: false, onFail: [
+              { manual: "The target gains 1 Exhaustion level. While it has any Exhaustion levels, it appears 3d10 years older. The DM applies this." }] }],
+            text: "One creature it sees within 120 feet makes a Constitution save or gains 1 Exhaustion level and looks older. Not again before its next turn." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 8400 },
+    },
     tier: "assist",
     checked: true,
     text: "A great sphinx of secrets and ancient knowledge."
@@ -4345,6 +4380,24 @@ export const monsters = [
         text: "Casts sphinx spells."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "arcane-prowl", name: "Arcane Prowl", use: ["claw"],
+            manual: "First teleports up to 30 feet to an unoccupied space it can see.",
+            text: "Teleports up to 30 feet to a free space it sees, then makes one Claw attack." },
+          { id: "weight-of-years", name: "Weight of Years", again: "nextTurn",
+            target: { creature: { range: [120, 120] } },
+            effects: [{ save: "con", dc: 16, half: false, onFail: [
+              { manual: "The target gains 1 Exhaustion level. While it has any Exhaustion levels, it appears 3d10 years older. The DM applies this." }] }],
+            text: "One creature it sees within 120 feet makes a Constitution save or gains 1 Exhaustion level and looks older. Not again before its next turn." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 20000 },
+    },
     tier: "assist",
     checked: true,
     text: "A great sphinx whose roars terrify, paralyze and blast."
@@ -5521,6 +5574,21 @@ export const monsters = [
         text: "A 150-foot cone: Constitution save (DC 27) or thunder damage plus Deafened and Frightened until the end of its next turn. It also hits unattended objects. Recharge 5-6."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "onslaught", name: "Onslaught", move: { speed: "half" }, use: ["claw", "tail"],
+            text: "Moves up to half its Speed, then makes one Claw or Tail attack." },
+          { id: "world-shaking-movement", name: "World-Shaking Movement", again: "nextTurn", move: { speed: "full" },
+            target: { area: { shape: "emanation", size: 60 } },
+            effects: [{ endConcentration: true }, { condition: "prone", largest: "medium" }],
+            text: "Moves up to its Speed, then a shock wave in a 60-foot emanation: creatures there lose Concentration and, if Medium or smaller, fall Prone. Not again before its next turn." },
+        ],
+      },
+      resistance: { day: 6 },
+    },
     tier: "assist",
     checked: true,
     text: "The legendary titan-sized scourge of the world."

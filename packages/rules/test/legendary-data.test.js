@@ -1,5 +1,5 @@
 // Legendary actions and Legendary Resistance, stage L1a (docs/specs/legendary.md, Decisions 1 and 2): the `legendary` key of a monster,
-// its lint (the SRD's and a homebrew pack's), the seven SRD blocks, and the state a creature made from one starts with.
+// its lint (the SRD's and a homebrew pack's), the twenty-one SRD blocks, and the state a creature made from one starts with.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONTENT, PACKS } from "../src/content/index.js";
@@ -108,9 +108,9 @@ test("the reader says a block in plain words, and a bad one with a problem", () 
   assert.match(readEntry("monster", green((l) => { l.nope = 1; })).problems.join("\n"), /has a key "nope" the engine does not use/);
 });
 
-test("the seven SRD blocks are entered, checked and lint clean; no other monster has one yet", () => {
+test("the twenty-one SRD blocks are entered, checked and lint clean; no other monster has one yet", () => {
   const have = SRD.filter((m) => m.legendary).map((m) => m.id).sort();
-  assert.deepEqual(have, ["adult-blue-dragon", "adult-green-dragon", "balor", "lich", "pit-fiend", "unicorn", "vampire"]);
+  assert.deepEqual(have, ["adult-black-dragon", "adult-blue-dragon", "adult-brass-dragon", "adult-bronze-dragon", "adult-copper-dragon", "adult-gold-dragon", "adult-green-dragon", "adult-red-dragon", "adult-silver-dragon", "adult-white-dragon", "balor", "kraken", "lich", "mummy-lord", "pit-fiend", "solar", "sphinx-of-lore", "sphinx-of-valor", "tarrasque", "unicorn", "vampire"]);
   for (const m of SRD.filter((x) => x.legendary)) assert.equal(m.checked, true, m.id);
   // The numbers, as the SRD 5.2.1 stat blocks print them.
   const L = (id) => CONTENT.monsters[id].legendary;
@@ -121,6 +121,18 @@ test("the seven SRD blocks are entered, checked and lint clean; no other monster
   assert.deepEqual(L("lich").lair, { uses: 4, resistance: 5, xp: 41000 });
   assert.deepEqual(L("adult-green-dragon").lair, { uses: 4, resistance: 4, xp: 15000 });
   assert.deepEqual(L("adult-blue-dragon").lair, { uses: 4, resistance: 4, xp: 18000 });
+  // The six L1e monsters: uses, Legendary Resistance and the lair numbers, as the SRD 5.2.1 stat blocks print them.
+  assert.deepEqual([L("kraken").actions.uses, L("kraken").resistance.day, L("kraken").lair], [3, 4, { uses: 4, resistance: 5, xp: 62000 }]);
+  assert.deepEqual([L("mummy-lord").actions.uses, L("mummy-lord").resistance.day, L("mummy-lord").lair], [3, 3, { uses: 4, resistance: 4, xp: 15000 }]);
+  assert.deepEqual([L("sphinx-of-lore").resistance.day, L("sphinx-of-lore").lair], [3, { uses: 4, resistance: 4, xp: 8400 }]);
+  assert.deepEqual([L("sphinx-of-valor").resistance.day, L("sphinx-of-valor").lair], [3, { uses: 4, resistance: 4, xp: 20000 }]);
+  assert.deepEqual([L("solar").actions.uses, L("solar").resistance.day, L("solar").lair], [3, 4, undefined]);
+  assert.deepEqual([L("tarrasque").actions.uses, L("tarrasque").resistance.day, L("tarrasque").lair], [3, 6, undefined]);
+  // The eight L1e dragons: 3 uses, 3 a day, and the lair numbers (4, 4, and the XP in lair).
+  for (const [id, xp] of [["black", 13000], ["brass", 11500], ["bronze", 15000], ["copper", 13000], ["gold", 20000], ["red", 20000], ["silver", 18000], ["white", 11500]]) {
+    const b = L(`adult-${id}-dragon`);
+    assert.deepEqual([b.actions.uses, b.resistance.day, b.lair], [3, 3, { uses: 4, resistance: 4, xp }], id);
+  }
   assert.deepEqual(L("lich").actions.options.map((o) => o.id), ["deathly-teleport", "disrupt-life", "frightening-gaze"]);
   assert.equal(L("adult-green-dragon").actions.options[1].effects[0].dc, 17);
 });

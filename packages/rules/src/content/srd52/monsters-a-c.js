@@ -5673,6 +5673,27 @@ export const monsters = [
         text: "Recharge 5-6. A line 60 feet long and 5 feet wide."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "cloud-of-insects", name: "Cloud of Insects", again: "nextTurn",
+            target: { creature: { range: [120, 120] } },
+            effects: [{ save: "dex", dc: 17, half: false, onFail: [
+              { damage: "4d10", type: "poison" },
+              { modifier: { on: "concentration", op: "disadvantage" }, ends: { on: "turnEnd" } }] }],
+            text: "One creature it sees within 120 feet makes a Dexterity save or takes poison damage and has Disadvantage on Concentration saves until the end of its next turn. Not again before its next turn." },
+          { id: "frightful-presence", name: "Frightful Presence", again: "nextTurn",
+            manual: "Uses Spellcasting to cast Fear.",
+            text: "Casts Fear with its Spellcasting. Not again before its next turn." },
+          { id: "pounce", name: "Pounce", move: { speed: "half" }, use: ["rend"],
+            text: "Moves up to half its Speed, then makes one Rend attack." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 13000 },
+    },
     tier: "assist",
     checked: true,
     text: "A huge adult black dragon, a swamp-dwelling dragon that spits acid."
@@ -5966,6 +5987,27 @@ export const monsters = [
         text: "A 60 foot cone of sleep."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "blazing-light", name: "Blazing Light",
+            manual: "Uses Spellcasting to cast Scorching Ray.",
+            text: "Casts Scorching Ray with its Spellcasting." },
+          { id: "pounce", name: "Pounce", move: { speed: "half" }, use: ["rend"],
+            text: "Moves up to half its Speed, then makes one Rend attack." },
+          { id: "scorching-sands", name: "Scorching Sands", again: "nextTurn",
+            target: { creature: { range: [120, 120] } },
+            effects: [{ save: "dex", dc: 16, half: false, onFail: [
+              { damage: "6d8", type: "fire" },
+              { manual: "The target's Speed is halved until the end of its next turn. The DM applies this." }] }],
+            text: "One creature it sees within 120 feet makes a Dexterity save or takes fire damage and has its Speed halved until the end of its next turn. Not again before its next turn." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 11500 },
+    },
     tier: "assist",
     checked: true,
     text: "A huge adult brass dragon, a talkative desert dragon that breathes fire and sleep."
@@ -6126,6 +6168,27 @@ export const monsters = [
         text: "A 30 foot cone that pushes targets away and knocks them Prone."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "guiding-light", name: "Guiding Light",
+            manual: "Uses Spellcasting to cast Guiding Bolt (level 2 version).",
+            text: "Casts Guiding Bolt (level 2 version) with its Spellcasting." },
+          { id: "pounce", name: "Pounce", move: { speed: "half" }, use: ["rend"],
+            text: "Moves up to half its Speed, then makes one Rend attack." },
+          { id: "thunderclap", name: "Thunderclap",
+            target: { area: { shape: "sphere", size: 20, range: 90 } },
+            effects: [{ save: "con", dc: 17, half: false, onFail: [
+              { damage: "3d6", type: "thunder" },
+              { condition: "deafened", ends: { on: "turnEnd" } }] }],
+            text: "A 20-foot sphere centred on a point it sees within 90 feet: Constitution save or thunder damage and Deafened until the end of the target's next turn." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 15000 },
+    },
     tier: "assist",
     checked: true,
     text: "A huge adult bronze dragon, a coastal dragon that breathes lightning and repulsion."
@@ -6276,6 +6339,27 @@ export const monsters = [
         text: "A 60 foot cone that slows targets."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "giggling-magic", name: "Giggling Magic", again: "nextTurn",
+            target: { creature: { range: [90, 90] } },
+            effects: [{ save: "cha", dc: 17, half: false, onFail: [
+              { damage: "7d6", type: "psychic" },
+              { manual: "Until the end of its next turn the target rolls 1d6 whenever it makes an ability check or attack roll and subtracts the number from the D20 Test. The DM applies this." }] }],
+            text: "One creature it sees within 90 feet makes a Charisma save or takes psychic damage and is shaken: a d6 comes off its checks and attack rolls until the end of its next turn. Not again before its next turn." },
+          { id: "mind-jolt", name: "Mind Jolt", again: "nextTurn",
+            manual: "Uses Spellcasting to cast Mind Spike (level 4 version).",
+            text: "Casts Mind Spike (level 4 version) with its Spellcasting. Not again before its next turn." },
+          { id: "pounce", name: "Pounce", move: { speed: "half" }, use: ["rend"],
+            text: "Moves up to half its Speed, then makes one Rend attack." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 13000 },
+    },
     tier: "assist",
     checked: true,
     text: "A huge adult copper dragon, a prankster dragon of the hills that breathes acid and slowing gas."
@@ -6433,6 +6517,28 @@ export const monsters = [
         text: "A 60 foot cone that saps strength."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "banish", name: "Banish", again: "nextTurn",
+            target: { creature: { range: [120, 120] } },
+            effects: [{ save: "cha", dc: 21, half: false, onFail: [
+              { damage: "3d6", type: "force" },
+              { condition: "incapacitated", ends: { on: "turnStart", of: "source" } },
+              { manual: "The target is also moved to a harmless demiplane until the start of the dragon's next turn, then returns to an unoccupied space of the dragon's choice within 120 feet of it. The DM applies this." }] }],
+            text: "One creature it sees within 120 feet makes a Charisma save or takes force damage, is Incapacitated and vanishes to a harmless demiplane until the start of its next turn. Not again before its next turn." },
+          { id: "guiding-light", name: "Guiding Light",
+            manual: "Uses Spellcasting to cast Guiding Bolt (level 2 version).",
+            text: "Casts Guiding Bolt (level 2 version) with its Spellcasting." },
+          { id: "pounce", name: "Pounce", move: { speed: "half" }, use: ["rend"],
+            text: "Moves up to half its Speed, then makes one Rend attack." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 20000 },
+    },
     tier: "assist",
     checked: true,
     text: "A huge adult gold dragon, a wise, radiant dragon that breathes fire and weakening gas."
@@ -6711,6 +6817,24 @@ export const monsters = [
         text: "Recharge 5-6. A 60 foot cone."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "commanding-presence", name: "Commanding Presence", again: "nextTurn",
+            manual: "Uses Spellcasting to cast Command (level 2 version).",
+            text: "Casts Command (level 2 version) with its Spellcasting. Not again before its next turn." },
+          { id: "fiery-rays", name: "Fiery Rays", again: "nextTurn",
+            manual: "Uses Spellcasting to cast Scorching Ray.",
+            text: "Casts Scorching Ray with its Spellcasting. Not again before its next turn." },
+          { id: "pounce", name: "Pounce", move: { speed: "half" }, use: ["rend"],
+            text: "Moves up to half its Speed, then makes one Rend attack." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 20000 },
+    },
     tier: "assist",
     checked: true,
     text: "A huge adult red dragon, a proud, fearsome dragon that breathes fire."
@@ -6863,6 +6987,27 @@ export const monsters = [
         text: "A 60 foot cone that can paralyze."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "chill", name: "Chill", again: "nextTurn",
+            manual: "Uses Spellcasting to cast Hold Monster.",
+            text: "Casts Hold Monster with its Spellcasting. Not again before its next turn." },
+          { id: "cold-gale", name: "Cold Gale", again: "nextTurn",
+            target: { area: { shape: "line", size: 60 } },
+            effects: [{ save: "dex", dc: 19, half: true, onFail: [
+              { damage: "4d6", type: "cold" },
+              { move: 30, dir: "away" }] }],
+            text: "A line 60 feet long and 10 feet wide: Dexterity save or cold damage and pushed up to 30 feet straight away from it. On a success, half damage and no push. Not again before its next turn." },
+          { id: "pounce", name: "Pounce", move: { speed: "half" }, use: ["rend"],
+            text: "Moves up to half its Speed, then makes one Rend attack." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 18000 },
+    },
     tier: "assist",
     checked: true,
     text: "A huge adult silver dragon, a noble mountain dragon that breathes cold and paralysis."
@@ -6985,6 +7130,27 @@ export const monsters = [
         text: "Recharge 5-6. A 60 foot cone."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "freezing-burst", name: "Freezing Burst", again: "nextTurn",
+            target: { area: { shape: "sphere", size: 30, range: 120 } },
+            effects: [{ save: "con", dc: 14, half: false, onFail: [
+              { damage: "2d6", type: "cold" },
+              { modifier: { on: "speed", op: "set", value: 0 }, ends: { on: "turnEnd" } }] }],
+            text: "A 30-foot sphere centred on a point it sees within 120 feet: Constitution save or cold damage and Speed 0 until the end of the target's next turn. Not again before its next turn." },
+          { id: "frightful-presence", name: "Frightful Presence", again: "nextTurn",
+            manual: "Casts Fear (Charisma, spell save DC 14, no Material components).",
+            text: "Casts Fear (spell save DC 14). Not again before its next turn." },
+          { id: "pounce", name: "Pounce", move: { speed: "half" }, use: ["rend"],
+            text: "Moves up to half its Speed, then makes one Rend attack." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 11500 },
+    },
     tier: "assist",
     checked: true,
     text: "A huge adult white dragon, a primal arctic dragon that breathes frost."
