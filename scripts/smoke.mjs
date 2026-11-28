@@ -95,6 +95,7 @@ const REGISTRY = {
   seating: ['seating'],
   bringchar: ['bringchar'],
   legendary: ['legendary'],
+  destaim: ['destaim'],
 };
 
 const only = process.env.SMOKE_ONLY;
