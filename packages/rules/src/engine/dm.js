@@ -490,7 +490,10 @@ export const SETTINGS = { sight: SIGHT_RULES,
   characters: ['own-trusted', 'own', 'new'],
   // Legendary actions (engine/legendary.js, docs/specs/legendary.md, Decision 3): whether the table stops after a turn for a legendary creature that could act.
   // Off (the first, and the default when absent) until the DM's screen for it exists (stage L4); then the DM turns it on.
-  legendaryWindows: [false, true] };
+  legendaryWindows: [false, true],
+  // Legendary Resistance (engine/rolls.js, resistFailure; docs/specs/legendary.md, Decision 6): whether a legendary creature spends its uses at a failed save by its standing
+  // instruction. Off (the first, and the default when absent) until the DM's card for it exists (stage L4): every save then plays as it always did.
+  legendaryResistance: [false, true] };
 // What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
   characters: {

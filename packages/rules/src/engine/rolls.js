@@ -3,16 +3,16 @@
 // lasting effects an action leaves behind.
 import { silentAt } from '../terrain.js';
 import { d20Faces, die, negate, roll } from '../rng.js';
-import { ABILITIES, COMMANDS, SKILLS } from '../content/schema.js';
+import { ABILITIES, COMMANDS, DAMAGE_TYPES, SKILLS, STEPS } from '../content/schema.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { walk as walkSteps } from '../effects.js';
 import { concentrationLost, effectsOf, endEffect, ON, startEffect, turnKey, useUp } from '../durations.js';
 import { apart, FT, submerged } from '../space.js';
 import { canSee, COVER, coverOf, sees } from '../sight.js';
-import { canReact, instruction, reactionsOf } from '../reactions.js';
+import { canReact, instruction, reactionsOf, RESISTANCE } from '../reactions.js';
 import { bounded, breathOf, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers, speedOf, untrainedGear, wardName } from '../modifiers.js';
 import { derive } from '../derive.js';
-import { castAbilOf, current, dying, fail, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
+import { castAbilOf, current, dying, fail, hostile, inFight, living, mod, resistLeft, rollDice, rolledOf, up } from './shared.js';
 import { baked, weaponKey } from '../imbue.js';
 
 // A creature has died: the game clock when it did is kept on the body (`diedAt`, minutes; a round in a fight is 0.1 of one), for Revivify's "died within
@@ -757,6 +757,65 @@ export function savingThrow(s, t, abil, dc, extra = null, from = null, dis = nul
   if (lift) total += lift.add;
   const { n: rolled = r, rolls: rolledTwo = r2 === null ? null : [r1, r2], ...rerolled } = again ?? {};
   return { roll: rolled, total, success: total >= dc, ...(again ? { reroll: rerolled } : {}), ...(lift ? { rescued: { name: lift.name, dice: lift.dice, add: lift.add } } : {}), dice: [...faces, ...more.dice], bonus: base + m.add, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(rolledTwo === null ? {} : { rolls: rolledTwo, mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
+}
+
+// ---------- Legendary Resistance (docs/specs/legendary.md, Decisions 6 and 7; stage L2a) ----------
+// What failing a save changes for a creature, judged without touching the state: true (it matters), false (it changes nothing) or null (the engine cannot read it).
+// `site` says what the failure does: `matters: true` for a site whose failure always costs the creature something (a repeated save that would end what holds it, a
+// Concentration save, a ward, a fall off a mount, the end of Relentless Rage); `unread: true` for one the engine cannot read (a called save with neither damage nor a
+// condition: the DM decides what it does); otherwise `onFail`, the steps a failure runs (with `half`: a success runs them at half damage).
+// The five rules of Decision 6: a condition it is not immune to (and has not already), the end of its Concentration, a `kill`, `teleport`, `set` or `summon` on it or a change of
+// its form, damage of a type it neither resists nor is immune to (the difference between failing and succeeding: all of it where a success takes none), otherwise no;
+// a `manual` step is not read, so it is not guessed. Beyond the list (the spec's "changes something for this creature"): a lasting modifier, a push, a fall, a new size,
+// and the other holds the steps can put on it count as well, for a failure that leaves it so is not one that changes nothing.
+const MATTERS = new Set(['kill', 'teleport', 'set', 'summon', 'polymorph', 'endConcentration', 'modifier', 'move', 'fall', 'resize', 'confuse', 'command', 'ward', 'eachTurn', 'arm', 'imbue']);
+export function failureMatters(s, t, site = {}) {
+  if (site.matters === true) return true;
+  if (site.unread === true) return null;
+  const steps = site.onFail ?? [];
+  let matters = false, unread = false;
+  const m = modifiers(s, t, 'damage.taken', { target: t });
+  const has = (list, own, k) => list === true || list.includes(k) || (own ?? []).includes(k);
+  walkSteps(steps, (st) => {
+    const kind = STEPS.find((k) => k in st);
+    if (kind === 'manual') unread = true;
+    else if (kind === 'condition') { if (!immuneTo(s, t, st.condition) && !t.cond?.[st.condition]) matters = true; }
+    else if (kind === 'damage') {
+      if (st.type === 'chosen' || !DAMAGE_TYPES.includes(st.type)) unread = true;      // a type its caster picks, or none: not guessed
+      else if (!has(m.resist, t.resist, st.type) && !has(m.immune, t.immune, st.type)) matters = true;
+    } else if (MATTERS.has(kind)) matters = true;
+  });
+  return matters ? true : unread ? null : false;
+}
+
+// A creature that fails a saving throw may spend a use of its Legendary Resistance to succeed instead (SRD "Legendary Resistance"). Called at every save whose outcome is final,
+// after every reroll and rescue, so it is the last word on a save. `sv` is the save as `savingThrow` returned it; `site` says what failing does (`failureMatters`); `evt` is the
+// `save` event already pushed for it, if any. Returns true when it was spent: `sv` (and `evt`) then say `success: true, resisted: true` with the roll kept, the creature's
+// `resisted` count is one up, and the caller goes on with the success.
+// Off (the table setting `legendaryResistance` is not on) it returns at once and changes nothing. The instruction is the creature's own (`reactionsOf`): `always`, `never`, or `matters`
+// (the default); `ask`, and a `matters` failure the engine cannot read, apply the failure and tell the DM with a `manual` note that a use is left (Decision 7; the question itself
+// is stage L2b).
+export function resistFailure(s, t, sv, site, ev, evt = null) {
+  if (s.settings?.legendaryResistance !== true) return false;
+  if (sv.success || !t?.legendary?.resistance || t.dead || resistLeft(t) < 1) return false;
+  const r = reactionsOf(t).find((x) => x.id === RESISTANCE), how = r ? instruction(t, r, s) : 'matters';
+  if (how === 'never') return false;
+  let spend = how === 'always';
+  if (how === 'matters') {
+    const w = failureMatters(s, t, site);
+    if (w === false) return false;
+    spend = w === true;
+  }
+  if (!spend) {
+    const left = resistLeft(t);
+    ev?.push({ type: 'manual', actor: t.id, name: 'Legendary Resistance', partial: true, text: `${t.name} failed the saving throw and has ${left} use${left === 1 ? '' : 's'} of Legendary Resistance left. The DM decides whether it spends one to succeed instead; the engine has applied the failure.` });
+    return false;
+  }
+  const lg = (t.legend ??= { acts: 0, resisted: 0, again: {}, lair: false, show: false });
+  lg.resisted = (lg.resisted ?? 0) + 1;
+  sv.success = true; sv.resisted = true;
+  if (evt) { evt.success = true; evt.resisted = true; }
+  return true;
 }
 
 // Of several abilities a creature may save with, the one it has the best chance with (the SRD lets the target of a Grapple or a

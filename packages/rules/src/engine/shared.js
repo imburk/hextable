@@ -22,6 +22,9 @@ export const hostile = (a, b) => a.side !== b.side;
 // caught in an area or found, and sees nothing, so every place that asks "who is there" through this leaves it out. What must still reach it (its turn,
 // its effects, ending the spell) goes by `s.entities`.
 export const living = (s) => Object.values(s.entities).filter((e) => !e.dead && !e.melded);
+// Legendary Resistance (docs/specs/legendary.md, Decision 2): what a creature may spend in all, the lair's number when the DM has marked it in its lair, and what is left.
+export const resistMax = (e) => (e.legend?.lair && e.legendary?.lair?.resistance) || e.legendary?.resistance?.day || 0;
+export const resistLeft = (e) => Math.max(0, resistMax(e) - (e.legend?.resisted ?? 0));
 export const inFight = (s, id) => !!s.encounter && s.encounter.order.some((o) => o.id === id);
 export const current = (s) => (s.encounter ? s.encounter.order[s.encounter.turn]?.id ?? null : null);
 // A spellcaster's spell attack bonus and save DC, with what modifiers change about them when the

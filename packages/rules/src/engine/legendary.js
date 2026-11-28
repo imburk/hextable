@@ -9,7 +9,7 @@
 // Built here: `legendary { actor, skip: true }`, `legendary { done: true }`, `legendarySet` and (stage L1c) `legendary { actor, option, ... }`, which takes an option:
 // it pays the uses, walks the move part by the engine's own walk from a budget of its own (movement.js `legendaryMove`), and runs the creature's own action
 // (attacks.js `legendaryAct`, the way `act` aims and runs it, without spending a turn's action).
-import { able, ent, control, fail, spot, up } from './shared.js';
+import { able, ent, control, fail, spot, up, resistMax } from './shared.js';
 import { advanceTurn, HOOKS } from './resolve.js';
 import { actionSpent, aimRefusal, legendaryAct } from './attacks.js';
 import { legendaryMove, legendaryStop } from './movement.js';
@@ -22,7 +22,7 @@ export const BETWEEN_REFUSAL = 'Between turns: the DM is deciding on legendary a
 // What it may spend in all: its uses, or the lair's when the DM has marked it in its lair; Legendary Resistance likewise (Decision 2).
 export const usesMax = (e) => (e.legend?.lair && e.legendary?.lair?.uses) || e.legendary?.actions?.uses || 0;
 export const usesLeft = (e) => Math.max(0, usesMax(e) - (e.legend?.acts ?? 0));
-export const resistMax = (e) => (e.legend?.lair && e.legendary?.lair?.resistance) || e.legendary?.resistance?.day || 0;
+export { resistMax };                 // kept in shared.js (the saves in resolve.js, which this module sits above, spend it)
 
 // Could `e` take a legendary action now? Up, able, not set aside, a use left that pays for an option the engine would not refuse for its own
 // reasons: not barred by `again`, its `use` actions not spent, and something it is aimed at, a foe that is up (reach and the move are

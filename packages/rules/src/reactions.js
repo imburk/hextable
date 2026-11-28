@@ -46,7 +46,11 @@ export const OPPORTUNITY_GRAPPLE = 'opportunity-attack-grapple';
 // creatures the DM is told and decides by hand.
 export const WHEN = {
   always: 'Always', never: 'Never', miss: 'Only if it turns the hit into a miss', ask: 'Ask',
+  // Legendary Resistance (docs/specs/legendary.md, Decision 6): spent by itself only when failing the save would change something for its creature.
+  matters: 'Only if the failure matters',
 };
+// The instruction for Legendary Resistance is kept in `e.reactions` under this id, as any other (engine/rolls.js, resistFailure, reads it).
+export const RESISTANCE = 'legendary-resistance';
 
 // Actions the table may still take while an action waits for a reaction: the answer itself, and
 // what changes nothing the waiting action could depend on (talk, notes, handouts, seats).
@@ -136,6 +140,9 @@ export function reactionsOf(e) {
   for (const f of e.feats ?? []) if (f.initiative && f.uses) out.push({ id: f.id, name: f.name, kind: 'free', on: 'initiative', options: ['never', 'always'], dflt: 'never' });
   // A failed save rolled again for a use (Indomitable, Disciplined Survivor), likewise.
   for (const f of e.feats ?? []) if (f.reroll) out.push({ id: f.id, name: f.name, kind: 'free', on: 'reroll', options: ['never', 'always'], dflt: 'never' });
+  // Legendary Resistance (a creature with a `legendary.resistance` block): a choice made in advance, not a Reaction (`free`), taken at a failed save while a use is left.
+  // `matters` is the starting value; `ask` is applied as `manual` note until the question is built (docs/specs/legendary.md, stage L2b).
+  if (e.legendary?.resistance) out.push({ id: RESISTANCE, name: 'Legendary Resistance', kind: 'free', on: 'save', options: ['matters', 'ask', 'always', 'never'], dflt: 'matters' });
   for (const f of e.feats ?? []) {
     if (!f.reaction) continue;
     // A reroll of an ally's failed save (Countercharm) is taken by instruction only: no prompt is built for it.
