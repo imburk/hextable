@@ -1,6 +1,6 @@
 // The ways the menu closes (docs/specs/one-token-menu.md, Decision 3 "Closing, always", R11, R16; stage M10's closing test). Every state of the menu
 // (the arc, More, every screen, a page with a section open, with none, "all on one page", Arrange) closes by a tap on the die, a tap on the map and
-// Escape, and by M; a phone's sheet also by a tap on its handle and a drag down on it, a wide screen's column by the x beside Pin. The taps are real
+// Escape, and by M; a phone's sheet also by a tap on its handle and a drag down on it, a wide screen's column by the x. The taps are real
 // ones at the place on the screen (the die must be on top and in reach in every state), and a closing tap does nothing else: nobody moves, nothing
 // is selected. Then the arc: it fans out of the die and folds back by each way, and a place chosen from it folds it and opens the screen.
 import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, tapAt } from './lib.mjs';
@@ -98,7 +98,7 @@ export default async function menuclose(browser, url) {
           }
           if (walked < 60) throw new Error(`only ${walked} closings were walked`);
         });
-        await run.do(phone ? 'a phone\'s sheet has no x: the handle closes it, by a tap and by a drag down; a short drag springs back' : 'a wide screen\'s column closes by the x beside Pin, and has no handle', async () => {
+        await run.do(phone ? 'a phone\'s sheet has no x: the handle closes it, by a tap and by a drag down; a short drag springs back' : 'a wide screen\'s column closes by the x, and has no handle', async () => {
           for (const st of STATES.filter(([, s]) => !s.arc)) {
             if (st[1].only && !(await page.evaluate(st[1].only))) continue;
             for (const [how, go] of phone ? SHEET_WAYS : COLUMN_WAYS) {
