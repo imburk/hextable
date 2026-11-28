@@ -2277,3 +2277,67 @@ test("legendary resistance: a dragon the party does not know of, resisting a cal
   for (const bad of ["Verdigris", "Legendary Resistance", "legendary-resistance", "\"resisted\"", "\"legend\""]) assert.ok(!raw.includes(bad), `${bad} was sent: ${raw.slice(Math.max(0, raw.indexOf(bad) - 150), raw.indexOf(bad) + 100)}`);
   for (const x of r.diffs) assert.fail(describe([x]));
 });
+
+// ---- Legendary Resistance, L2b: asking the DM (docs/specs/legendary.md, Decisions 6 and 9, test 12) ----
+// A dragon under `ask`: the action stops and the DM is asked. A player who does not run it is told only that the table waits, and only where the party can perceive the
+// dragon. Worlds that differ only in the uses it has left (both above 0) are sent the same bytes through the questions, a use spent and a use declined, with undo and redo.
+const answer = (take) => (w) => ({ type: "react", prompt: w.state.pending.n, take });
+const askSteps = [
+  { by: "dm", act: (w) => ({ type: "save", who: byName(w, "Verdigris").id, ability: "wis", dc: 14, condition: "paralyzed" }) },
+  { by: "dm", act: answer("legendary-resistance") },
+  (w) => { for (let i = 0; i < 12 && current(w.state) !== "cleric"; i++) w.must({ type: "endTurn", actor: current(w.state) }); },
+  { by: "Sam", act: (w) => ({ type: "cast", actor: "cleric", spell: "sacred-flame", target: byName(w, "Verdigris").id }) },
+  { by: "dm", act: answer(null) },
+  { by: "Pat", act: { type: "say", as: "fighter", text: "Well?" } },
+  { by: "dm", send: { t: "undo" } }, { by: "dm", send: { t: "redo" } },
+  { by: "Pat", send: { t: "history", limit: 200 } },
+];
+
+test("legendary resistance: a dragon under `ask`, with 2 or 3 uses left, is sent the same through the question, a use spent and one declined", () => {
+  const r = twinRun({ setup: lrSetup, steps: askSteps }, { hide: lrDragon({ bonus: -90, how: "ask", spent: 1 }), plain: lrDragon({ bonus: -90, how: "ask", spent: 0 }) });
+  const d = byName(r.hidden.w, "Verdigris");
+  assert.equal(d.legend.resisted, 2, "the DM spent one use, on top of the one already spent");
+  const raw = JSON.stringify(r.hidden.raw.Pat);
+  assert.ok(raw.includes('"waiting":true'), "the table was seen to wait");
+  for (const bad of ["Legendary Resistance", "legendary-resistance", "\"resisted\"", "\"legend\"", "reactionAsked"]) assert.ok(!raw.includes(bad), `${bad} was sent: ${raw.slice(Math.max(0, raw.indexOf(bad) - 150), raw.indexOf(bad) + 100)}`);
+  for (const x of r.diffs) assert.fail(describe([x]));
+});
+
+// A dragon the party does not know of, asked, and the same dragon with the instruction `never`: no player is sent anything that tells which.
+test("legendary resistance: a dragon the party does not know of is sent the same whether the DM is asked (and declines) or it was set to `never`", () => {
+  const putIn = (how) => (w) => {
+    w.must({ type: "spawn", monster: "adult-green-dragon", at: { q: 4, r: -3 }, name: "Verdigris" });
+    const e = byName(w, "Verdigris");
+    e.abil = { ...e.abil, dex: 12 }; e.initBonus = 1;
+    lrDragon({ bonus: -90, how, spent: 0 })(w);
+  };
+  const setup = (w) => {
+    for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
+    w.must({ type: "loadMap", map: wallMap() });
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    w.must({ type: "setting", key: "sight", value: "los" });
+    w.must({ type: "setting", key: "legendaryResistance", value: true });
+    w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 2 }, name: "Foe" });
+    w.putIn();
+  };
+  const decline = (w) => ({ type: "react", prompt: w.state.pending?.n ?? 0, take: null });
+  const r = twinRun({
+    setup,
+    steps: [
+      { by: "dm", act: { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 } },
+      { by: "dm", act: (w) => ({ type: "save", who: byName(w, "Verdigris").id, ability: "dex", dc: 14, damage: { dice: "4d6", type: "fire" } }) },
+      { by: "dm", act: decline, allowError: true },
+      { by: "dm", act: (w) => ({ type: "save", who: byName(w, "Verdigris").id, ability: "wis", dc: 14, condition: "paralyzed" }) },
+      { by: "dm", act: decline, allowError: true },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } },
+      { by: "Pat", send: { t: "history", limit: 200 } },
+    ],
+  }, { hide: putIn("ask"), plain: putIn("never") });
+  const d = byName(r.hidden.w, "Verdigris");
+  assert.ok(d.legendary && d.legend.resisted === 0 && d.cond.paralyzed, "the DM was declined twice, for the DM");
+  assert.equal(JSON.stringify(r.hidden.raw.dm).split('"reactionAsked"').length - 1 >= 2, true, "the DM was asked twice in the hidden world");
+  assert.ok(!JSON.stringify(r.plain.raw.dm).includes('"reactionAsked"'), "and never in the other");
+  const raw = JSON.stringify(r.hidden.raw.Pat);
+  for (const bad of ["Verdigris", "\"waiting\"", "Legendary Resistance", "legendary-resistance", "\"resisted\"", "\"legend\"", "reactionAsked"]) assert.ok(!raw.includes(bad), `${bad} was sent: ${raw.slice(Math.max(0, raw.indexOf(bad) - 150), raw.indexOf(bad) + 100)}`);
+  for (const x of r.diffs) assert.fail(describe([x]));
+});

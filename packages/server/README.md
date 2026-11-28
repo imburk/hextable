@@ -423,6 +423,9 @@ view has it whole). Each player's view carries `prompt`:
   otherwise `null`, as if nothing waited.
 
 The player asked also gets `reactionAsked {id,n,ask}` (live and in `history`); nobody else does.
+Legendary Resistance (table setting `legendaryResistance`) is asked the same way, of the creature's controller (the DM for a monster): `ask` `{trigger:"save", total, left, dc?, options:[{reaction:"legendary-resistance"}]}`,
+answered with `{type:"react", prompt:n, take:"legendary-resistance"}` (the creature succeeds) or `take:null` (the failure applies). A player who does not run the creature is sent `{ waiting: true }` only where the party
+knows of it, otherwise `null`; a resisted save is sent as any save of a foe, never with the words.
 Until it is answered every action but `react`, `say`, `note`, `claim`, `release`, `askCheck` and
 the handout actions is refused with "The table is waiting for a reaction to be answered." The
 answer re-runs the waiting action, which may ask again (a new `n`). There is no time limit in the
