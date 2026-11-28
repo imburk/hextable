@@ -3,7 +3,7 @@
 import { roll } from '../rng.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { lintRecord } from '../content/schema.js';
-import { tick } from '../durations.js';
+import { fadeOnRest, tick } from '../durations.js';
 import { rewardActions } from '../rewards.js';
 import { attuneProblem, derive, itemName } from '../derive.js';
 import { ent, fail, featOf, hpOpts, mod } from './shared.js';
@@ -89,6 +89,7 @@ export const handlers = {
       if (ex && (ex.level ?? 1) > 1) { ex.level = (ex.level ?? 1) - 1; ev.push({ type: 'cond', id: e.id, cond: 'exhaustion', level: ex.level }); }
       else if (ex) { delete e.cond.exhaustion; ev.push({ type: 'condEnd', id: e.id, cond: 'exhaustion' }); }
     }
+    fadeOnRest(s, ev, rested);                                           // a penalty that fades at each Long Rest (Raise Dead)
     const from = s.clock;
     s.clock += 480;
     ev.push({ type: 'rest' });

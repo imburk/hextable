@@ -116,6 +116,20 @@ export function endEffect(s, ev, fx, why) {
   for (const p of fx.parts) endPart(s, ev, fx, p);
   ev.push({ type: 'effectEnd', fx: fx.id, name: fx.name, source: fx.source, targets: targetsOf(fx), why });
 }
+// A creature finished a Long Rest: each modifier it carries from a lasting effect with `fades: 'longRest'` (Raise Dead's -4 on D20 Tests) moves 1 toward 0, and
+// its part ends at 0 (docs/specs/rules-expansion.md, "Build notes: manual spells B1"). `rested` is the set of creature ids that finished the rest.
+export function fadeOnRest(s, ev, rested) {
+  for (const fx of [...effectsOf(s)]) {
+    for (const p of fx.parts) {
+      if (p.ended || p.modifier?.fades !== 'longRest' || !rested.has(p.target) || !Number.isInteger(p.modifier.value)) continue;
+      p.modifier.value += p.modifier.value < 0 ? 1 : -1;
+      const t = s.entities[p.target];
+      ev.push({ type: 'note', id: p.target, text: `${fx.name}: ${t?.name ?? 'it'} ${p.modifier.value === 0 ? 'is free of it' : `now has ${p.modifier.value > 0 ? '+' : ''}${p.modifier.value} on D20 Tests`}` });
+      if (p.modifier.value === 0) endPart(s, ev, fx, p);
+    }
+    if (spent(fx)) endEffect(s, ev, fx, 'nothing is left of it');
+  }
+}
 // The ward a creature has from a spell (the `ward` step: Sanctuary) ends when it makes an attack roll, casts a spell or deals damage.
 export function endWards(s, ev, id, why) {
   for (const fx of [...effectsOf(s)]) if (fx.parts.some((p) => !p.ended && p.ward && p.target === id)) endEffect(s, ev, fx, why);

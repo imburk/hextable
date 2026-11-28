@@ -276,9 +276,9 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within', 'unit'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
-const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when', 'atLeast'];
+const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when', 'atLeast', 'fades'];
 
 //   ctx (all optional):
 //     pack     the id of the homebrew pack the entry belongs to. With it (or, without it, an id in the entry's own `source`, "homebrew:<pack>", or an id
@@ -1251,9 +1251,10 @@ export const STEP_SENTENCES = {
   },
   // engine/rolls.js `revive`.
   revive({ st, at, depth, Who, say }) {
-    if (isInt(st.revive)) this.num(`${at}.revive`, st.revive, 'Hit Point'); else this.bad(`Step ${at}: the revive step has no whole number of Hit Points.`);
-    if (isInt(st.within)) this.num(`${at}.within`, st.within, 'minute'); else this.bad(`Step ${at}: the revive step has no whole number of minutes.`);
-    say(`${Who} comes back to life with ${st.revive} Hit Point${st.revive === 1 ? '' : 's'} if it died no more than ${st.within === 1 ? 'a minute' : `${st.within} minutes`} ago by the game clock (a round of a fight is a tenth of a minute); a creature that died longer ago is an invalid target: the slot is spent and nothing happens.`);
+    const unit = st.unit ?? 'minute';
+    if (isInt(st.revive)) this.num(`${at}.revive`, st.revive, 'Hit Point'); else if (st.revive !== 'max') this.bad(`Step ${at}: the revive step has no whole number of Hit Points, nor "max".`);
+    if (isInt(st.within)) this.num(`${at}.within`, st.within, unit); else this.bad(`Step ${at}: the revive step has no whole number of ${unit}s.`);
+    say(`${Who} comes back to life with ${st.revive === 'max' ? 'all its Hit Points' : `${st.revive} Hit Point${st.revive === 1 ? '' : 's'}`} if it died no more than ${st.within === 1 ? `a ${unit}` : `${st.within} ${unit}s`} ago by the game clock (a round of a fight is a tenth of a minute${unit === 'year' ? '; a year is 365 days' : ''}); a creature that died longer ago is an invalid target: the slot is spent and nothing happens.`);
     this.line('A body whose time of death the engine did not keep (it died in a game saved before the engine kept it) is not revived: the DM is told and judges. A revived creature is told to the DM with a note that the engine cannot tell whether it died of old age or lacks body parts, which the spell does not undo, nor the diamond the spell consumes.', depth + 1);
     return this.dm('Step ' + at + ': whether the creature died of old age or lacks body parts, and the consumed diamond.');
   },
@@ -1394,7 +1395,7 @@ function modPhrase(m, at) {
     if (hook !== 'check' || (skill === null) === (tool === null) || Object.keys(sc).length !== 1) { this.bad(`${at}: \`proficient\` is on check and names one skill or one tool.`); return 'proficiency the reader cannot read'; }
     return skill !== null ? `proficiency in ${skill === 'chosen' ? 'the chosen skill' : `the ${skill.replace(/-/g, ' ')} skill`}` : `proficiency with ${tool === 'chosen' ? 'the chosen tool' : `the tool ${tool.replace(/-/g, ' ')}`}`;
   }
-  let noun = HOOK_WORDS[hook];
+  let noun = hook === 'd20' && m.onFail !== true ? 'every D20 Test it makes (an attack roll, an ability check, a saving throw, Initiative)' : HOOK_WORDS[hook];
   // What a check or save is scoped to.
   if (isObj(m.scope)) {
     const sc = m.scope;
@@ -1435,6 +1436,7 @@ function modExtras(m, at, toCaster) {
   if (m.uses === 1) { this.num(`${at}.uses`, 1, 'use'); bits.push(this.inTrait ? 'a trait has no use to spend, so it applies every time' : m.on === 'hp.zero' ? 'that one time uses it up: this part of the effect ends, and the whole effect with it if nothing else is left of it' : 'the first roll it applies to uses it up'); }
   if (m.once === 'turn') bits.push('it applies at most once a turn');
   if (m.op === 'proficient') bits.push('while the effect lasts, a check with that skill or tool adds the Proficiency Bonus, once, if the creature is not proficient in it already (Expertise included, which is not doubled again), and counts as a check that uses a proficiency; the creature\'s sheet is not changed');
+  if (m.fades === 'longRest') bits.push('the number moves 1 toward 0 each time the creature finishes a Long Rest, and the modifier is gone at 0');
   if (m.onFail === true) bits.push('the dice are added only to a roll that failed, where they could turn it');
   if (typeof m.cost === 'string') bits.push(`it spends a use of ${shown(m.cost)} when it turns a roll`);
   if (m.except === 'source') bits.push('it does not hold for rolls the caster makes');

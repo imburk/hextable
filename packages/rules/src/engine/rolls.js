@@ -452,7 +452,7 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
   if (!fx) return false;
   // A bound effect (an instant spell's) holds only what ends: by its own `ends`, or by use (`uses`). Another modifier
   // would stay on forever, so it is handed to the DM (effects.js says so).
-  if (fx.bound && !step.ends && !Number.isInteger(mod_.uses)) return false;
+  if (fx.bound && !step.ends && !Number.isInteger(mod_.uses) && mod_.fades !== 'longRest') return false;
   const holder = step.to === 'caster' ? s.entities[f.actor] : t;
   if (!holder) return false;
   // `baseAc` (Mage Armor, "a willing creature who isn't wearing armor"): put on only where the engine knows the creature wears no armour and how it
@@ -462,7 +462,7 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
     return true;
   }
   const end = ending(s, step, f, ev, t);
-  if (fx.bound && end.told && !end.part.ends && !Number.isInteger(mod_.uses)) return false;       // nothing could end it: the DM applies it and ends it
+  if (fx.bound && end.told && !end.part.ends && !Number.isInteger(mod_.uses) && mod_.fades !== 'longRest') return false;       // nothing could end it: the DM applies it and ends it
   const { against, except, ...m } = mod_;
   if (against === 'source' && !f.actor) return false;                 // a limit to the caster, and no caster: never a modifier that holds against everyone
   // A Hit Point maximum raised by dice (Heroes' Feast: 2d10) is rolled once for this creature, and the number is what the part keeps.
@@ -616,15 +616,20 @@ export function dispel(s, t, step, ev, f) {
 // that is gone). The time of death is the game clock when it died (`diedAt`): a body that died longer ago than `within` minutes is an invalid target, so the slot
 // is spent and nothing happens (SRD, "Invalid Targets"); a body with no time kept (it died before the engine kept one) is the DM's to judge. What the engine
 // cannot know (death of old age, missing body parts, the 300 GP diamond the spell consumes) is handed to the DM in a `manual` event, never guessed.
+// How long ago, in words and in minutes (`within` of the step's `unit`: a day is 1,440 minutes, a year 365 days).
+export const MINUTES_IN = { minute: 1, day: 1440, year: 525600 };
+export const lastWords = (step) => (step.within === 1 ? (step.unit ?? 'minute') : `${step.within} ${step.unit ?? 'minute'}s`);
+export const agoWords = (step) => (step.within === 1 ? `a ${step.unit ?? 'minute'}` : lastWords(step));
+const hitPointsWords = (step) => (step.revive === 'max' ? 'all its Hit Points' : `${step.revive} Hit Point${step.revive === 1 ? '' : 's'}`);
 export function revive(s, t, step, ev, f) {
-  const name = f.src.name, actor = f.actor ?? t.id;
+  const name = f.src.name, actor = f.actor ?? t.id, limit = step.within * (MINUTES_IN[step.unit ?? 'minute'] ?? 1);
   if (!t.dead) return ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${t.name} is not dead, so ${name} does nothing.` });
-  if (!Number.isFinite(t.diedAt)) return ev.push({ type: 'manual', actor, name, text: `${name} was cast on ${t.name}, but the engine does not know when ${t.name} died (it died before the engine kept the time), so it did not revive it. If it died within the last ${step.within === 1 ? 'minute' : `${step.within} minutes`} and not of old age, the DM brings it back with ${step.revive} Hit Point${step.revive === 1 ? '' : 's'} (setHp).` });
+  if (!Number.isFinite(t.diedAt)) return ev.push({ type: 'manual', actor, name, text: `${name} was cast on ${t.name}, but the engine does not know when ${t.name} died (it died before the engine kept the time), so it did not revive it. If it died within the last ${lastWords(step)} and not of old age, the DM brings it back with ${hitPointsWords(step)} (setHp).` });
   const ago = s.clock - t.diedAt;
-  if (!(ago <= step.within + 1e-6)) return ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${t.name} died more than ${step.within === 1 ? 'a minute' : `${step.within} minutes`} ago, so ${name} does nothing to it.` });
+  if (!(ago <= limit + 1e-6)) return ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${t.name} died more than ${agoWords(step)} ago, so ${name} does nothing to it.` });
   t.dead = false; delete t.diedAt; t.hp = 0;
   ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: ${t.name} returns to life` });
-  heal(s, t, Math.min(step.revive, t.maxHp), ev, null, f);
+  heal(s, t, step.revive === 'max' ? t.maxHp : Math.min(step.revive, t.maxHp), ev, null, f);
   ev.push({ type: 'manual', actor, name, partial: true, text: `${name} brought ${t.name} back. The engine cannot tell whether ${t.name} died of old age (which the spell cannot undo) or lacks body parts (which it does not restore), and it does not take the diamond worth 300 GP or more that the spell consumes. The DM checks those: if the revival should not have worked, undo this cast; and the DM takes the diamond from the party's gear.` });
 }
 
@@ -914,7 +919,7 @@ export function recharge(s, e, ev) {
 // `bound` to its parts, which ends when they do. Null if no step has an `ends`.
 export function boundEffect(s, name, source, steps, spell = null) {
   let timed = false;
-  walkSteps(steps, (st) => { if (st.command !== undefined) timed = true; if (st.ends && (st.ends.on === 'turnStart' || st.ends.on === 'turnEnd' || st.ends.on === 'save' || st.ends.on === 'damaged')) timed = true; });
+  walkSteps(steps, (st) => { if (st.command !== undefined) timed = true; if (st.modifier?.fades === 'longRest') timed = true; if (st.ends && (st.ends.on === 'turnStart' || st.ends.on === 'turnEnd' || st.ends.on === 'save' || st.ends.on === 'damaged')) timed = true; });
   if (!timed) return null;
   const fx = startEffect(s, { name, spell, source, conc: false, duration: 'special' });
   fx.bound = true;

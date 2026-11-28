@@ -274,6 +274,8 @@ export function armourWorn(e) {
 //                                   to damage of those types (all, if none), at most once a turn if `once`
 // `side` says which end of an attack `e` is on, for wording the reasons as the log always has
 // ("target prone"). Pass '' where there are no sides, such as a saving throw ("Restrained").
+// The hooks a plain number on `d20` is added at: the D20 Tests. A death save and a Concentration save ask for `save` as well.
+const D20_TESTS = ['attack.roll', 'check', 'save', 'initiative'];
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
     resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [], floor: null, floorBy: null, lent: [], baseAc: null, from: [] };
@@ -298,7 +300,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
     if (src.against && sit.target?.id !== src.against) continue;
     if (src.except && sit.attacker?.id === src.except) continue;
     for (const m of src.modifiers) {
-      if (m.on !== hook) continue;
+      if (m.on !== hook && !(m.on === 'd20' && !m.onFail && D20_TESTS.includes(hook))) continue;      // `d20`: a number added to every D20 Test (Raise Dead's penalty)
       if (!(m.when ?? []).every((tag) => judge(tag, { ...sit, self: e }, s) === true)) continue;      // not known to hold: not applied
       if (m.spell !== undefined && sit.spellId !== m.spell) continue;                                 // only that spell's damage (Agonizing Blast)
       if (m.from !== undefined && !fromHolds(s, e, m, hook, sit)) continue;                          // only against creatures of those types (Protection from Evil and Good)
