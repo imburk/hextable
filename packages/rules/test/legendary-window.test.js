@@ -314,7 +314,7 @@ test("a legendary creature the party does not know of is offered no window", () 
   assert.ok(r.ok && !s.encounter.between && r.events.some((e) => e.type === "turn"), "the next turn starts in the same action");
 });
 
-test("with the table setting legendaryWindows off (the default) a dragon's fight has no window", () => {
+test("with the table setting legendaryWindows set to false a dragon's fight has no window", () => {
   const { s, d } = dragonFight();
   assert.ok(offeredAfter(s, s.encounter.order.find((o) => o.id !== d.id).id).includes(d.id), "it could act");
   assert.equal(apply(s, { type: "setting", key: "legendaryWindows", value: false }, DM).ok, true);

@@ -266,6 +266,19 @@ test("a creature with Legendary Resistance that fails is put to the DM alone, as
   assert.equal(ok2.events.some((e) => e.type === "manual"), false);
 });
 
+test("a creature whose Legendary Resistance is still a text trait (no block: a homebrew pack) is put to the DM at a failed save, with the setting on or absent", () => {
+  const orig = CONTENT.monsters["goblin-warrior"], old = structuredClone(orig);
+  old.traits = [...(old.traits ?? []), { id: "legendary-resistance", name: "Legendary Resistance (3/Day)", modifiers: [], text: "It can choose to succeed instead." }];
+  CONTENT.monsters["goblin-warrior"] = old;
+  try {
+    const s = game();
+    ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 3 } }, DM));
+    const g = Object.values(s.entities).find((e) => e.tpl === "goblin-warrior" && !e.legendary);
+    const r = ok(call(s, { who: g.id, ability: "wis", dc: 40 }));
+    assert.ok(r.events.some((e) => e.type === "manual" && e.name === "Legendary Resistance" && e.actor === g.id));
+  } finally { CONTENT.monsters["goblin-warrior"] = orig; }
+});
+
 test("act with adv, Shield set to ask, then the answer: the grant survives the question", () => {
   const field = () => {
     const s = newGame(7);
