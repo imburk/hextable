@@ -39,7 +39,7 @@ import { refill, stepTides } from '../tides.js';
 export function objectEffects(s, o, steps, targets, ev) {
   if (!targets.length) return;
   begin(s, { steps, actor: null, targets: targets.map((t) => t.id), shared: targets.length > 1 ? sharedRolls(s, steps) : null,
-    src: { name: objectName(o), object: o.id, dc: o.dc?.save ?? objectDef(o).dc?.save ?? 10, range: 1000 } });
+    src: { name: objectName(o), object: o.id, dc: o.dc?.save ?? objectDef(o).dc?.save ?? 10, range: 1000, ...(objectDef(o).magic ? { magic: true } : {}) } });
   resolve(s, ev);
 }
 // Falling: 1d6 Bludgeoning for every 10 feet, 20d6 at most, and Prone on landing unless it took no damage.

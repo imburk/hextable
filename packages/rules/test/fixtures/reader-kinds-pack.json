@@ -2091,6 +2091,7 @@
       "text": "A net of rope hung down a drop. Invented for the reader tests.",
       "kind": "thing",
       "connects": true,
+      "magic": true,
       "states": {
         "hanging": {
           "name": "hanging",
